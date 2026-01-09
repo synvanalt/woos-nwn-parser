@@ -1,0 +1,12 @@
+# PyCharm project files
+/.idea/
+
+# Copilot files
+/.github/
+
+# PyInstaller folders
+/build/
+/dist/
+
+# Tests
+/tests/
