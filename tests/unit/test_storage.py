@@ -347,6 +347,39 @@ class TestImmunityTracking:
         assert immunity_info["max_damage"] == 70
         assert immunity_info["sample_count"] == 2
 
+    def test_record_immunity_coupled_values(self, data_store: DataStore) -> None:
+        """Test that max_immunity and max_damage are coupled from the same hit.
+
+        When a hit with lower damage but higher immunity is recorded, it should NOT
+        update the stored values. This ensures the immunity percentage calculation
+        uses values from the same hit (e.g., preventing temporary 100% immunity buffs
+        from skewing the calculation).
+        """
+        # First hit: 50 damage dealt, 10 absorbed (20% immunity)
+        data_store.record_immunity("Goblin", "Fire", 10, 50)
+
+        immunity_info = data_store.get_immunity_for_target_and_type("Goblin", "Fire")
+        assert immunity_info["max_damage"] == 50
+        assert immunity_info["max_immunity"] == 10
+
+        # Second hit: 0 damage dealt, 50 absorbed (100% temporary immunity buff)
+        # This should NOT update the record because damage_dealt is lower
+        data_store.record_immunity("Goblin", "Fire", 50, 0)
+
+        immunity_info = data_store.get_immunity_for_target_and_type("Goblin", "Fire")
+        assert immunity_info["max_damage"] == 50  # Still 50, not 0
+        assert immunity_info["max_immunity"] == 10  # Still 10, not 50
+        assert immunity_info["sample_count"] == 2  # Both samples counted
+
+        # Third hit: 60 damage dealt, 12 absorbed (20% immunity)
+        # This SHOULD update because damage_dealt is higher
+        data_store.record_immunity("Goblin", "Fire", 12, 60)
+
+        immunity_info = data_store.get_immunity_for_target_and_type("Goblin", "Fire")
+        assert immunity_info["max_damage"] == 60  # Updated to 60
+        assert immunity_info["max_immunity"] == 12  # Updated to 12 (from same hit)
+        assert immunity_info["sample_count"] == 3
+
     def test_get_target_resists(self, data_store: DataStore) -> None:
         """Test getting all resist data for a target."""
         data_store.record_immunity("Goblin", "Fire", 10, 50)
@@ -355,9 +388,23 @@ class TestImmunityTracking:
         resists = data_store.get_target_resists("Goblin")
 
         assert len(resists) == 2
+        # Each resist is now (damage_type, max_damage, immunity_absorbed, sample_count)
         damage_types = [r[0] for r in resists]
         assert "Fire" in damage_types
         assert "Cold" in damage_types
+
+        # Verify the structure with max_damage in 2nd position
+        for resist in resists:
+            assert len(resist) == 4  # (damage_type, max_damage, immunity_absorbed, sample_count)
+            damage_type, max_damage, immunity_absorbed, sample_count = resist
+            if damage_type == "Fire":
+                assert max_damage == 50
+                assert immunity_absorbed == 10
+                assert sample_count == 1
+            elif damage_type == "Cold":
+                assert max_damage == 40
+                assert immunity_absorbed == 5
+                assert sample_count == 1
 
     def test_get_immunity_for_target_and_type_no_data(self, data_store: DataStore) -> None:
         """Test getting immunity for non-existent target/type."""

@@ -320,17 +320,18 @@ class DataStore:
             breakdown.sort(key=lambda x: x['total_damage'], reverse=True)
             return breakdown
 
-    def get_target_resists(self, target: str) -> List[Tuple[str, int, int]]:
+    def get_target_resists(self, target: str) -> List[Tuple[str, int, int, int]]:
         """Get aggregated resist data for a specific target.
 
-        This uses the separate immunity_data tracking to get accurate max immunity values
-        without relying on damage event immunity_absorbed fields (which may be 0).
+        This uses the separate immunity_data tracking to get accurate immunity absorbed values
+        along with the coupled max_damage value from the same hit.
 
         Args:
             target: Name of the target to query
 
         Returns:
-            List of tuples (damage_type, max_immunity, sample_count)
+            List of tuples (damage_type, max_damage, immunity_absorbed, sample_count)
+            where max_damage and immunity_absorbed are from the same hit that dealt the most damage
         """
         with self.lock:
             if target not in self.immunity_data:
@@ -340,8 +341,9 @@ class DataStore:
             for damage_type, immunity_info in self.immunity_data[target].items():
                 result.append((
                     damage_type,
+                    immunity_info['max_damage'],
                     immunity_info['max_immunity'],
-                    immunity_info['sample_count']
+                    immunity_info['sample_count'],
                 ))
 
             # Sort by damage type
@@ -749,14 +751,18 @@ class DataStore:
     def record_immunity(self, target: str, damage_type: str, immunity_points: int, damage_dealt: int) -> None:
         """Record immunity data for a target and damage type.
 
-        This tracks maximum immunity values separately from damage events to avoid double-counting
-        while still maintaining immunity percentage calculations.
+        This tracks damage and associated immunity as a coupled pair from the same hit.
+        Only updates when a new higher damage is recorded, ensuring the immunity value
+        shown corresponds to the hit that dealt the most damage (not tracked independently).
+
+        This is important because enemies can have temporary 100% immunity buffs, which
+        would skew the immunity percentage calculation if tracked independently.
 
         Args:
             target: Name of the target
             damage_type: Type of damage
-            immunity_points: Amount of damage absorbed by immunity
-            damage_dealt: Amount of damage originally dealt (before immunity)
+            immunity_points: Amount of damage absorbed by immunity for this specific hit
+            damage_dealt: Amount of damage dealt for this specific hit
         """
         with self.lock:
             if target not in self.immunity_data:
@@ -772,13 +778,12 @@ class DataStore:
             record = self.immunity_data[target][damage_type]
             record['sample_count'] += 1
 
-            # Track maximum immunity value
-            if immunity_points > record['max_immunity']:
-                record['max_immunity'] = immunity_points
-
-            # Track maximum damage value
+            # Only update max_damage AND associated max_immunity together when this hit
+            # deals more damage than the previous maximum. This ensures the immunity value
+            # shown is from the same hit as the max damage, not tracked independently.
             if damage_dealt > record['max_damage']:
                 record['max_damage'] = damage_dealt
+                record['max_immunity'] = immunity_points
 
     def get_immunity_for_target_and_type(self, target: str, damage_type: str) -> Dict[str, int]:
         """Get immunity data for a specific target and damage type.

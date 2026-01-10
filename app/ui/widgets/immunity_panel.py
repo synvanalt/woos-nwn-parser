@@ -85,7 +85,7 @@ class ImmunityPanel(ttk.Frame):
         scrollbar.pack(side="right", fill="y")
 
         # Treeview for displaying damage type breakdown
-        columns = ("Damage Type", "Max Damage", "Max Absorbed", "Immunity %", "Samples")
+        columns = ("Damage Type", "Max Damage", "Absorbed", "Immunity %", "Samples")
         self.tree = ttk.Treeview(
             self, columns=columns, show="headings", yscrollcommand=scrollbar.set
         )
@@ -96,7 +96,7 @@ class ImmunityPanel(ttk.Frame):
                 self.tree.column(col, width=140)
             elif col == "Max Damage":
                 self.tree.column(col, width=120)
-            elif col == "Max Absorbed":
+            elif col == "Absorbed":
                 self.tree.column(col, width=120)
             elif col == "Immunity %":
                 self.tree.column(col, width=120)
@@ -127,8 +127,13 @@ class ImmunityPanel(ttk.Frame):
             self.immunity_pct_cache[target] = {}
 
         # Get resist data (damage types with immunity records)
+        # Returns: (damage_type, max_damage, immunity_absorbed, sample_count)
+        # where max_damage and immunity_absorbed are from the same hit
         resists = self.data_store.get_target_resists(target)
-        resist_dict = {damage_type: (max_immunity, sample_count) for damage_type, max_immunity, sample_count in resists}
+        resist_dict = {
+            damage_type: (max_damage, immunity_absorbed, sample_count)
+            for damage_type, max_damage, immunity_absorbed, sample_count in resists
+        }
 
         # Get all damage types for this target from events (whether or not they have immunity)
         all_damage_types_for_target = set()
@@ -148,20 +153,31 @@ class ImmunityPanel(ttk.Frame):
             apply_tag_to_tree(self.tree, tag_name, color)
 
             # Get immunity data if available, otherwise use defaults
+            # resist_dict values are: (max_damage, immunity_absorbed, sample_count) - all coupled from same hit
             if damage_type in resist_dict:
-                max_immunity, sample_count = resist_dict[damage_type]
+                max_damage_from_immunity, immunity_absorbed, sample_count = resist_dict[damage_type]
             else:
-                max_immunity = 0
+                max_damage_from_immunity = 0
+                immunity_absorbed = 0
                 sample_count = 0
 
-            # Get max damage for this damage type (from events, not just immunity_data)
-            max_damage = self.data_store.get_max_damage_from_events_for_target_and_type(
-                target, damage_type
-            )
+            # For immunity percentage calculation, we MUST use the coupled data from immunity_data
+            # (max_damage_from_immunity and immunity_absorbed are from the same hit)
+            #
+            # For display purposes:
+            # - When Parse Immunities is enabled: show the coupled max_damage from immunity tracking
+            # - When disabled: fall back to showing max damage from all events
+            if self.parser.parse_immunity and max_damage_from_immunity > 0:
+                max_damage = max_damage_from_immunity
+            else:
+                # Fall back to max damage from events for display when immunity parsing disabled
+                max_damage = self.data_store.get_max_damage_from_events_for_target_and_type(
+                    target, damage_type
+                )
 
             # Format the display strings
             max_damage_display = str(max_damage) if max_damage > 0 else "-"
-            max_absorbed_display = str(max_immunity) if max_immunity > 0 else "-"
+            absorbed_display = str(immunity_absorbed) if immunity_absorbed > 0 else "-"
             samples_display = str(sample_count) if sample_count > 0 else "-"
 
             # Calculate and cache immunity percentage
@@ -174,8 +190,8 @@ class ImmunityPanel(ttk.Frame):
                     immunity_pct_display = f"{cached_pct}%"
 
             # Update cache if Parse Immunities is enabled
-            if self.parser.parse_immunity and max_damage > 0 and max_immunity > 0:
-                immunity_pct = calculate_immunity_percentage(max_damage, max_immunity)
+            if self.parser.parse_immunity and max_damage > 0 and immunity_absorbed > 0:
+                immunity_pct = calculate_immunity_percentage(max_damage, immunity_absorbed)
                 if immunity_pct is not None:
                     immunity_pct_display = f"{immunity_pct}%"
                     self.immunity_pct_cache[target][damage_type] = immunity_pct
@@ -186,7 +202,7 @@ class ImmunityPanel(ttk.Frame):
             item_id = self.tree.insert(
                 "",
                 "end",
-                values=(damage_type, max_damage_display, max_absorbed_display, immunity_pct_display, samples_display),
+                values=(damage_type, max_damage_display, absorbed_display, immunity_pct_display, samples_display),
                 tags=(tag_name,),
             )
 
