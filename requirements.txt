@@ -1,0 +1,8 @@
+# Woo's NWN Parser - Runtime Dependencies
+# No additional runtime dependencies needed
+# Note: tkinter is included with Python standard library
+
+sv-ttk>=2.6.0
+# UI Theme (required for modern dark theme interface)
+
+# Install with: pip install -r requirements.txt

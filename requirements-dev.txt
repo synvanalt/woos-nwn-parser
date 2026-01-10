@@ -1,0 +1,10 @@
+# Woo's NWN Parser - Development Dependencies
+# Install with: pip install -r requirements-dev.txt
+# Or better: pip install -e ".[dev]"
+
+# Testing Framework
+pytest>=9.0.0
+pytest-cov>=7.0.0
+
+# Build Tools
+pyinstaller>=6.17.0     # Python to executable compiler

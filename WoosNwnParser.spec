@@ -78,9 +78,6 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        'matplotlib',  # Exclude if not used
-        'numpy',  # Exclude if not used
-        'PIL',  # Exclude if not used
         'pytest',  # Exclude test dependencies
     ],
     win_no_prefer_redirects=False,
@@ -102,7 +99,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,  # Compress with UPX if available
+    upx=False,  # UPX disabled - triggers false positives on VirusTotal
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,  # No console window (GUI app)
