@@ -12,15 +12,15 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 <!-- TODO: Add screenshots -->
 **Main Window - DPS Tracking:**
 
-![Main Window](docs/screenshots/main-window.png)
+<img src="docs/screenshots/main-window.png" alt="Main Window" width="500">
 
 **Target Statistics Panel:**
 
-![Target Stats](docs/screenshots/target-stats.png)
+<img src="docs/screenshots/target-stats.png" alt="Target Stats" width="500">
 
 **Immunity Analysis:**
 
-![Immunity Panel](docs/screenshots/immunity-panel.png)
+<img src="docs/screenshots/immunity-panel.png" alt="Immunity Panel" width="500">
 
 ## Features
 
