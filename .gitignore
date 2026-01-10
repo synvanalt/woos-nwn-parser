@@ -4,9 +4,15 @@
 # Copilot files
 /.github/
 
-# PyInstaller folders
+# PyInstaller directories/files
 /build/
 /dist/
 
+# Nuitka directories/files
+/app.build/
+/app.dist/
+/app.onefile-build/
+/build_nuitka.py
+
 # Tests
-/tests/
+/htmlcov/
