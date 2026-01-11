@@ -39,6 +39,9 @@ htmlcov/
 .hypothesis/
 .tox/
 
+# Pyarmor obfuscation
+obfuscated/
+
 # Build artifacts
 *.exe
 app.build/

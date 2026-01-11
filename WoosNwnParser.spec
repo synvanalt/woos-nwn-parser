@@ -23,8 +23,8 @@ root_dir = Path(SPECPATH)
 # Create version info
 version_info = VSVersionInfo(
     ffi=FixedFileInfo(
-        filevers=(1, 0, 0, 0),
-        prodvers=(1, 0, 0, 0),
+        filevers=(1, 0, 1, 0),
+        prodvers=(1, 0, 1, 0),
         mask=0x3f,
         flags=0x0,
         OS=0x40004,
@@ -39,13 +39,13 @@ version_info = VSVersionInfo(
                     '040904B0',
                     [
                         StringStruct('CompanyName', 'Woo\'s NWN Tools'),
-                        StringStruct('FileDescription', 'Woo\'s Neverwinter Nights Combat Log Parser'),
-                        StringStruct('FileVersion', '1.0.0.0'),
+                        StringStruct('FileDescription', 'Woo\'s NWN Parser'),
+                        StringStruct('FileVersion', '1.0.1.0'),
                         StringStruct('InternalName', 'WoosNwnParser'),
                         StringStruct('LegalCopyright', 'Copyright © 2026 Woo\'s NWN Tools'),
                         StringStruct('OriginalFilename', 'WoosNwnParser.exe'),
                         StringStruct('ProductName', 'Woo\'s NWN Parser'),
-                        StringStruct('ProductVersion', '1.0.0.0')
+                        StringStruct('ProductVersion', '1.0.1.0')
                     ]
                 )
             ]
@@ -55,17 +55,25 @@ version_info = VSVersionInfo(
 )
 
 a = Analysis(
-    ['app/__main__.py'],
-    pathex=[str(root_dir)],
+    ['obfuscated/app/__main__.py'],
+    pathex=[str(root_dir / 'obfuscated')],
     binaries=[],
     datas=[
-        ('ir_attack.ico', '.'),  # Include the icon file
+        ('app/assets/icons/ir_attack.ico', 'app/assets/icons'),  # Include the icon file
+        (str(root_dir / 'obfuscated' / 'app'), 'app'),
+        ('obfuscated/pyarmor_runtime_000000', 'pyarmor_runtime_000000'),
     ],
     hiddenimports=[
         'sv_ttk',  # Sun Valley ttk theme
         'tkinter',
         'tkinter.ttk',
+        'tkinter.filedialog',
+        'tkinter.messagebox',
+        'tkinter.simpledialog',
+        'tkinter.scrolledtext',
+        'tkinter.font',
         '_tkinter',
+        'ctypes',
         'queue',
         'threading',
         'pathlib',
@@ -78,15 +86,16 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        'pytest',  # Exclude test dependencies
+        'pytest',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
-    cipher=block_cipher,
+    block_cipher = None,
+    cipher = None,  # No encryption
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure, a.zipped_data, cipher=None)
 
 exe = EXE(
     pyz,
@@ -95,6 +104,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
+    exclude_binaries=False,  # False: onefile, True: onedir
     name='WoosNwnParser',
     debug=False,
     bootloader_ignore_signals=False,
@@ -108,7 +118,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='ir_attack.ico',  # Application icon
+    icon='app/assets/icons/ir_attack.ico',  # Application icon
     version=version_info,  # Windows file properties/metadata
 )
-
