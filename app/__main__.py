@@ -58,11 +58,98 @@ def apply_dark_title_bar(window):
     )
 
 
+def fix_treeview_indicator(root: tk.Tk) -> None:
+    """Fix the sv_ttk treeview indicator to properly show open/closed states.
+
+    The sv_ttk theme creates a custom Treeitem.indicator image element that uses
+    'user1' state instead of the Treeview's internal open/close mechanism.
+    This breaks the expand/collapse arrows.
+
+    The fix: Remove sv_ttk's broken indicator from the layout and use the item's
+    image property instead. We also provide a helper function that treeview widgets
+    can use to set up proper click handling and image updates.
+    """
+    # Get sv_ttk's arrow images for later use
+    try:
+        down_img = root.tk.eval("set ::ttk::theme::sv_dark::I(down)")
+        right_img = root.tk.eval("set ::ttk::theme::sv_dark::I(right)")
+    except tk.TclError:
+        # If we can't get the images, skip the fix
+        return
+
+    # Remove the broken indicator from layout - we'll use item image instead
+    try:
+        root.tk.eval('''
+            ttk::style layout Treeview.Item {
+                Treeitem.padding -sticky nswe -children {
+                    Treeitem.image -sticky nswe -sticky {}
+                    Treeitem.text -sticky nswe
+                }
+            }
+        ''')
+    except tk.TclError:
+        return
+
+    # Store image references and helper function on root for treeviews to use
+    root._sv_ttk_down_img = down_img
+    root._sv_ttk_right_img = right_img
+
+    def bind_treeview_indicator_fix(tree) -> None:
+        """Bind a treeview to properly show sv_ttk indicator arrows.
+
+        Args:
+            tree: A ttk.Treeview widget
+        """
+        def update_all_indicators() -> None:
+            """Update indicator images for all parent items."""
+            for item in tree.get_children():
+                if tree.get_children(item):
+                    img = down_img if tree.item(item, "open") else right_img
+                    tree.item(item, image=img)
+
+        def on_click(event):
+            """Handle single-click to toggle expand/collapse on tree column."""
+            if tree.identify_region(event.x, event.y) == "tree":
+                item = tree.identify_row(event.y)
+                if item and tree.get_children(item):
+                    # Toggle open state and update image to match NEW state
+                    will_be_open = not tree.item(item, "open")
+                    tree.item(item, open=will_be_open, image=down_img if will_be_open else right_img)
+                    return "break"
+            return None
+
+        def on_open(event) -> None:
+            """Handle open event - update the focused item's indicator."""
+            item = tree.focus()
+            if item:
+                tree.item(item, image=down_img)
+
+        def on_close(event) -> None:
+            """Handle close event - update the focused item's indicator."""
+            item = tree.focus()
+            if item:
+                tree.item(item, image=right_img)
+
+        tree.bind("<Button-1>", on_click, add=True)
+        tree.bind("<<TreeviewOpen>>", on_open, add=True)
+        tree.bind("<<TreeviewClose>>", on_close, add=True)
+
+        # Store update function on tree for manual refresh calls
+        tree._update_indicators = update_all_indicators
+
+        # Initial update
+        update_all_indicators()
+
+    root._fix_treeview_indicator = bind_treeview_indicator_fix
+
+
 def main() -> None:
     """Launch Woo's NWN Parser application."""
     root = tk.Tk()
     sv_ttk.set_theme("dark")
 
+    # Fix the treeview indicator to properly show expand/collapse arrows
+    fix_treeview_indicator(root)
 
     app = WoosNwnParserApp(root)
 
