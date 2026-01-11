@@ -79,6 +79,11 @@ class DPSPanel(ttk.Frame):
         self.tree.pack(fill="both", expand=True)
         dps_scrollbar.config(command=self.tree.yview)
 
+        # Apply sv_ttk treeview indicator fix if available
+        root = self.winfo_toplevel()
+        if hasattr(root, "_fix_treeview_indicator"):
+            root._fix_treeview_indicator(self.tree)
+
         # DPS controls frame
         dps_controls_frame = ttk.Frame(self)
         dps_controls_frame.pack(fill="x", expand=False, padx=0, pady=(10, 0))
@@ -202,6 +207,10 @@ class DPSPanel(ttk.Frame):
         # Restore selection
         if items_to_select:
             self.tree.selection_set(items_to_select)
+
+        # Update indicator images after refresh
+        if hasattr(self.tree, "_update_indicators"):
+            self.tree._update_indicators()
 
     def get_time_tracking_mode(self) -> str:
         """Get selected time tracking mode.
