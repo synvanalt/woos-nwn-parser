@@ -38,7 +38,9 @@ class LogParser:
             ),
             # Attack pattern for AC estimation
             'attack': re.compile(
-                r'(?:Attack Of Opportunity\s*:\s*)?'
+                r'(?:Off Hand\s*:\s*)?'  # Optional "Off Hand : " prefix
+                r'(?:[\w\s]+\s*:\s*)*'  # Zero or more ability name prefixes (e.g., "Flurry of Blows : Sneak Attack : ")
+                r'(?:Attack Of Opportunity\s*:\s*)?'  # Optional "Attack Of Opportunity : " prefix
                 r'(?P<attacker>.+?)\s+attacks\s+(?P<target>.+?)\s*:\s*'
                 r'\*(?P<outcome>hit|miss|critical hit|parried|resisted)\*\s*'
                 r'(?::\s*\((?P<roll>\d+)\s*\+\s*(?P<bonus>-?\d+)\s*=\s*(?P<total>\d+)\))?',
@@ -46,7 +48,9 @@ class LogParser:
             ),
             # Attack with concealment pattern
             'attack_conceal': re.compile(
-                r'(?:Attack Of Opportunity\s*:\s*)?'
+                r'(?:Off Hand\s*:\s*)?'  # Optional "Off Hand : " prefix
+                r'(?:[\w\s]+\s*:\s*)*'  # Zero or more ability name prefixes (e.g., "Flurry of Blows : Sneak Attack : ")
+                r'(?:Attack Of Opportunity\s*:\s*)?'  # Optional "Attack Of Opportunity : " prefix
                 r'(?P<attacker>.+?)\s+attacks\s+(?P<target>.+?)\s*:\s*'
                 r'\*target concealed:\s*(?P<conceal>\d+)%\*\s*:\s*'
                 r'\((?P<roll>\d+)\s*\+\s*(?P<bonus>-?\d+)\s*=\s*(?P<total>\d+)\)\s*:\s*'
@@ -55,8 +59,9 @@ class LogParser:
             ),
             # Attack pattern that matches critical hit with optional threat roll
             'attack_with_threat': re.compile(
-                r'(?:Off Hand\s*:\s*)?'
-                r'(?:Attack Of Opportunity\s*:\s*)?'
+                r'(?:Off Hand\s*:\s*)?'  # Optional "Off Hand : " prefix
+                r'(?:[\w\s]+\s*:\s*)*'  # Zero or more ability name prefixes (e.g., "Flurry of Blows : Sneak Attack : ")
+                r'(?:Attack Of Opportunity\s*:\s*)?'  # Optional "Attack Of Opportunity : " prefix
                 r'(?P<attacker>.+?)\s+attacks\s+(?P<target>.+?)\s*:\s*'
                 r'\*(?P<outcome>hit|critical hit|miss|parried|resisted|attacker miss chance:\s*\d+%)\*'
                 r'(?:\s*:\s*\((?P<roll>\d+)\s*\+\s*(?P<bonus>-?\d+)\s*=\s*(?P<total>\d+)'

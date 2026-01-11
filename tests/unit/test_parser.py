@@ -4,11 +4,9 @@ Tests regex pattern matching, damage parsing, immunity parsing,
 attack parsing, save parsing, and player filtering.
 """
 
-import pytest
 from datetime import datetime
 
 from app.parser import LogParser
-from app.models import EnemyAC, EnemySaves, TargetAttackBonus
 
 
 class TestLogParserInitialization:
@@ -259,6 +257,142 @@ class TestAttackParsing:
 
         assert 'Goblin' in parser.target_attack_bonus
         assert parser.target_attack_bonus['Goblin'].max_bonus == 8
+
+
+class TestAttackPrefixCombinations:
+    """Test suite for parsing attack lines with various prefix combinations.
+
+    Tests the fix for handling ability names (e.g., Flurry of Blows, Sneak Attack),
+    Off Hand attacks, and Attack of Opportunity prefixes in all combinations.
+    """
+
+    def test_parse_attack_with_single_ability(self, parser: LogParser) -> None:
+        """Test parsing attack with single ability prefix (Flurry of Blows)."""
+        line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:08:04] Flurry of Blows : Woo Whirlwind attacks 10 AC DUMMY - Chaotic Evil - Boss Damage Reduction : *hit* : (5 + 66 = 71)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result['type'] == 'attack_hit'
+        assert result['attacker'] == 'Woo Whirlwind'
+        assert result['target'] == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
+        assert result['roll'] == 5
+        assert result['bonus'] == '66'
+        assert result['total'] == 71
+
+    def test_parse_attack_with_two_abilities(self, parser: LogParser) -> None:
+        """Test parsing attack with two ability prefixes (Flurry of Blows + Sneak Attack)."""
+        line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:22:07] Flurry of Blows : Sneak Attack : Woo Whirlwind attacks 10 AC DUMMY - Chaotic Evil - Boss Damage Reduction : *hit* : (5 + 57 = 62)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result['type'] == 'attack_hit'
+        assert result['attacker'] == 'Woo Whirlwind'
+        assert result['target'] == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
+        assert result['roll'] == 5
+        assert result['bonus'] == '57'
+        assert result['total'] == 62
+
+    def test_parse_attack_off_hand_only(self, parser: LogParser) -> None:
+        """Test parsing off-hand attack without ability prefix."""
+        line = "[CHAT WINDOW TEXT] [Wed Dec 31 21:07:58] Off Hand : Woo Wildrock attacks Ash-Tusk Clan High Priest : *hit* : (6 + 66 = 72)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result['type'] == 'attack_hit'
+        assert result['attacker'] == 'Woo Wildrock'
+        assert result['target'] == 'Ash-Tusk Clan High Priest'
+        assert result['roll'] == 6
+        assert result['bonus'] == '66'
+        assert result['total'] == 72
+
+    def test_parse_attack_off_hand_with_single_ability(self, parser: LogParser) -> None:
+        """Test parsing off-hand attack with single ability (Death Attack)."""
+        line = "[CHAT WINDOW TEXT] [Wed Dec 31 21:08:21] Off Hand : Death Attack : GENERAL KORGAN attacks Woo Wildrock : *critical hit* : (18 + 65 = 83 : Threat Roll: 8 + 65 = 73)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result['type'] == 'attack_hit_critical'
+        assert result['attacker'] == 'GENERAL KORGAN'
+        assert result['target'] == 'Woo Wildrock'
+        assert result['roll'] == 18
+        assert result['bonus'] == '65'
+        assert result['total'] == 83
+
+    def test_parse_attack_off_hand_with_two_abilities(self, parser: LogParser) -> None:
+        """Test parsing off-hand attack with two abilities (Flurry of Blows + Sneak Attack)."""
+        line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:23:38] Off Hand : Flurry of Blows : Sneak Attack : Woo Whirlwind attacks 10 AC DUMMY - Chaotic Evil - Boss Damage Reduction : *hit* : (9 + 45 = 54)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result['type'] == 'attack_hit'
+        assert result['attacker'] == 'Woo Whirlwind'
+        assert result['target'] == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
+        assert result['roll'] == 9
+        assert result['bonus'] == '45'
+        assert result['total'] == 54
+
+    def test_parse_attack_of_opportunity_only(self, parser: LogParser) -> None:
+        """Test parsing attack of opportunity without other prefixes."""
+        line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:08:04] Attack Of Opportunity : Woo Whirlwind attacks 10 AC DUMMY : *hit* : (5 + 66 = 71)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result['type'] == 'attack_hit'
+        assert result['attacker'] == 'Woo Whirlwind'
+        assert result['target'] == '10 AC DUMMY'
+        assert result['roll'] == 5
+        assert result['bonus'] == '66'
+        assert result['total'] == 71
+
+    def test_parse_attack_no_prefix(self, parser: LogParser) -> None:
+        """Test parsing basic attack without any prefix (regression test)."""
+        line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:08:54] Woo Whirlwind attacks 10 AC DUMMY - Chaotic Evil - Boss Damage Reduction : *hit* : (10 + 61 = 71)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result['type'] == 'attack_hit'
+        assert result['attacker'] == 'Woo Whirlwind'
+        assert result['target'] == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
+        assert result['roll'] == 10
+        assert result['bonus'] == '61'
+        assert result['total'] == 71
+
+    def test_parse_attack_with_ability_miss(self, parser: LogParser) -> None:
+        """Test parsing miss with ability prefix."""
+        line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:08:04] Flurry of Blows : Woo Whirlwind attacks 10 AC DUMMY : *miss* : (3 + 66 = 69)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result['type'] == 'attack_miss'
+        assert result['attacker'] == 'Woo Whirlwind'
+        assert result['target'] == '10 AC DUMMY'
+        assert result['roll'] == 3
+        assert result['total'] == 69
+
+    def test_parse_attack_with_ability_tracks_ac(self, parser: LogParser) -> None:
+        """Test that attacks with ability prefixes correctly update AC tracking."""
+        hit_line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:22:07] Flurry of Blows : Sneak Attack : Woo Whirlwind attacks 10 AC DUMMY : *hit* : (5 + 57 = 62)"
+        parser.parse_line(hit_line)
+
+        assert '10 AC DUMMY' in parser.target_ac
+        assert parser.target_ac['10 AC DUMMY'].min_hit == 62
+
+        miss_line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:22:08] Flurry of Blows : Woo Whirlwind attacks 10 AC DUMMY : *miss* : (2 + 57 = 59)"
+        parser.parse_line(miss_line)
+
+        assert parser.target_ac['10 AC DUMMY'].max_miss == 59
+
+    def test_parse_attack_with_three_word_ability(self, parser: LogParser) -> None:
+        """Test parsing attack with multi-word ability names."""
+        line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:08:04] Circle Kick Attack : Woo Whirlwind attacks Training Dummy : *hit* : (15 + 50 = 65)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result['type'] == 'attack_hit'
+        assert result['attacker'] == 'Woo Whirlwind'
+        assert result['target'] == 'Training Dummy'
+        assert result['roll'] == 15
+        assert result['total'] == 65
 
 
 class TestSaveParsing:
