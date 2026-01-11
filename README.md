@@ -69,13 +69,6 @@ pip install -r requirements.txt
 python -m app
 ```
 
-### First Run
-
-1. **Start the Parser** - Launch WoosNwnParser.exe or run `python -m app`
-2. **Start NWN** - Play Neverwinter Nights as normal
-3. **Enter Combat** - The parser automatically detects and processes combat logs
-4. **View Statistics** - Watch real-time DPS, hit rates, and enemy stats
-
 ### Configuration
 
 The parser works out-of-the-box with default NWN installations. If needed:
@@ -114,7 +107,6 @@ The parser works out-of-the-box with default NWN installations. If needed:
 **Saves**
 - Tracks Fortitude, Reflex, and Will saves
 - Shows highest detected value for each
-- Format: `Fort: 28 | Reflex: 15 | Will: 20`
 
 ### Immunity Analysis
 
@@ -134,32 +126,40 @@ The parser works out-of-the-box with default NWN installations. If needed:
 
 ```
 woos-nwn-parser/
-├── app/                      # Main application code
-│   ├── __main__.py          # Entry point
-│   ├── models.py            # Data models (EnemyAC, EnemySaves, etc.)
-│   ├── parser.py            # Log parsing logic
-│   ├── storage.py           # Data storage and queries
-│   ├── monitor.py           # File monitoring and rotation
-│   ├── utils.py             # Utility functions
+├── app/                           # Main application code
+│   ├── __init__.py
+│   ├── __main__.py                # Entry point
+│   ├── models.py                  # Data models
+│   ├── parser.py                  # Log parsing logic
+│   ├── storage.py                 # Data storage and queries
+│   ├── monitor.py                 # File monitoring and rotation
+│   ├── utils.py                   # Utility functions
+│   ├── assets/                    # Application resources
 │   ├── services/
-│   │   ├── dps_service.py   # DPS calculations
-│   │   └── queue_processor.py  # Event processing
+│   │   ├── __init__.py
+│   │   ├── dps_service.py         # DPS calculations
+│   │   └── queue_processor.py     # Event processing
 │   └── ui/
-│       ├── main_window.py   # Main application window
-│       ├── formatters.py    # Data formatting utilities
-│       └── widgets/         # UI components
+│       ├── __init__.py
+│       ├── main_window.py         # Main application window
+│       ├── formatters.py          # Data formatting utilities
+│       └── widgets/               # UI components
+│           ├── __init__.py
 │           ├── dps_panel.py
 │           ├── target_stats_panel.py
 │           ├── immunity_panel.py
 │           └── debug_console_panel.py
-├── tests/                    # Test suite
-│   ├── unit/                # Unit tests
-│   ├── integration/         # Integration tests
-│   ├── e2e/                 # End-to-end tests
-│   └── fixtures/            # Test data
-├── requirements.txt         # Python dependencies
-├── WoosNwnParser.spec       # Build spec file
-└── README.md               # This file
+├── tests/                         # Test suite
+│   ├── unit/                      # Unit tests
+│   ├── integration/               # Integration tests
+│   ├── e2e/                       # End-to-end tests
+│   └── fixtures/                  # Test data
+├── docs/                          # Documentation
+├── WoosNwnParser.spec             # PyInstaller build spec
+├── requirements.txt
+├── requirements-dev.txt
+├── CHANGELOG.md
+└── README.md
 ```
 
 ### Key Components
@@ -212,21 +212,7 @@ pytest tests/unit/test_parser.py -v
 pytest -k "damage" -v
 ```
 
-### Test Coverage
-
-| Module | Coverage | Status |
-|--------|----------|--------|
-| `app/models.py` | 100% | Fully tested |
-| `app/parser.py` | 100% | Fully tested |
-| `app/utils.py` | 100% | Fully tested |
-| `app/services/dps_service.py` | 94% | Well tested |
-| `app/services/queue_processor.py` | 92% | Well tested |
-| `app/monitor.py` | 91% | Well tested |
-| `app/storage.py` | 83% | Good coverage |
-
-See [tests/TEST_SUITE_SUMMARY.md](tests/TEST_SUITE_SUMMARY.md) for detailed test documentation.
-
-## 🛠Development
+## Development
 
 ### Prerequisites
 
@@ -263,21 +249,17 @@ python -m app
 The project uses [PyInstaller](https://pyinstaller.org/) for creating standalone executables:
 
 ```bash
-# Install PyInstaller
-pip install pyinstaller
+# Install PyInstaller & Pyarmor
+pip install pyinstaller pyarmor
+
+# Obfuscate the 'app' folder
+pyarmor gen --output obfuscated app
 
 # Build executable
 pyinstaller --clean WoosNwnParser.spec
 
 # Output: WoosNwnParser.exe
 ```
-
-### Code Style
-
-- **Type Hints**: All functions include type hints for arguments and return values
-- **Docstrings**: All modules, classes, and functions are documented
-- **Testing**: New features should include unit and integration tests
-- **Coverage**: Aim for ≥80% coverage for new code
 
 ## Requirements
 
@@ -293,6 +275,7 @@ sv-ttk>=2.0.0        # Dark theme support
 ```
 pytest>=7.0.0
 pytest-cov>=4.0.0
+pyarmor>=9.2.3			# Obfuscate code for less AV false positives
 pyinstaller>=6.17.0		# For building executable
 ```
 
@@ -318,26 +301,6 @@ pyinstaller>=6.17.0		# For building executable
 - Check that the correct target is selected
 - Verify refresh mode matches your needs (`By Character` vs `Global`)
 - Clear data and restart if needed (`Reset Data` button)
-
-### Window Title Bar Not Dark
-
-**Issue**: Title bar remains light on Windows 11
-
-**Solutions**:
-- Requires Windows 10 build 19041+ or Windows 11
-- Application automatically attempts to apply dark title bar
-- Check Debug Console for "Failed to apply dark title bar" messages
-
-## Changelog
-
-### Version 1.0 (Initial Release)
-- Real-time DPS tracking
-- Target statistics (AC, AB, Saves)
-- Immunity detection and calculation
-- Auto log rotation support
-- Dark theme UI
-- Data import/export
-- Complete test suite
 
 ## License
 
