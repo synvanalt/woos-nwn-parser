@@ -88,9 +88,18 @@ class DebugConsolePanel(ttk.Frame):
         if self.debug_mode_var.get():
             from datetime import datetime
 
+            # Check if the scrollbar is currently at the very bottom
+            # yview() returns a tuple like (0.0, 1.0)
+            # The second value [1] is the position of the bottom of the view
+            current_scroll_pos = self.text.yview()
+            at_bottom = current_scroll_pos[1] == 1.0
+
             timestamp = datetime.now().strftime("%H:%M:%S")
             self.text.insert(tk.END, f"[{timestamp}] {message}\n", msg_type)
-            self.text.see(tk.END)  # Auto-scroll to bottom
+
+            # Only scroll to the end if the user was already at the bottom
+            if at_bottom:
+                self.text.see(tk.END)
 
     def clear(self) -> None:
         """Clear the debug console."""
