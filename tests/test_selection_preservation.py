@@ -6,46 +6,75 @@ when the treeview contents are refreshed.
 
 import tkinter as tk
 from tkinter import ttk
+import pytest
+
+from datetime import datetime
 
 from app.storage import DataStore
 from app.parser import LogParser
 from app.services import DPSCalculationService
 from app.ui.widgets import DPSPanel, TargetStatsPanel, ImmunityPanel
-from app.models import DamageEvent
+from app.models import EnemyAC, TargetAttackBonus
 
 
-def test_dps_panel_selection_preservation() -> None:
-    """Test that DPS panel preserves selection after refresh."""
-    print("\n=== Testing DPS Panel Selection Preservation ===")
-
+@pytest.fixture(scope="module")
+def tk_root():
+    """Create a shared Tk root for all tests in this module."""
     root = tk.Tk()
     root.withdraw()  # Hide the window
+    yield root
+    # Cleanup after all tests
+    try:
+        root.destroy()
+    except:
+        pass
+
+
+@pytest.fixture
+def notebook(tk_root):
+    """Create a fresh notebook widget for each test."""
+    nb = ttk.Notebook(tk_root)
+    yield nb
+    # Cleanup widgets after each test
+    try:
+        for child in nb.winfo_children():
+            child.destroy()
+        nb.destroy()
+    except:
+        pass
+
+
+def test_dps_panel_selection_preservation(tk_root, notebook) -> None:
+    """Test that DPS panel preserves selection after refresh."""
+    print("\n=== Testing DPS Panel Selection Preservation ===")
 
     # Setup
     data_store = DataStore()
     dps_service = DPSCalculationService(data_store)
-    notebook = ttk.Notebook(root)
     panel = DPSPanel(notebook, data_store, dps_service)
 
-    # Add some test data
-    data_store.add_event(DamageEvent(
-        timestamp=1.0,
-        attacker="Hero",
+    # Add some test data using the correct API
+    timestamp1 = datetime.now()
+    data_store.insert_damage_event(
         target="Monster",
-        damage=10,
         damage_type="Physical",
-        is_critical=False,
-        miss=False
-    ))
-    data_store.add_event(DamageEvent(
-        timestamp=2.0,
+        immunity=0,
+        total_damage=10,
         attacker="Hero",
+        timestamp=timestamp1
+    )
+    data_store.update_dps_data("Hero", 10, timestamp1, {"Physical": 10})
+
+    timestamp2 = datetime.now()
+    data_store.insert_damage_event(
         target="Monster",
-        damage=15,
         damage_type="Fire",
-        is_critical=False,
-        miss=False
-    ))
+        immunity=0,
+        total_damage=15,
+        attacker="Hero",
+        timestamp=timestamp2
+    )
+    data_store.update_dps_data("Hero", 15, timestamp2, {"Fire": 15})
 
     # Initial refresh to populate the tree
     panel.refresh()
@@ -78,46 +107,47 @@ def test_dps_panel_selection_preservation() -> None:
 
     print(f"✅ DPS Panel: Selection preserved after refresh ({new_char})")
 
-    root.destroy()
 
-
-def test_target_stats_panel_selection_preservation() -> None:
+def test_target_stats_panel_selection_preservation(tk_root, notebook) -> None:
     """Test that Target Stats panel preserves selection after refresh."""
     print("\n=== Testing Target Stats Panel Selection Preservation ===")
-
-    root = tk.Tk()
-    root.withdraw()
 
     # Setup
     data_store = DataStore()
     parser = LogParser()
-    notebook = ttk.Notebook(root)
     panel = TargetStatsPanel(notebook, data_store, parser)
 
-    # Add some test data
-    parser.target_ac["Monster1"] = 20
-    parser.target_ac["Monster2"] = 25
-    parser.target_attack_bonus["Monster1"] = 15
-    parser.target_attack_bonus["Monster2"] = 18
+    # Add some test data - properly create EnemyAC and TargetAttackBonus objects
+    # TargetStatsPanel shows stats about targets that were ATTACKED (not attackers)
+    ac1 = EnemyAC(name="Monster1", min_hit=20)
+    ac2 = EnemyAC(name="Monster2", min_hit=25)
+    parser.target_ac["Monster1"] = ac1
+    parser.target_ac["Monster2"] = ac2
 
-    data_store.add_event(DamageEvent(
-        timestamp=1.0,
-        attacker="Monster1",
-        target="Hero",
-        damage=10,
+    bonus1 = TargetAttackBonus(name="Monster1", max_bonus=15)
+    bonus2 = TargetAttackBonus(name="Monster2", max_bonus=18)
+    parser.target_attack_bonus["Monster1"] = bonus1
+    parser.target_attack_bonus["Monster2"] = bonus2
+
+    timestamp1 = datetime.now()
+    data_store.insert_damage_event(
+        target="Monster1",  # Hero attacking Monster1
         damage_type="Physical",
-        is_critical=False,
-        miss=False
-    ))
-    data_store.add_event(DamageEvent(
-        timestamp=2.0,
-        attacker="Monster2",
-        target="Hero",
-        damage=12,
+        immunity=0,
+        total_damage=10,
+        attacker="Hero",
+        timestamp=timestamp1
+    )
+
+    timestamp2 = datetime.now()
+    data_store.insert_damage_event(
+        target="Monster2",  # Hero attacking Monster2
         damage_type="Physical",
-        is_critical=False,
-        miss=False
-    ))
+        immunity=0,
+        total_damage=12,
+        attacker="Hero",
+        timestamp=timestamp2
+    )
 
     # Initial refresh to populate the tree
     panel.refresh()
@@ -150,41 +180,38 @@ def test_target_stats_panel_selection_preservation() -> None:
 
     print(f"✅ Target Stats Panel: Selection preserved after refresh ({new_target})")
 
-    root.destroy()
 
-
-def test_immunity_panel_selection_preservation() -> None:
+def test_immunity_panel_selection_preservation(tk_root, notebook) -> None:
     """Test that Immunity panel preserves selection after refresh."""
     print("\n=== Testing Immunity Panel Selection Preservation ===")
-
-    root = tk.Tk()
-    root.withdraw()
 
     # Setup
     data_store = DataStore()
     parser = LogParser()
-    notebook = ttk.Notebook(root)
     panel = ImmunityPanel(notebook, data_store, parser)
 
-    # Add some test data
-    data_store.add_event(DamageEvent(
-        timestamp=1.0,
-        attacker="Hero",
+    # Add some test data with immunity
+    timestamp1 = datetime.now()
+    data_store.insert_damage_event(
         target="Monster",
-        damage=10,
         damage_type="Physical",
-        is_critical=False,
-        miss=False
-    ))
-    data_store.add_event(DamageEvent(
-        timestamp=2.0,
+        immunity=5,
+        total_damage=10,
         attacker="Hero",
+        timestamp=timestamp1
+    )
+    data_store.record_immunity("Monster", "Physical", 5, 10)
+
+    timestamp2 = datetime.now()
+    data_store.insert_damage_event(
         target="Monster",
-        damage=15,
         damage_type="Fire",
-        is_critical=False,
-        miss=False
-    ))
+        immunity=3,
+        total_damage=15,
+        attacker="Hero",
+        timestamp=timestamp2
+    )
+    data_store.record_immunity("Monster", "Fire", 3, 15)
 
     # Update target list and select a target
     targets = data_store.get_all_targets()
@@ -221,43 +248,39 @@ def test_immunity_panel_selection_preservation() -> None:
 
     print(f"✅ Immunity Panel: Selection preserved after refresh ({new_damage_type})")
 
-    root.destroy()
 
-
-def test_multiple_selection_preservation() -> None:
+def test_multiple_selection_preservation(tk_root, notebook) -> None:
     """Test that multiple selections are preserved."""
     print("\n=== Testing Multiple Selection Preservation ===")
-
-    root = tk.Tk()
-    root.withdraw()
 
     # Setup Target Stats Panel for multi-select test
     data_store = DataStore()
     parser = LogParser()
-    notebook = ttk.Notebook(root)
     panel = TargetStatsPanel(notebook, data_store, parser)
 
-    # Add test data for multiple targets
+    # Add test data for multiple targets - Hero attacking multiple Monsters
     for i in range(1, 4):
         target = f"Monster{i}"
-        parser.target_ac[target] = 20 + i
-        parser.target_attack_bonus[target] = 15 + i
-        data_store.add_event(DamageEvent(
-            timestamp=float(i),
-            attacker=target,
-            target="Hero",
-            damage=10 + i,
+        ac = EnemyAC(name=target, min_hit=20 + i)
+        parser.target_ac[target] = ac
+        bonus = TargetAttackBonus(name=target, max_bonus=15 + i)
+        parser.target_attack_bonus[target] = bonus
+        timestamp = datetime.now()
+        data_store.insert_damage_event(
+            target=target,  # Hero attacking Monster
             damage_type="Physical",
-            is_critical=False,
-            miss=False
-        ))
+            immunity=0,
+            total_damage=10 + i,
+            attacker="Hero",
+            timestamp=timestamp
+        )
 
     # Initial refresh
     panel.refresh()
 
     # Select multiple items
     items = panel.tree.get_children()
-    assert len(items) >= 2, "Should have at least 2 items"
+    assert len(items) >= 2, f"Should have at least 2 items, got {len(items)}"
 
     panel.tree.selection_set([items[0], items[1]])
     selected_before = panel.tree.selection()
@@ -280,27 +303,8 @@ def test_multiple_selection_preservation() -> None:
 
     print(f"✅ Multiple Selection: All selections preserved after refresh ({new_targets})")
 
-    root.destroy()
-
 
 if __name__ == "__main__":
-    print("Testing Selection Preservation in All Treeview Panels")
-    print("=" * 60)
-
-    try:
-        test_dps_panel_selection_preservation()
-        test_target_stats_panel_selection_preservation()
-        test_immunity_panel_selection_preservation()
-        test_multiple_selection_preservation()
-
-        print("\n" + "=" * 60)
-        print("✅ ALL TESTS PASSED!")
-        print("Selection preservation is working correctly in all panels.")
-
-    except AssertionError as e:
-        print(f"\n❌ TEST FAILED: {e}")
-        raise
-    except Exception as e:
-        print(f"\n❌ UNEXPECTED ERROR: {e}")
-        raise
-
+    # This file should be run with pytest, not directly
+    print("Please run with: pytest tests/test_selection_preservation.py -v")
+    print("These tests require pytest fixtures for proper Tkinter instance management.")
