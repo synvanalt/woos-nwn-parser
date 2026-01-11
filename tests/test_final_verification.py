@@ -118,15 +118,14 @@ def test_exact_user_scenario():
 
         # Final verification
         print("\n" + "=" * 70)
-        if truncation_detected and len(orc_content) >= 2:
-            print("✅ SUCCESS! The app tracked new damage immediately after game restart!")
-            print("   The user did NOT need to click Pause/Start Monitoring!")
-            print("=" * 70)
-            return True
-        else:
-            print("❌ FAILED! The app did not track new damage after game restart.")
-            print("=" * 70)
-            raise AssertionError("Fix verification failed")
+
+        # Use proper assertions instead of return
+        assert truncation_detected, "Truncation should have been detected"
+        assert len(orc_content) >= 2, f"Expected at least 2 lines with 'Orc', got {len(orc_content)}"
+
+        print("✅ SUCCESS! The app tracked new damage immediately after game restart!")
+        print("   The user did NOT need to click Pause/Start Monitoring!")
+        print("=" * 70)
 
 
 if __name__ == '__main__':
