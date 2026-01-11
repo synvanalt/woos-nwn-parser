@@ -67,7 +67,7 @@ def main() -> None:
     app = WoosNwnParserApp(root)
 
     # Set window icon (works in both dev and bundled exe)
-    icon_path = get_resource_path("ir_attack.ico")
+    icon_path = get_resource_path("app/assets/icons/ir_attack.ico")
     if icon_path.exists():
         root.iconbitmap(str(icon_path))
 
