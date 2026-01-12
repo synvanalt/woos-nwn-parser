@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2] - 2026-01-12
+
+### Fixed
+- DPS tracking "By Character" was tracking last damage event timestamp for all characters (correct behavior is to track timestamp per character)
+
+### Changed
+- DPS panel now refreshes automatically every 1 second when in "Global" time tracking mode
+
 
 ## [1.0.1] - 2026-01-11
 
