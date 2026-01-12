@@ -100,6 +100,7 @@ class DataStore:
                 self.dps_data[character] = {
                     'total_damage': damage_amount,
                     'first_timestamp': timestamp,
+                    'last_timestamp': timestamp,
                     'damage_by_type': {}
                 }
             else:
@@ -107,6 +108,9 @@ class DataStore:
                 # Update first timestamp if this one is older
                 if timestamp < self.dps_data[character]['first_timestamp']:
                     self.dps_data[character]['first_timestamp'] = timestamp
+                # Update last timestamp if this one is newer
+                if timestamp > self.dps_data[character].get('last_timestamp', timestamp):
+                    self.dps_data[character]['last_timestamp'] = timestamp
 
             # Track damage by type if provided
             if damage_types:
@@ -181,14 +185,11 @@ class DataStore:
                     })
             else:
                 # By-character mode (default): use each character's own first and last timestamps
-                if self.last_damage_timestamp is None:
-                    return dps_list
-
                 for character, data in self.dps_data.items():
                     total_damage = data['total_damage']
                     first_ts = data['first_timestamp']
-                    # Use the GLOBAL last damage timestamp, not individual character's
-                    last_ts = self.last_damage_timestamp
+                    # Use the character's own last damage timestamp
+                    last_ts = data.get('last_timestamp', first_ts)
 
                     # Calculate time elapsed in seconds
                     time_delta = last_ts - first_ts
@@ -238,12 +239,9 @@ class DataStore:
                 time_delta = now - global_start_time
                 time_seconds = max(time_delta.total_seconds(), 1)
             else:
-                # By-character mode: use character's first and global last timestamps
-                if self.last_damage_timestamp is None:
-                    return []
-
+                # By-character mode: use character's first and last timestamps
                 first_ts = character_data['first_timestamp']
-                last_ts = self.last_damage_timestamp
+                last_ts = character_data.get('last_timestamp', first_ts)
 
                 # Calculate time elapsed in seconds
                 time_delta = last_ts - first_ts
