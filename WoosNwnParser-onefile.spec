@@ -55,13 +55,11 @@ version_info = VSVersionInfo(
 )
 
 a = Analysis(
-    ['obfuscated/app/__main__.py'],
-    pathex=[str(root_dir / 'obfuscated')],
+    ['app/__main__.py'],
+    pathex=[str(root_dir)],
     binaries=[],
     datas=[
         ('app/assets/icons/ir_attack.ico', 'app/assets/icons'),  # Include the icon file
-        (str(root_dir / 'obfuscated' / 'app'), 'app'),
-        ('obfuscated/pyarmor_runtime_000000', 'pyarmor_runtime_000000'),
     ],
     hiddenimports=[
         'sv_ttk',  # Sun Valley ttk theme

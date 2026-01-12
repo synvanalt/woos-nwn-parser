@@ -155,7 +155,8 @@ woos-nwn-parser/
 │   ├── e2e/                       # End-to-end tests
 │   └── fixtures/                  # Test data
 ├── docs/                          # Documentation
-├── WoosNwnParser.spec             # PyInstaller build spec
+├── WoosNwnParser-onedir.spec      # PyInstaller build spec - one directory
+├── WoosNwnParser-onefile.spec     # PyInstaller build spec - one file
 ├── requirements.txt
 ├── requirements-dev.txt
 ├── CHANGELOG.md
@@ -189,29 +190,6 @@ woos-nwn-parser/
 - Supports target filtering
 - Provides damage type breakdowns
 
-## Testing
-
-The project includes a comprehensive test suite with **225 tests** achieving **54% code coverage**.
-
-### Running Tests
-
-```bash
-# Install test dependencies
-pip install pytest pytest-cov
-
-# Run all tests
-pytest tests/unit tests/integration tests/e2e
-
-# Run with coverage report
-pytest tests/unit tests/integration tests/e2e --cov=app --cov-report=html
-
-# Run specific test file
-pytest tests/unit/test_parser.py -v
-
-# Run tests matching a pattern
-pytest -k "damage" -v
-```
-
 ## Development
 
 ### Prerequisites
@@ -237,11 +215,27 @@ pip install -r requirements.txt
 # Install development dependencies
 pip install pytest pytest-cov
 
-# Run tests
-pytest tests/unit tests/integration tests/e2e -v
-
 # Run application
 python -m app
+```
+
+### Running Tests
+
+```bash
+# Install test dependencies
+pip install pytest pytest-cov
+
+# Run all tests
+pytest tests/unit tests/integration tests/e2e
+
+# Run with coverage report
+pytest tests/unit tests/integration tests/e2e --cov=app --cov-report=html
+
+# Run specific test file
+pytest tests/unit/test_parser.py -v
+
+# Run tests matching a pattern
+pytest -k "damage" -v
 ```
 
 ### Building Executable
@@ -249,14 +243,11 @@ python -m app
 The project uses [PyInstaller](https://pyinstaller.org/) for creating standalone executables:
 
 ```bash
-# Install PyInstaller & Pyarmor
-pip install pyinstaller pyarmor
-
-# Obfuscate the 'app' folder
-pyarmor gen --output obfuscated app
+# Install PyInstaller
+pip install pyinstaller
 
 # Build executable
-pyinstaller --clean WoosNwnParser.spec
+pyinstaller --clean WoosNwnParser-onefile.spec	# use WoosNwnParser-onedir.spec for one directory approach
 
 # Output: WoosNwnParser.exe
 ```
@@ -275,7 +266,6 @@ sv-ttk>=2.0.0        # Dark theme support
 ```
 pytest>=7.0.0
 pytest-cov>=4.0.0
-pyarmor>=9.2.3			# Obfuscate code for less AV false positives
 pyinstaller>=6.17.0		# For building executable
 ```
 

@@ -13,7 +13,7 @@
 
 ### Changed
 - Moved icon file to `assets/icons/` for better encapsulation
-- Rebuilt app using `pyarmor` for code obfsucation and `pyinstaller` with a self-built bootloader to reduce AVs false positives
+- Rebuilt app using `pyinstaller` with a self-built bootloader to reduce AVs false positives
 
 
 ## [1.0.0] - 2026-01-09
