@@ -2,11 +2,6 @@
 
 A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track your damage output, analyze attack statistics, monitor enemy immunities, and optimize your combat performance.
 
-![GitHub](https://img.shields.io/badge/python-3.12+-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Tests](https://img.shields.io/badge/tests-225%20passing-brightgreen.svg)
-![Coverage](https://img.shields.io/badge/coverage-54%25-yellow.svg)
-
 ## Screenshots
 
 <!-- TODO: Add screenshots -->
@@ -33,7 +28,7 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 - **Multi-Character Support** - Track all party members simultaneously
 - **Damage Type Breakdown** - Detailed analysis by damage type (Physical, Fire, Cold, etc.)
 - **Hit Rate Analysis** - Track attack success rates per character
-- **Time Tracking Modes** - Track globally from first character action or isolate by character
+- **First Timestamp Modes** - Track globally from first character action or isolate by character
 - **Target Filtering** - Focus analysis on specific enemies
 
 ### Technical Features
@@ -45,7 +40,7 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 
 ### Installation
 
-#### Option 1: Download Pre-built Executable (Recommended)
+#### Option 1: Download Pre-built Executable
 1. Download the latest `WoosNwnParser.exe` from [Releases](../../releases)
 2. Place in any folder
 3. Run `WoosNwnParser.exe`
@@ -76,21 +71,23 @@ The parser works out-of-the-box with default NWN installations. If needed:
 - **Log Directory**: Defaults to `%USERPROFILE%\Documents\Neverwinter Nights\logs`
 - **Target Filter**: Optional - filter to show damage dealt to a specific target only
 - **Immunity Parsing**: Toggle parsing of immunity events (disabled by default for leaner parsing)
-- **DPS Time Tracking Mode**: Choose between `By Character` (default) or `Global` time tracking
+- **DPS First Timestamp Mode**: Choose between `Per Character` (default) or `Global` first timestamp tracking
 
 ## User Guide
 
 ### Understanding DPS Tracking
 
-**By Character Mode** (Default)
-- Each character's DPS is calculated from their first damage event
-- Best for analyzing individual performance
+**Per Character Mode** (Default)
+- Each character's DPS is calculated from their first damage event to the last damage event by any character
+- Best for compensating for variance in start time across party members
 - Shows "character time" for each participant
 
 **Global Mode**
-- All DPS calculated from the earliest damage event
-- Best for comparing party member across same time period
-- Shows unified timeline
+- All characters' DPS is calculated from the earliest damage event (by any character) to the last damage event (by any character)
+- Best for comparing party members across the same time period
+- Shows unified timeline for all characters
+
+Both modes use the same last timestamp (the most recent damage dealt by any character). The only difference is the start time used for calculations.
 
 ### Reading Target Statistics
 
@@ -289,12 +286,8 @@ pyinstaller>=6.17.0		# For building executable
 **Solutions**:
 - Ensure you've dealt damage (attacks alone won't show DPS)
 - Check that the correct target is selected
-- Verify refresh mode matches your needs (`By Character` vs `Global`)
+- Verify first timestamp mode matches your needs (`Per Character` vs `Global`)
 - Clear data and restart if needed (`Reset Data` button)
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 

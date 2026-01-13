@@ -21,14 +21,14 @@ class TestDPSCalculationService(unittest.TestCase):
 
     def test_initialization(self) -> None:
         """Test service initializes with correct defaults."""
-        self.assertEqual(self.service.time_tracking_mode, 'by_character')
+        self.assertEqual(self.service.time_tracking_mode, 'per_character')
         self.assertIsNone(self.service.global_start_time)
         self.assertEqual(self.service.data_store, self.data_store)
 
-    def test_set_time_tracking_mode_by_character(self) -> None:
-        """Test setting time tracking mode to by_character."""
-        self.service.set_time_tracking_mode('by_character')
-        self.assertEqual(self.service.time_tracking_mode, 'by_character')
+    def test_set_time_tracking_mode_per_character(self) -> None:
+        """Test setting time tracking mode to per_character."""
+        self.service.set_time_tracking_mode('per_character')
+        self.assertEqual(self.service.time_tracking_mode, 'per_character')
 
     def test_set_time_tracking_mode_global(self) -> None:
         """Test setting time tracking mode to global."""
@@ -104,7 +104,7 @@ class TestDPSCalculationService(unittest.TestCase):
         # Verify get_dps_data_for_target was called with correct target
         self.data_store.get_dps_data_for_target.assert_called_with(
             target='Dragon',
-            time_tracking_mode='by_character',
+            time_tracking_mode='per_character',
             global_start_time=None
         )
 
@@ -136,19 +136,10 @@ class TestDPSCalculationService(unittest.TestCase):
         self.data_store.get_dps_breakdown_by_type_for_target.assert_called_with(
             'Mage1',
             target='Dragon',
-            time_tracking_mode='by_character',
+            time_tracking_mode='per_character',
             global_start_time=None
         )
 
-    def test_should_auto_refresh_in_global_mode_true(self) -> None:
-        """Test auto-refresh returns True in global mode."""
-        self.service.set_time_tracking_mode('global')
-        self.assertTrue(self.service.should_auto_refresh_in_global_mode())
-
-    def test_should_auto_refresh_in_global_mode_false(self) -> None:
-        """Test auto-refresh returns False in by_character mode."""
-        self.service.set_time_tracking_mode('by_character')
-        self.assertFalse(self.service.should_auto_refresh_in_global_mode())
 
     def test_global_mode_with_earliest_timestamp(self) -> None:
         """Test global mode initialization with earliest timestamp."""
@@ -168,7 +159,7 @@ class TestDPSCalculationService(unittest.TestCase):
         self.data_store.get_dps_data.return_value = mock_dps_data
         self.data_store.get_hit_rate_for_damage_dealers.return_value = {}
 
-        # Get data in by_character mode
+        # Get data in per_character mode
         result1 = self.service.get_dps_display_data(target_filter='All')
 
         # Switch to global mode
@@ -202,9 +193,9 @@ class TestDPSCalculationServiceIntegration(unittest.TestCase):
         self.data_store.update_dps_data('Rogue1', 100, now, {'Piercing': 100})
         self.data_store.update_dps_data('Mage1', 150, now + timedelta(seconds=10), {'Fire': 150})
 
-        # Test by_character mode
-        self.service.set_time_tracking_mode('by_character')
-        self.assertEqual(self.service.time_tracking_mode, 'by_character')
+        # Test per_character mode
+        self.service.set_time_tracking_mode('per_character')
+        self.assertEqual(self.service.time_tracking_mode, 'per_character')
 
         # Test global mode
         self.service.set_time_tracking_mode('global')

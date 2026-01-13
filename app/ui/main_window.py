@@ -5,7 +5,6 @@ application window, UI components, and event processing.
 """
 
 import queue
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -50,7 +49,6 @@ class WoosNwnParserApp:
         # Polling and refresh jobs
         self.polling_job = None
         self.dps_refresh_job = None
-        self.last_damage_event_time: Optional[float] = None
 
         # Debug mode
         self.debug_mode = False
@@ -295,9 +293,6 @@ class WoosNwnParserApp:
             self.root.after_cancel(self.dps_refresh_job)
             self.dps_refresh_job = None
 
-        # Reset last damage event timestamp
-        self.last_damage_event_time = None
-
         self.data_store.clear_all_data()
         self.parser.target_ac.clear()
         self.parser.target_saves.clear()
@@ -354,9 +349,9 @@ class WoosNwnParserApp:
             self.immunity_panel.refresh_target_details(target)
 
     def _on_time_tracking_mode_changed(self, event: tk.Event) -> None:
-        """Handle time tracking mode change from combobox.
+        """Handle first timestamp mode change from combobox.
 
-        Updates the time tracking mode and refreshes the DPS display.
+        Updates the first timestamp mode and refreshes the DPS display.
         All data is preserved; only the calculation method changes.
 
         Args:
@@ -370,21 +365,14 @@ class WoosNwnParserApp:
             # No actual change
             return
 
-        # Cancel any pending refresh from Global mode
-        if self.dps_refresh_job is not None:
-            self.root.after_cancel(self.dps_refresh_job)
-            self.dps_refresh_job = None
-
         # Update the service mode
         self.dps_service.set_time_tracking_mode(new_mode)
 
-        self.log_debug(f"Time tracking mode changed to: {new_mode_display}")
+        self.log_debug(f"First timestamp mode changed to: {new_mode_display}")
 
-        # Refresh DPS display if still monitoring
-        # Note: We use refresh_dps() instead of dps_panel.refresh() here because
-        # refresh_dps() also handles auto-refresh timer scheduling for Global mode
+        # Only refresh DPS display if still monitoring
         if self.is_monitoring:
-            self.refresh_dps()
+            self.dps_panel.refresh()
 
     def _on_target_filter_changed(self, event: tk.Event) -> None:
         """Handle target filter change from combobox.
@@ -402,35 +390,12 @@ class WoosNwnParserApp:
 
 
     def refresh_dps(self) -> None:
-        """Refresh the DPS tab with latest DPS calculations.
-
-        This is a thin wrapper that delegates to the DPS panel and handles
+        """This is a thin wrapper that delegates to the DPS panel and handles
         auto-refresh scheduling for Global mode.
         """
         # Delegate to the panel's refresh method
         self.dps_panel.refresh()
 
-        # Cancel any existing refresh job
-        if self.dps_refresh_job is not None:
-            self.root.after_cancel(self.dps_refresh_job)
-            self.dps_refresh_job = None
-
-        # Schedule auto-refresh for Global mode (every 1 second) only when monitoring
-        if self.dps_service.should_auto_refresh_in_global_mode() and self.is_monitoring:
-            # Optimization: only schedule if no damage events in the past second
-            # If events are arriving, the DPS panel refreshes anyway
-            current_time = time.time()
-            should_schedule = True
-
-            if self.last_damage_event_time is not None:
-                time_since_last_event = current_time - self.last_damage_event_time
-                # If a damage event arrived less than 1 second ago, don't schedule
-                # (the panel will refresh when the next event arrives)
-                if time_since_last_event < 1.0:
-                    should_schedule = False
-
-            if should_schedule:
-                self.dps_refresh_job = self.root.after(1000, self.refresh_dps)
 
 
     def process_queue(self) -> None:
@@ -475,9 +440,6 @@ class WoosNwnParserApp:
         Args:
             target: Name of target that received damage
         """
-        # Track timestamp of last damage event for auto-refresh optimization
-        self.last_damage_event_time = time.time()
-
         # Refresh immunity panel if this is the currently selected target
         # to ensure all damage types are displayed
         if self.target_combo.get() == target:

@@ -7,6 +7,7 @@ immunity tracking, and time tracking modes.
 import pytest
 from datetime import datetime, timedelta
 from threading import Thread
+import time
 
 from app.storage import DataStore
 from app.parser import LogParser
@@ -157,11 +158,10 @@ class TestDPSCalculations:
         ts1 = datetime.now()
         ts2 = ts1 + timedelta(seconds=10)
 
-        # Record damage at two different times for the same character
         data_store.update_dps_data("Woo", 100, ts1)
-        data_store.update_dps_data("Woo", 0, ts2)  # Update timestamp without adding damage
+        data_store.last_damage_timestamp = ts2
 
-        dps_list = data_store.get_dps_data(time_tracking_mode="by_character")
+        dps_list = data_store.get_dps_data(time_tracking_mode="per_character")
 
         assert len(dps_list) == 1
         assert dps_list[0]["character"] == "Woo"
@@ -194,7 +194,7 @@ class TestDPSCalculations:
         data_store.update_dps_data("Mage", 150, ts)
         data_store.last_damage_timestamp = ts + timedelta(seconds=10)
 
-        dps_list = data_store.get_dps_data(time_tracking_mode="by_character")
+        dps_list = data_store.get_dps_data(time_tracking_mode="per_character")
 
         assert dps_list[0]["character"] == "Rogue"  # Highest DPS
         assert dps_list[1]["character"] == "Mage"
@@ -209,7 +209,7 @@ class TestDPSCalculations:
         data_store.last_damage_timestamp = ts + timedelta(seconds=10)
 
         breakdown = data_store.get_dps_breakdown_by_type(
-            "Woo", time_tracking_mode="by_character"
+            "Woo", time_tracking_mode="per_character"
         )
 
         assert len(breakdown) == 2
@@ -259,7 +259,7 @@ class TestTargetFiltering:
         data_store.insert_damage_event("Goblin", "Physical", 0, 30, "Rogue", ts)
 
         dps_list = data_store.get_dps_data_for_target(
-            "Goblin", time_tracking_mode="by_character"
+            "Goblin", time_tracking_mode="per_character"
         )
 
         # Should only include damage to Goblin

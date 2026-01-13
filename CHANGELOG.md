@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.3] - 2026-01-13
+
+### Changed
+- **Global mode** now uses the last damage timestamp instead of continuously ticking with current time
+  - Both "Global" and "Per Character" modes now use the same last timestamp (most recent damage by any character)
+  - The only difference between modes is the start time: Global uses the earliest damage event, Per Character uses each character's first damage event
+- Renamed "Time Tracking" label to "First Timestamp" for better clarity
+- Renamed "By Character" option to "Per Character" for more accurate grammar
+
+### Fixed
+- Reverted DPS panel refreshing every 1 second when in "Global" mode (no longer needed)
+- Reverted DPS tracking "Per Character" taking `last timestamp` per character (optimal behavior is to track only first timestamp)
+
+
 ## [1.0.2] - 2026-01-12
 
 ### Fixed
