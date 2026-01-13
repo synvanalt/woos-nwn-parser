@@ -7,6 +7,7 @@ immunity tracking, and time tracking modes.
 import pytest
 from datetime import datetime, timedelta
 from threading import Thread
+import time
 
 from app.storage import DataStore
 from app.parser import LogParser
@@ -157,9 +158,8 @@ class TestDPSCalculations:
         ts1 = datetime.now()
         ts2 = ts1 + timedelta(seconds=10)
 
-        # Record damage at two different times for the same character
         data_store.update_dps_data("Woo", 100, ts1)
-        data_store.update_dps_data("Woo", 0, ts2)  # Update timestamp without adding damage
+        data_store.last_damage_timestamp = ts2
 
         dps_list = data_store.get_dps_data(time_tracking_mode="by_character")
 
