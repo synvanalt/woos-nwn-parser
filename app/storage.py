@@ -155,19 +155,20 @@ class DataStore:
                 return dps_list
 
             if time_tracking_mode == "global":
-                # Global mode: use global start time and current time
+                # Global mode: use global start time and global last damage timestamp
                 if global_start_time is None:
                     # If global_start_time not set, fall back to first character's first timestamp
                     if not self.dps_data:
                         return dps_list
                     global_start_time = min(data['first_timestamp'] for data in self.dps_data.values())
 
-                # Use current time as the end time (continuously ticking)
-                now = datetime.now()
+                # Use the global last damage timestamp (same as per_character mode)
+                if self.last_damage_timestamp is None:
+                    return dps_list
 
                 for character, data in self.dps_data.items():
                     total_damage = data['total_damage']
-                    time_delta = now - global_start_time
+                    time_delta = self.last_damage_timestamp - global_start_time
                     time_seconds = max(time_delta.total_seconds(), 1)  # Avoid division by zero
 
                     # Calculate DPS
@@ -226,16 +227,18 @@ class DataStore:
             character_data = self.dps_data[character]
 
             if time_tracking_mode == "global":
-                # Global mode: use global start time and global last timestamp
+                # Global mode: use global start time and global last damage timestamp
                 if global_start_time is None:
                     # If global_start_time not set, use first character's first timestamp
                     if not self.dps_data:
                         return []
                     global_start_time = min(data['first_timestamp'] for data in self.dps_data.values())
 
-                # Use current time as the end time
-                now = datetime.now()
-                time_delta = now - global_start_time
+                # Use the global last damage timestamp (same as per_character mode)
+                if self.last_damage_timestamp is None:
+                    return []
+
+                time_delta = self.last_damage_timestamp - global_start_time
                 time_seconds = max(time_delta.total_seconds(), 1)
             else:
                 # Per-character mode: use character's first timestamp and global last timestamp
@@ -288,11 +291,15 @@ class DataStore:
             if time_tracking_mode == "global":
                 if global_start_time is None:
                     global_start_time = min(data['first_timestamp'] for data in self.dps_data.values()) if self.dps_data else datetime.now()
-                now = datetime.now()
-                time_delta = now - global_start_time
+
+                # Use the global last damage timestamp (same as per_character mode)
+                if self.last_damage_timestamp is None:
+                    return []
+
+                time_delta = self.last_damage_timestamp - global_start_time
                 time_seconds = max(time_delta.total_seconds(), 1)
             else:
-                # By-character mode: use character's first and last attack on this target
+                # Per-character mode: use character's first and last attack on this target
                 first_ts = min(e.timestamp for e in target_events)
                 last_ts = max(e.timestamp for e in target_events)
                 time_delta = last_ts - first_ts
@@ -562,12 +569,14 @@ class DataStore:
             attackers = set(e.attacker for e in damage_on_target)
 
             if time_tracking_mode == "global":
-                # Global mode: use global start time and current time
+                # Global mode: use global start time and global last damage timestamp
                 if global_start_time is None:
                     # Use the earliest damage timestamp on this target
                     global_start_time = min(e.timestamp for e in damage_on_target)
 
-                now = datetime.now()
+                # Use the global last damage timestamp (same as per_character mode)
+                if self.last_damage_timestamp is None:
+                    return dps_list
 
                 for character in attackers:
                     # Get total damage dealt by this character to this target only
@@ -579,7 +588,7 @@ class DataStore:
                     if char_damage_on_target == 0:
                         continue
 
-                    time_delta = now - global_start_time
+                    time_delta = self.last_damage_timestamp - global_start_time
                     time_seconds = max(time_delta.total_seconds(), 1)
                     dps = char_damage_on_target / time_seconds
 

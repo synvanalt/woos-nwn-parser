@@ -140,15 +140,6 @@ class TestDPSCalculationService(unittest.TestCase):
             global_start_time=None
         )
 
-    def test_should_auto_refresh_in_global_mode_true(self) -> None:
-        """Test auto-refresh returns True in global mode."""
-        self.service.set_time_tracking_mode('global')
-        self.assertTrue(self.service.should_auto_refresh_in_global_mode())
-
-    def test_should_auto_refresh_in_global_mode_false(self) -> None:
-        """Test auto-refresh returns False in per_character mode."""
-        self.service.set_time_tracking_mode('per_character')
-        self.assertFalse(self.service.should_auto_refresh_in_global_mode())
 
     def test_global_mode_with_earliest_timestamp(self) -> None:
         """Test global mode initialization with earliest timestamp."""

@@ -14,8 +14,11 @@ class DPSCalculationService:
     """Calculate DPS with support for different first timestamp modes.
 
     First Timestamp Modes:
-    - 'per_character': DPS calculated per-character from their first attack
-    - 'global': DPS for all characters calculated from a single start time
+    - 'per_character': DPS calculated per-character from their first attack to the last damage by any character
+    - 'global': DPS for all characters calculated from the earliest damage event to the last damage by any character
+
+    Both modes use the same last timestamp (most recent damage by any character).
+    The only difference is the start time used for calculations.
 
     This service is pure Python with no UI dependencies and is fully testable.
     """
@@ -131,11 +134,4 @@ class DPSCalculationService:
                 global_start_time=self.global_start_time,
             )
 
-    def should_auto_refresh_in_global_mode(self) -> bool:
-        """Check if auto-refresh should be active in global mode.
-
-        Returns:
-            True if in global mode and auto-refresh should be scheduled
-        """
-        return self.time_tracking_mode == "global"
 

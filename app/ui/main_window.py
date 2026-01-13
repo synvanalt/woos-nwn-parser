@@ -365,11 +365,6 @@ class WoosNwnParserApp:
             # No actual change
             return
 
-        # Cancel any pending refresh from Global mode
-        if self.dps_refresh_job is not None:
-            self.root.after_cancel(self.dps_refresh_job)
-            self.dps_refresh_job = None
-
         # Update the service mode
         self.dps_service.set_time_tracking_mode(new_mode)
 
@@ -395,21 +390,12 @@ class WoosNwnParserApp:
 
 
     def refresh_dps(self) -> None:
-        """Refresh the DPS tab with latest DPS calculations.
-
-        This is a thin wrapper that delegates to the DPS panel and handles
+        """This is a thin wrapper that delegates to the DPS panel and handles
         auto-refresh scheduling for Global mode.
         """
         # Delegate to the panel's refresh method
         self.dps_panel.refresh()
 
-        # Schedule auto-refresh for Global mode (every 1 second) only when monitoring
-        if self.dps_refresh_job is not None:
-            self.root.after_cancel(self.dps_refresh_job)
-            self.dps_refresh_job = None
-
-        if self.dps_service.should_auto_refresh_in_global_mode() and self.is_monitoring:
-            self.dps_refresh_job = self.root.after(1000, self.refresh_dps)
 
 
     def process_queue(self) -> None:

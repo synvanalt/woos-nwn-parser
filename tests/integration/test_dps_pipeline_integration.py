@@ -210,13 +210,12 @@ class TestDPSPipelineIntegration:
 
         dps_service = DPSCalculationService(database)
 
-        # Per character mode: no auto-refresh
+        # Test mode switching
         dps_service.set_time_tracking_mode("per_character")
-        assert not dps_service.should_auto_refresh_in_global_mode()
+        assert dps_service.time_tracking_mode == "per_character"
 
-        # Global mode: should auto-refresh
         dps_service.set_time_tracking_mode("global")
-        assert dps_service.should_auto_refresh_in_global_mode()
+        assert dps_service.time_tracking_mode == "global"
 
 
 class TestComplexScenarios:
