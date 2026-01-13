@@ -75,8 +75,8 @@ class TestDPSPipelineIntegration:
         total_damage = sum(d['total_damage'] for d in dps_list)
         assert total_damage == 180  # 100 + 80
 
-    def test_dps_by_character_mode(self, temp_log_dir: Path) -> None:
-        """Test DPS calculation in by_character mode."""
+    def test_dps_per_character_mode(self, temp_log_dir: Path) -> None:
+        """Test DPS calculation in per_character mode."""
         log_file = temp_log_dir / "test.txt"
         content = """[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 100 (100 Physical)
 [CHAT WINDOW TEXT] [Thu Jan 09 14:30:10] Woo damages Goblin: 50 (50 Physical)
@@ -88,7 +88,7 @@ class TestDPSPipelineIntegration:
         parse_and_import_file(str(log_file), parser, database)
 
         dps_service = DPSCalculationService(database)
-        dps_service.set_time_tracking_mode("by_character")
+        dps_service.set_time_tracking_mode("per_character")
 
         dps_list = dps_service.get_dps_display_data()
 
@@ -210,8 +210,8 @@ class TestDPSPipelineIntegration:
 
         dps_service = DPSCalculationService(database)
 
-        # By character mode: no auto-refresh
-        dps_service.set_time_tracking_mode("by_character")
+        # Per character mode: no auto-refresh
+        dps_service.set_time_tracking_mode("per_character")
         assert not dps_service.should_auto_refresh_in_global_mode()
 
         # Global mode: should auto-refresh

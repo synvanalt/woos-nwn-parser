@@ -349,9 +349,9 @@ class WoosNwnParserApp:
             self.immunity_panel.refresh_target_details(target)
 
     def _on_time_tracking_mode_changed(self, event: tk.Event) -> None:
-        """Handle time tracking mode change from combobox.
+        """Handle first timestamp mode change from combobox.
 
-        Updates the time tracking mode and refreshes the DPS display.
+        Updates the first timestamp mode and refreshes the DPS display.
         All data is preserved; only the calculation method changes.
 
         Args:
@@ -373,7 +373,7 @@ class WoosNwnParserApp:
         # Update the service mode
         self.dps_service.set_time_tracking_mode(new_mode)
 
-        self.log_debug(f"Time tracking mode changed to: {new_mode_display}")
+        self.log_debug(f"First timestamp mode changed to: {new_mode_display}")
 
         # Only refresh DPS display if still monitoring
         if self.is_monitoring:

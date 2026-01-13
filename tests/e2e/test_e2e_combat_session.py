@@ -254,7 +254,7 @@ class TestCompleteCombatSession:
         dps_service = DPSCalculationService(database)
 
         # By character mode
-        dps_service.set_time_tracking_mode("by_character")
+        dps_service.set_time_tracking_mode("per_character")
         dps_by_char = dps_service.get_dps_display_data()
 
         assert len(dps_by_char) == 1

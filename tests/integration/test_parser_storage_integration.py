@@ -114,7 +114,7 @@ class TestParserStorageIntegration:
         assert "Orc" in targets
 
         # Verify DPS calculations work
-        dps_list = database.get_dps_data(time_tracking_mode="by_character")
+        dps_list = database.get_dps_data(time_tracking_mode="per_character")
         assert len(dps_list) > 0
 
     def test_parse_with_player_filter(self, temp_log_dir: Path) -> None:
@@ -171,7 +171,7 @@ class TestParserStorageIntegration:
         assert result['success'] is True
 
         # Get damage breakdown
-        breakdown = database.get_dps_breakdown_by_type("Woo", time_tracking_mode="by_character")
+        breakdown = database.get_dps_breakdown_by_type("Woo", time_tracking_mode="per_character")
 
         assert len(breakdown) == 2
 

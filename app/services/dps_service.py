@@ -1,7 +1,7 @@
-"""DPS calculation service with time tracking support.
+"""DPS calculation service with first timestamp support.
 
-This module handles all DPS calculations and time tracking mode management.
-Supports both 'by_character' and 'global' time tracking modes.
+This module handles all DPS calculations and first timestamp mode management.
+Supports both 'per_character' and 'global' first timestamp modes.
 """
 
 from datetime import datetime
@@ -11,10 +11,10 @@ from ..storage import DataStore
 
 
 class DPSCalculationService:
-    """Calculate DPS with support for different time tracking modes.
+    """Calculate DPS with support for different first timestamp modes.
 
-    Time Tracking Modes:
-    - 'by_character': DPS calculated per-character from their first attack
+    First Timestamp Modes:
+    - 'per_character': DPS calculated per-character from their first attack
     - 'global': DPS for all characters calculated from a single start time
 
     This service is pure Python with no UI dependencies and is fully testable.
@@ -27,7 +27,7 @@ class DPSCalculationService:
             data_store: Reference to the data store
         """
         self.data_store = data_store
-        self.time_tracking_mode = "by_character"
+        self.time_tracking_mode = "per_character"
         self.global_start_time: Optional[datetime] = None
 
     def set_time_tracking_mode(self, mode: str) -> None:
@@ -37,12 +37,12 @@ class DPSCalculationService:
         if not already set.
 
         Args:
-            mode: 'by_character' or 'global'
+            mode: 'per_character' or 'global'
 
         Raises:
             ValueError: If mode is not valid
         """
-        if mode not in ('by_character', 'global'):
+        if mode not in ('per_character', 'global'):
             raise ValueError(f"Invalid mode: {mode}")
 
         self.time_tracking_mode = mode

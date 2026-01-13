@@ -17,7 +17,7 @@ class DPSPanel(ttk.Frame):
 
     Manages:
     - DPS treeview with parent/child structure for characters and damage types
-    - Time tracking mode selector (By Character / Global)
+    - First timestamp mode selector (Per Character / Global)
     - Target filter selector (All / specific target)
 
     This is a reusable widget that can be placed in any notebook or frame.
@@ -88,15 +88,15 @@ class DPSPanel(ttk.Frame):
         dps_controls_frame = ttk.Frame(self)
         dps_controls_frame.pack(fill="x", expand=False, padx=0, pady=(10, 0))
 
-        # Time tracking mode selector
-        ttk.Label(dps_controls_frame, text="Time Tracking:").pack(
+        # First timestamp mode selector
+        ttk.Label(dps_controls_frame, text="First Timestamp:").pack(
             side="left", padx=(5, 5)
         )
-        self.time_tracking_var = tk.StringVar(value="By Character")
+        self.time_tracking_var = tk.StringVar(value="Per Character")
         self.time_tracking_combo = ttk.Combobox(
             dps_controls_frame,
             textvariable=self.time_tracking_var,
-            values=["By Character", "Global"],
+            values=["Per Character", "Global"],
             state="readonly",
             width=12,
         )
@@ -213,10 +213,10 @@ class DPSPanel(ttk.Frame):
             self.tree._update_indicators()
 
     def get_time_tracking_mode(self) -> str:
-        """Get selected time tracking mode.
+        """Get selected first timestamp mode.
 
         Returns:
-            'by_character' or 'global'
+            'per_character' or 'global'
         """
         return self.time_tracking_var.get().lower().replace(" ", "_")
 

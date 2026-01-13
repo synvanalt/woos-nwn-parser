@@ -99,7 +99,7 @@ tests/
 **test_storage.py** - Tests for data storage (44 tests)
 - Initialization and data insertion
 - DPS tracking and calculations
-- Time tracking modes (by_character, global)
+- Time tracking modes (per_character, global)
 - Target filtering and queries
 - Attack statistics and hit rates
 - Immunity tracking

@@ -76,13 +76,13 @@ The parser works out-of-the-box with default NWN installations. If needed:
 - **Log Directory**: Defaults to `%USERPROFILE%\Documents\Neverwinter Nights\logs`
 - **Target Filter**: Optional - filter to show damage dealt to a specific target only
 - **Immunity Parsing**: Toggle parsing of immunity events (disabled by default for leaner parsing)
-- **DPS Time Tracking Mode**: Choose between `By Character` (default) or `Global` time tracking
+- **DPS First Timestamp Mode**: Choose between `Per Character` (default) or `Global` first timestamp tracking
 
 ## User Guide
 
 ### Understanding DPS Tracking
 
-**By Character Mode** (Default)
+**Per Character Mode** (Default)
 - Each character's DPS is calculated from their first damage event
 - Best for analyzing individual performance
 - Shows "character time" for each participant
@@ -289,7 +289,7 @@ pyinstaller>=6.17.0		# For building executable
 **Solutions**:
 - Ensure you've dealt damage (attacks alone won't show DPS)
 - Check that the correct target is selected
-- Verify refresh mode matches your needs (`By Character` vs `Global`)
+- Verify first timestamp mode matches your needs (`Per Character` vs `Global`)
 - Clear data and restart if needed (`Reset Data` button)
 
 ## License
