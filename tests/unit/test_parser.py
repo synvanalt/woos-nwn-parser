@@ -237,6 +237,17 @@ class TestAttackParsing:
         assert result['type'] == 'attack_miss'
         assert result['was_nat1'] is True
 
+    def test_parse_attack_natural_20(self, parser: LogParser) -> None:
+        """Test parsing natural 20 hit."""
+        line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo attacks Goblin: *hit*: (20 + 5 = 25)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result['type'] == 'attack_hit'
+        # Natural 20 should not be recorded in AC estimation
+        assert 'Goblin' in parser.target_ac
+        assert parser.target_ac['Goblin'].min_hit is None  # Should be excluded
+
     def test_parse_attack_tracks_ac(self, parser: LogParser) -> None:
         """Test that parsing attacks updates AC tracking."""
         hit_line = "Woo attacks Goblin: *hit*: (16 + 5 = 21)"

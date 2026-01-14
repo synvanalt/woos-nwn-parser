@@ -121,6 +121,18 @@ class TestEnemyAC:
         ac.record_miss(3, was_nat1=True)
         assert ac.max_miss == 15  # Should not change
 
+    def test_record_hit_ignores_natural_20(self) -> None:
+        """Test that natural 20 hits are ignored."""
+        ac = EnemyAC(name="TestEnemy")
+        ac.record_hit(25, was_nat20=True)
+        assert ac.min_hit is None  # Should not record natural 20
+
+        ac.record_hit(30, was_nat20=False)
+        assert ac.min_hit == 30
+
+        ac.record_hit(22, was_nat20=True)
+        assert ac.min_hit == 30  # Should not change
+
     def test_get_ac_estimate_exact(self) -> None:
         """Test AC estimation when max_miss + 1 == min_hit."""
         ac = EnemyAC(name="TestEnemy")
