@@ -127,10 +127,10 @@ class TargetAttackBonus:
         """Return the most common attack bonus found for this target.
 
         Returns:
-            String representation of attack bonus, e.g. "+15" or "?"
+            String representation of attack bonus, e.g. "15" or "?"
         """
         if self.max_bonus is not None:
-            return f"{self.max_bonus}" if self.max_bonus >= 0 else str(self.max_bonus)
+            return str(self.max_bonus)
         return "?"
 
 
