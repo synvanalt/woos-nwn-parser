@@ -257,6 +257,7 @@ class LogParser:
                 roll = int(roll_str)
                 total = int(total_str)
                 was_nat1 = roll == 1
+                was_nat20 = roll == 20
                 bonus_str = attack_match.group('bonus')
                 bonus = int(bonus_str) if bonus_str else None
 
@@ -266,7 +267,7 @@ class LogParser:
                     self.target_ac[target] = EnemyAC(name=target)
 
                 if is_hit:
-                    self.target_ac[target].record_hit(total)
+                    self.target_ac[target].record_hit(total, was_nat20)
                 elif is_miss:
                     self.target_ac[target].record_miss(total, was_nat1)
 

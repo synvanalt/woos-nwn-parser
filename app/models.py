@@ -58,14 +58,16 @@ class EnemyAC:
     min_hit: Optional[int] = None
     max_miss: Optional[int] = None
 
-    def record_hit(self, total: int) -> None:
-        """Record a successful attack roll total.
+    def record_hit(self, total: int, was_nat20: bool = False) -> None:
+        """Record a successful attack roll total, excluding natural 20s.
 
         Args:
             total: The attack roll total (d20 + bonuses)
+            was_nat20: Whether this was a natural 20 (excluded from AC estimation)
         """
-        if self.min_hit is None or total < self.min_hit:
-            self.min_hit = total
+        if not was_nat20:
+            if self.min_hit is None or total < self.min_hit:
+                self.min_hit = total
 
     def record_miss(self, total: int, was_nat1: bool = False) -> None:
         """Record a failed attack roll total, excluding natural 1s.
