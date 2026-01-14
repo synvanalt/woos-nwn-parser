@@ -211,7 +211,7 @@ class TestTargetAttackBonus:
         tab = TargetAttackBonus(name="TestEnemy")
         tab.record_bonus(10)
         display = tab.get_bonus_display()
-        assert display == "+10"
+        assert display == "10"
 
     def test_get_bonus_display_negative(self) -> None:
         """Test display with negative bonus."""
@@ -225,7 +225,7 @@ class TestTargetAttackBonus:
         tab = TargetAttackBonus(name="TestEnemy")
         tab.record_bonus(0)
         display = tab.get_bonus_display()
-        assert display == "+0"
+        assert display == "0"
 
     def test_most_frequent_with_temporary_buffs(self) -> None:
         """Test that temporary high AB buffs don't override most common value."""
@@ -241,9 +241,9 @@ class TestTargetAttackBonus:
         tab.record_bonus(97)
         tab.record_bonus(96)
 
-        # Should show +91 as it's the most frequent
+        # Should show 91 as it's the most frequent
         assert tab.max_bonus == 91
-        assert tab.get_bonus_display() == "+91"
+        assert tab.get_bonus_display() == "91"
 
     def test_most_frequent_with_tie_prefers_higher(self) -> None:
         """Test that ties in frequency prefer the higher bonus value."""
