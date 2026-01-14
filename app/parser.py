@@ -248,7 +248,8 @@ class LogParser:
             total_str = attack_match.group('total')
 
             # Handle outcomes including special miss chance
-            is_hit = 'hit' in outcome and 'miss' not in outcome and 'attacker miss chance' not in outcome
+            # outcome can only be: hit, critical hit, miss, parried, resisted, or attacker miss chance
+            is_hit = 'hit' in outcome
             is_crit = 'critical' in outcome
             is_miss = 'miss' in outcome or 'parried' in outcome or 'resisted' in outcome or 'attacker miss chance' in outcome
 
