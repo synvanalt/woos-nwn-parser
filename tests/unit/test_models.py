@@ -181,15 +181,18 @@ class TestTargetAttackBonus:
         tab.record_bonus(10)
         assert tab.max_bonus == 10
 
-    def test_record_bonus_keeps_maximum(self) -> None:
-        """Test record_bonus keeps the maximum value."""
+    def test_record_bonus_tracks_most_frequent(self) -> None:
+        """Test record_bonus tracks the most frequent value."""
         tab = TargetAttackBonus(name="TestEnemy")
         tab.record_bonus(10)
-        tab.record_bonus(15)  # Higher
+        assert tab.max_bonus == 10
+
+        tab.record_bonus(15)  # Different value, each has count of 1
+        # With tie, prefer higher value
         assert tab.max_bonus == 15
 
-        tab.record_bonus(8)  # Lower
-        assert tab.max_bonus == 15  # Should not change
+        tab.record_bonus(10)  # Now 10 appears twice, 15 appears once
+        assert tab.max_bonus == 10  # Should switch to most frequent
 
     def test_record_negative_bonus(self) -> None:
         """Test recording negative attack bonus."""
@@ -223,6 +226,95 @@ class TestTargetAttackBonus:
         tab.record_bonus(0)
         display = tab.get_bonus_display()
         assert display == "+0"
+
+    def test_most_frequent_with_temporary_buffs(self) -> None:
+        """Test that temporary high AB buffs don't override most common value."""
+        tab = TargetAttackBonus(name="HYDROXYS")
+
+        # Simulate HYDROXYS scenario: mostly +91, with occasional +96/+97 buffs
+        # Add many attacks at +91 (normal state)
+        for _ in range(20):
+            tab.record_bonus(91)
+
+        # Add a few attacks with temporary buffs
+        tab.record_bonus(96)
+        tab.record_bonus(97)
+        tab.record_bonus(96)
+
+        # Should show +91 as it's the most frequent
+        assert tab.max_bonus == 91
+        assert tab.get_bonus_display() == "+91"
+
+    def test_most_frequent_with_tie_prefers_higher(self) -> None:
+        """Test that ties in frequency prefer the higher bonus value."""
+        tab = TargetAttackBonus(name="TestEnemy")
+
+        # Two values with equal frequency
+        tab.record_bonus(10)
+        tab.record_bonus(15)
+
+        # Should prefer higher value (15) in tie
+        assert tab.max_bonus == 15
+
+    def test_most_frequent_updates_dynamically(self) -> None:
+        """Test that most frequent value updates as more data comes in."""
+        tab = TargetAttackBonus(name="TestEnemy")
+
+        # Start with +20 being most common
+        tab.record_bonus(20)
+        tab.record_bonus(20)
+        tab.record_bonus(25)
+        assert tab.max_bonus == 20
+
+        # Now +25 becomes more common
+        tab.record_bonus(25)
+        tab.record_bonus(25)
+        assert tab.max_bonus == 25
+
+        # Back to +20 being most common
+        tab.record_bonus(20)
+        tab.record_bonus(20)
+        assert tab.max_bonus == 20
+
+    def test_most_frequent_with_debuffs(self) -> None:
+        """Test handling of temporary debuffs (lower AB values)."""
+        tab = TargetAttackBonus(name="DebuffedEnemy")
+
+        # Normal AB is +15
+        for _ in range(10):
+            tab.record_bonus(15)
+
+        # Temporarily debuffed to +10
+        tab.record_bonus(10)
+        tab.record_bonus(10)
+
+        # Should still show +15 as most common
+        assert tab.max_bonus == 15
+
+    def test_most_frequent_single_value(self) -> None:
+        """Test with only one unique value recorded."""
+        tab = TargetAttackBonus(name="ConsistentEnemy")
+
+        # All attacks at same bonus
+        for _ in range(5):
+            tab.record_bonus(12)
+
+        assert tab.max_bonus == 12
+
+    def test_most_frequent_with_multiple_ties(self) -> None:
+        """Test with multiple values having same frequency."""
+        tab = TargetAttackBonus(name="TestEnemy")
+
+        # Three values, each appearing twice
+        tab.record_bonus(10)
+        tab.record_bonus(10)
+        tab.record_bonus(15)
+        tab.record_bonus(15)
+        tab.record_bonus(20)
+        tab.record_bonus(20)
+
+        # Should prefer highest (20) when all tied
+        assert tab.max_bonus == 20
 
 
 class TestDamageEvent:

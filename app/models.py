@@ -100,27 +100,37 @@ class EnemyAC:
 
 @dataclass
 class TargetAttackBonus:
-    """Tracks maximum attack bonus for an enemy."""
+    """Tracks most common attack bonus for an enemy.
+
+    Uses the mode (most frequent value) to determine the typical attack bonus,
+    filtering out temporary buffs or debuffs that may skew the maximum value.
+    """
     name: str
     max_bonus: Optional[int] = None
+    _bonus_counts: dict[int, int] = field(default_factory=dict, repr=False)
 
     def record_bonus(self, bonus: int) -> None:
-        """Record an attack bonus, keeping the maximum.
+        """Record an attack bonus and update to the most frequent value.
 
         Args:
             bonus: The attack bonus value
         """
-        if self.max_bonus is None or bonus > self.max_bonus:
-            self.max_bonus = bonus
+        # Increment count for this bonus value
+        self._bonus_counts[bonus] = self._bonus_counts.get(bonus, 0) + 1
+
+        # Update max_bonus to the most frequent value
+        # In case of tie, prefer the higher bonus
+        most_common_bonus = max(self._bonus_counts.items(), key=lambda x: (x[1], x[0]))[0]
+        self.max_bonus = most_common_bonus
 
     def get_bonus_display(self) -> str:
-        """Return the maximum attack bonus found for this target.
+        """Return the most common attack bonus found for this target.
 
         Returns:
             String representation of attack bonus, e.g. "+15" or "?"
         """
         if self.max_bonus is not None:
-            return f"+{self.max_bonus}" if self.max_bonus >= 0 else str(self.max_bonus)
+            return f"{self.max_bonus}" if self.max_bonus >= 0 else str(self.max_bonus)
         return "?"
 
 
