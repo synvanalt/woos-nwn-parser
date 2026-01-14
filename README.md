@@ -97,9 +97,9 @@ Both modes use the same last timestamp (the most recent damage dealt by any char
 - Natural 1 misses are excluded from calculations
 
 **AB (Attack Bonus)**
-- Shows highest detected attack bonus
-- Format: `AB: +25` or `AB: Unknown`
-- Updated as higher bonuses are observed
+- Shows most common attack bonus (filters out temporary buffs)
+- Format: `AB: 25` or `AB: Unknown`
+- Uses mode (most frequent value) to represent typical AB
 
 **Saves**
 - Tracks Fortitude, Reflex, and Will saves

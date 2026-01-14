@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.X] - 2026-01-XX
+
+### Added
+- ...
+
+### Changed
+- **Attack Bonus Tracking** - Now tracks the most common (mode) AB value instead of maximum to better represent typical attack bonus
+  - Filters out temporary buffs/debuffs that previously skewed the max AB value
+  - Example: Enemy with mostly +91 AB and occasional +97 buff now correctly shows +91
+  - In case of tie frequency, prefers the higher bonus value
+
+### Fixed
+- **AC Estimation** - Natural 20 hits are now properly excluded from AC estimation (like natural 1 misses)
+  - Previously, a natural 20 hit could incorrectly lower the estimated minimum AC
+  - This reduces the occurrence of "~" (approximation) symbol in AC estimates
+
+
 ## [1.0.3] - 2026-01-13
 
 ### Changed
