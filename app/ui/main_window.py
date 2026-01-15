@@ -97,8 +97,7 @@ class WoosNwnParserApp:
         self.pause_btn.pack(side="left", padx=5)
 
         ttk.Button(buttons_frame, text="Reset Data", command=self.reset_data).pack(side="left", padx=5)
-        # Commenting out Load & Parse Logs as its purpose is testing
-        # ttk.Button(buttons_frame, text="Load & Parse Logs", command=self.load_and_parse_directory).pack(side="left", padx=5)
+        ttk.Button(buttons_frame, text="Load & Parse Logs", command=self.load_and_parse_directory).pack(side="left", padx=5)
 
         # Status indicator
         self.status_label = ttk.Label(buttons_frame, text="● Paused", foreground="red")
@@ -188,6 +187,11 @@ class WoosNwnParserApp:
         self.pause_btn.config(state=tk.DISABLED)
 
         try:
+            # Clear all existing data once before processing files
+            self.data_store.clear_all_data()
+            self.parser.target_ac.clear()
+            self.parser.target_saves.clear()
+            self.parser.target_attack_bonus.clear()
 
             # Parse all log files in the directory (in order: log1, log2, log3, log4)
             log_dir = Path(self.log_directory)

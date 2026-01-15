@@ -164,12 +164,15 @@ class TestParseAndImportFile:
         assert len(database.events) > 0
 
     def test_parse_clears_existing_data(self, sample_combat_session: Path) -> None:
-        """Test that parsing clears existing data first."""
+        """Test that parsing with explicit clear removes existing data."""
         parser = LogParser()
         database = DataStore()
 
         # Add some data
         database.insert_damage_event("OldTarget", "Fire", 0, 50, "OldAttacker")
+
+        # Clear data before parsing (caller's responsibility)
+        database.clear_all_data()
 
         # Parse file
         parse_and_import_file(str(sample_combat_session), parser, database)

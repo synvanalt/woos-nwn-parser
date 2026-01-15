@@ -137,6 +137,10 @@ def parse_and_import_file(file_path: str, parser, database) -> Dict:
 
     Does not depend on GUI components, making it testable without Tkinter.
 
+    Note: This function does NOT clear existing data. The caller should clear
+    data before calling this function if needed (e.g., when processing multiple
+    files, clear once before the first file, not before each file).
+
     Args:
         file_path: Path to the log file
         parser: LogParser instance
@@ -146,8 +150,6 @@ def parse_and_import_file(file_path: str, parser, database) -> Dict:
         dict with keys: 'success' (bool), 'lines_processed' (int), 'error' (str or None)
     """
     try:
-        # Clear existing data
-        database.clear_all_data()
 
         lines_processed = 0
         # Track the last damage_dealt for each target to match immunities
