@@ -169,13 +169,108 @@ class TestEnemyAC:
         estimate = ac.get_ac_estimate()
         assert estimate == "?"
 
-    def test_get_ac_estimate_conflicting_data(self) -> None:
-        """Test AC estimation when max_miss > min_hit (shouldn't happen but handle it)."""
+    def test_get_ac_estimate_conflicting_data_auto_cleanup(self) -> None:
+        """Test that hits are auto-discarded when a higher miss is recorded.
+
+        This simulates the flat-footed scenario: target was debuffed when hit
+        occurred, so the hit should be discarded when we see a higher miss.
+        """
         ac = EnemyAC(name="TestEnemy")
-        ac.record_hit(15)
-        ac.record_miss(20)
+        ac.record_hit(15)  # Hit when target was flat-footed
+        ac.record_miss(20)  # Miss at target's true AC
+        # The hit at 15 should have been auto-discarded
+        assert ac.min_hit is None
+        assert ac.max_miss == 20
         estimate = ac.get_ac_estimate()
-        assert estimate == "~15"  # Shows approximation
+        assert estimate == ">20"  # Only miss data remains
+
+    def test_flatfooted_scenario_full(self) -> None:
+        """Test complete flat-footed scenario: low hits discarded, true AC found."""
+        ac = EnemyAC(name="Boss")
+
+        # Target is flat-footed initially, player gets some easy hits
+        ac.record_hit(35)  # Hit flat-footed AC
+        ac.record_hit(38)  # Hit flat-footed AC
+        assert ac.min_hit == 35
+
+        # Target recovers, player misses at higher totals
+        ac.record_miss(42)  # Miss at true AC
+
+        # Flat-footed hits should be discarded
+        assert ac.min_hit is None  # All hits were <= 42, so discarded
+        assert ac.max_miss == 42
+
+        # Player finally hits the true AC
+        ac.record_hit(50)
+        assert ac.min_hit == 50
+
+        # AC estimate should now be accurate
+        estimate = ac.get_ac_estimate()
+        assert estimate == "43-50"
+
+    def test_mixed_valid_and_invalid_hits(self) -> None:
+        """Test that only invalid hits are discarded, valid ones remain."""
+        ac = EnemyAC(name="TestEnemy")
+
+        # Some hits at various totals
+        ac.record_hit(25)  # Will be invalidated
+        ac.record_hit(30)  # Will be invalidated
+        ac.record_hit(45)  # Will remain valid
+        ac.record_hit(50)  # Will remain valid
+
+        # Miss that invalidates some hits
+        ac.record_miss(35)
+
+        # Only hits > 35 should remain
+        assert ac.min_hit == 45
+        assert ac.max_miss == 35
+        estimate = ac.get_ac_estimate()
+        assert estimate == "36-45"
+
+    def test_record_hit_rejects_already_invalidated(self) -> None:
+        """Test that new hits below max_miss are rejected."""
+        ac = EnemyAC(name="TestEnemy")
+
+        ac.record_miss(30)  # Establish max_miss
+        ac.record_hit(25)   # This hit is <= max_miss, should be rejected
+
+        assert ac.min_hit is None  # Hit was rejected
+        assert ac.max_miss == 30
+
+        ac.record_hit(35)   # This hit is > max_miss, should be accepted
+        assert ac.min_hit == 35
+
+    def test_multiple_cleanup_rounds(self) -> None:
+        """Test that cleanup works correctly over multiple miss recordings."""
+        ac = EnemyAC(name="TestEnemy")
+
+        # First round of hits
+        ac.record_hit(20)
+        ac.record_hit(25)
+        ac.record_hit(30)
+        assert ac.min_hit == 20
+
+        # First cleanup - removes hits <= 22
+        ac.record_miss(22)
+        assert ac.min_hit == 25  # 20 removed
+
+        # Second cleanup - removes hits <= 28
+        ac.record_miss(28)
+        assert ac.min_hit == 30  # 25 removed
+
+        # Third cleanup - removes all remaining hits
+        ac.record_miss(35)
+        assert ac.min_hit is None  # 30 removed
+
+    def test_hits_property_returns_minimum(self) -> None:
+        """Test that min_hit property correctly returns minimum of hits list."""
+        ac = EnemyAC(name="TestEnemy")
+
+        ac.record_hit(50)
+        ac.record_hit(40)
+        ac.record_hit(60)
+
+        assert ac.min_hit == 40  # Should be minimum
 
 
 class TestTargetAttackBonus:

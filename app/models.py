@@ -53,10 +53,21 @@ class EnemySaves:
 
 @dataclass
 class EnemyAC:
-    """Tracks armor class estimates for an enemy."""
+    """Tracks armor class estimates for an enemy.
+
+    Tracks all hit totals to handle cases where the target was temporarily
+    debuffed (flat-footed, blinded, etc.). When a miss total exceeds existing
+    hit totals, those hits are discarded as they likely occurred when the
+    target had reduced AC.
+    """
     name: str
-    min_hit: Optional[int] = None
     max_miss: Optional[int] = None
+    _hits: list[int] = field(default_factory=list, repr=False)
+
+    @property
+    def min_hit(self) -> Optional[int]:
+        """Return the minimum hit total, or None if no valid hits recorded."""
+        return min(self._hits) if self._hits else None
 
     def record_hit(self, total: int, was_nat20: bool = False) -> None:
         """Record a successful attack roll total, excluding natural 20s.
@@ -66,11 +77,17 @@ class EnemyAC:
             was_nat20: Whether this was a natural 20 (excluded from AC estimation)
         """
         if not was_nat20:
-            if self.min_hit is None or total < self.min_hit:
-                self.min_hit = total
+            # Only add if it's above max_miss (if we have one)
+            # This prevents adding hits that are already invalidated
+            if self.max_miss is None or total > self.max_miss:
+                self._hits.append(total)
 
     def record_miss(self, total: int, was_nat1: bool = False) -> None:
         """Record a failed attack roll total, excluding natural 1s.
+
+        When a new max_miss is recorded that exceeds existing hit totals,
+        those hits are discarded as they likely occurred when the target
+        had temporarily reduced AC (flat-footed, blinded, etc.).
 
         Args:
             total: The attack roll total
@@ -79,6 +96,9 @@ class EnemyAC:
         if not was_nat1:
             if self.max_miss is None or total > self.max_miss:
                 self.max_miss = total
+                # Remove all hits that are now invalidated by this miss
+                # (hits <= max_miss shouldn't have hit if target had true AC)
+                self._hits = [h for h in self._hits if h > self.max_miss]
 
     def get_ac_estimate(self) -> str:
         """Return an estimated AC based on recorded hits and misses.
@@ -86,15 +106,18 @@ class EnemyAC:
         Returns:
             String representation of estimated AC, e.g. "18", "15-16", "≤14"
         """
-        if self.min_hit is not None and self.max_miss is not None:
-            if self.max_miss + 1 == self.min_hit:
-                return str(self.min_hit)
-            elif self.max_miss < self.min_hit:
-                return f"{self.max_miss + 1}-{self.min_hit}"
+        min_hit = self.min_hit
+
+        if min_hit is not None and self.max_miss is not None:
+            if self.max_miss + 1 == min_hit:
+                return str(min_hit)
+            elif self.max_miss < min_hit:
+                return f"{self.max_miss + 1}-{min_hit}"
             else:
-                return f"~{self.min_hit}"
-        elif self.min_hit is not None:
-            return f"≤{self.min_hit}"
+                # This case should now be rare due to automatic cleanup
+                return f"~{min_hit}"
+        elif min_hit is not None:
+            return f"≤{min_hit}"
         elif self.max_miss is not None:
             return f">{self.max_miss}"
         return "?"
