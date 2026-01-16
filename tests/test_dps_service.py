@@ -178,7 +178,7 @@ class TestDPSCalculationServiceIntegration(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test fixtures."""
-        self.data_store = DataStore(db_path=':memory:')
+        self.data_store = DataStore()
         self.service = DPSCalculationService(self.data_store)
 
     def tearDown(self) -> None:

@@ -18,12 +18,8 @@ class DataStore:
     All data is stored in memory and lost when the app closes (session-only).
     """
 
-    def __init__(self, db_path: Optional[str] = None) -> None:
-        """Initialize the data store.
-
-        Args:
-            db_path: Parameter ignored for compatibility with older Database interface
-        """
+    def __init__(self) -> None:
+        """Initialize the data store."""
         self.events: List[DamageEvent] = []
         self.attacks: List[AttackEvent] = []
         self.lock = threading.RLock()
@@ -718,7 +714,7 @@ class DataStore:
             parser: LogParser instance with target_ac, target_saves, and target_attack_bonus data
 
         Returns:
-            List of dicts with keys: target, ab, ac, fortitude, reflex, will
+            List of dicts with keys: target, ab, ac, fortitude, reflex, will,
             Sorted alphabetically by target name
         """
         with self.lock:

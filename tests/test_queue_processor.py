@@ -273,7 +273,7 @@ class TestQueueProcessorIntegration(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test fixtures with real DataStore."""
-        self.data_store = DataStore(db_path=':memory:')  # In-memory DB for testing
+        self.data_store = DataStore()
         self.parser = Mock(spec=LogParser)
         self.parser.parse_immunity = True
 
