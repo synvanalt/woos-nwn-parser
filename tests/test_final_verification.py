@@ -35,7 +35,7 @@ def test_exact_user_scenario():
 
         # Step 2: I open app and click Start Monitoring
         print("\n2. I open app and click Start Monitoring")
-        monitor = LogDirectoryMonitor(tmpdir)
+        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()

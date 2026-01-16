@@ -28,7 +28,7 @@ def test_real_world_scenario():
 
         # Step 2: App starts monitoring
         print("Step 2: App starts monitoring")
-        monitor = LogDirectoryMonitor(tmpdir)
+        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
