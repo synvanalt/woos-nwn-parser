@@ -727,12 +727,12 @@ class DataStore:
 
             for target in targets:
                 # Get AB from parser
-                ab_display = "?"
+                ab_display = "-"
                 if target in parser.target_attack_bonus:
                     ab_display = parser.target_attack_bonus[target].get_bonus_display()
 
                 # Get AC from parser
-                ac_display = "?"
+                ac_display = "-"
                 if target in parser.target_ac:
                     ac_display = parser.target_ac[target].get_ac_estimate()
 
