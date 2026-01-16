@@ -27,7 +27,10 @@ class LogParser:
         self.parse_immunity = bool(parse_immunity)
 
         # Pre-compile timestamp pattern for better performance
-        self.timestamp_pattern = re.compile(r'\[CHAT WINDOW TEXT\] \[([^\]]+)\]')
+        self.timestamp_pattern = re.compile(r'\[CHAT WINDOW TEXT] \[([^]]+)]')
+
+        # Pre-compile damage breakdown pattern for better performance
+        self.damage_breakdown_pattern = re.compile(r"(\d+)\s+(\D+?)(?=\s+\d+|$)")
 
         # Patterns for parsing the log format
         self.patterns = {
@@ -149,8 +152,8 @@ class LogParser:
 
         # Match sequences like: <number><space><damage type words> (until next number or end)
         # Example matches: '21 Physical', '13 Positive Energy', '1 Pure'
-        pattern = re.compile(r"(\d+)\s+([^\d]+?)(?=\s+\d+|$)")
-        for m in pattern.finditer(breakdown_str):
+        # Use pre-compiled pattern for better performance
+        for m in self.damage_breakdown_pattern.finditer(breakdown_str):
             amt = int(m.group(1))
             # Damage type string may have trailing/leading spaces; normalize internal whitespace
             dtype = ' '.join(m.group(2).strip().split())
@@ -240,7 +243,7 @@ class LogParser:
         stripped_line = line
         if '[CHAT WINDOW TEXT]' in line:
             # Remove the [CHAT WINDOW TEXT] [timestamp] prefix
-            stripped_line = re.sub(r'^\[CHAT WINDOW TEXT\]\s*\[[^\]]+\]\s*', '', line)
+            stripped_line = re.sub(r'^\[CHAT WINDOW TEXT]\s*\[[^]]+]\s*', '', line)
 
         # Check for attack rolls to estimate AC - try threat roll pattern first (handles critical hits)
         attack_match = self.patterns['attack_with_threat'].search(stripped_line)
