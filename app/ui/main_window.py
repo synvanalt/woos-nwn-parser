@@ -245,8 +245,8 @@ class WoosNwnParserApp:
             monitoring_start_position=monitoring_start_positions
         )
 
-        # Start periodic UI refresh (every 500ms) as backup
-        self.parse_refresh_job = self.root.after(500, self._refresh_parsing_ui)
+        # Start periodic UI refresh (every 1 second) as backup
+        self.parse_refresh_job = self.root.after(1000, self._refresh_parsing_ui)
 
     def restore_session_only_view(self) -> None:
         """Restore the session-only data view (exclude past logs)."""
@@ -263,26 +263,33 @@ class WoosNwnParserApp:
 
 
     def _refresh_parsing_ui(self) -> None:
-        """Periodically refresh UI during background parsing."""
+        """Periodically refresh UI during background parsing.
+
+        OPTIMIZATION: Don't actually refresh during parsing - too expensive!
+        Just keep the timer alive to detect when parsing stops.
+        """
         if not self.past_logs_service.is_parsing_active():
             return
 
-        # Refresh all UI elements with current data
-        self.refresh_targets()
-        self.dps_panel.refresh()
+        # Don't refresh during parsing - it causes stuttering
+        # The final refresh happens in _on_parsing_complete()
 
-        # Schedule next refresh
-        self.parse_refresh_job = self.root.after(500, self._refresh_parsing_ui)
+        # Schedule next check
+        self.parse_refresh_job = self.root.after(2000, self._refresh_parsing_ui)
 
     def _refresh_parsing_ui_immediate(self) -> None:
-        """Immediately refresh UI during background parsing (called from progress callback)."""
+        """Immediately refresh UI during background parsing (called from progress callback).
+
+        OPTIMIZATION: Don't actually refresh - just reset the pending flag.
+        Refreshing with large datasets is too expensive and causes stuttering.
+        """
         if not self.past_logs_service.is_parsing_active():
             self.parse_ui_update_pending = False
             return
 
-        # Refresh all UI elements with current data
-        self.refresh_targets()
-        self.dps_panel.refresh()
+        # OPTIMIZATION: Skip the expensive refresh operations during parsing
+        # Only update debug console to show we're making progress
+        # The full UI refresh happens once at the end in _on_parsing_complete()
 
         # Reset flag to allow next update
         self.parse_ui_update_pending = False
@@ -301,7 +308,10 @@ class WoosNwnParserApp:
         # Re-enable the checkbutton so user can toggle it
         self.parse_past_logs_check.config(state=tk.NORMAL)
 
-        # Final refresh of all UI elements
+        # Show status before the final refresh (which might take a moment with large data)
+        self.log_debug("Finalizing UI update...")
+
+        # Final refresh of all UI elements (single update at the end)
         self.refresh_targets()
         self.dps_panel.refresh()
 

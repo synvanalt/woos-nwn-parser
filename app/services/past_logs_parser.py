@@ -115,10 +115,17 @@ class PastLogsParserService:
             monitoring_start_position: Dict mapping log file names to line positions where monitoring started
         """
         try:
-            # Don't clear data - we want to merge past logs with current session
-            # Save current state first if not already saved
+            # OPTIMIZATION: Save state in background thread (not on UI thread)
+            # Only save if we have data and haven't saved yet
             if self.session_only_state is None:
-                self.save_session_state()
+                # Quick check if there's any data worth saving
+                has_data = (len(self.data_store.events) > 0 or
+                           len(self.data_store.attacks) > 0 or
+                           len(self.data_store.dps_data) > 0)
+                if has_data:
+                    on_log("Saving current session state...", "debug")
+                    self.save_session_state()
+                    on_log("Session state saved", "debug")
 
             # Parse all log files in the directory (in order: log1, log2, log3, log4)
             log_dir = Path(log_directory)
@@ -128,37 +135,36 @@ class PastLogsParserService:
                 on_log("No log files found in directory", "warning")
             else:
                 total_lines = 0
+                files_processed = 0
+
+                # OPTIMIZATION: Batch log messages for better performance
+                on_log(f"Starting to parse {len(log_files)} log file(s)...", "info")
+
                 for log_file in log_files:
                     if not self.is_parsing:
                         on_log("Parsing cancelled by user", "info")
                         break
 
-                    on_log(f"Parsing: {log_file.name}", "debug")
-
                     # Parse only lines before the monitoring start position for this file
-                    # If monitoring_start_position is None or file not in dict, parse entire file
                     max_line = None
                     if monitoring_start_position and log_file.name in monitoring_start_position:
                         max_line = monitoring_start_position[log_file.name]
-                        on_log(f"  → Parsing past logs up to line {max_line}", "debug")
 
-                    # Create progress callback with adaptive throttling
-                    # For large files, update UI even less frequently to maximize speed
-                    chunk_count = [0]  # Use list to allow modification in nested function
+                    # OPTIMIZATION: Minimal progress callbacks since UI doesn't update during parsing
+                    # Update every 40 chunks = every 200,000 lines with 5000-line chunks
+                    # This maximizes parsing speed while still yielding for responsiveness
+                    chunk_count = [0]
 
                     def progress_callback(lines_count: int) -> None:
-                        """Called after each chunk - yields control periodically and triggers UI update."""
+                        """Called after each chunk - yields very infrequently for maximum speed."""
                         chunk_count[0] += 1
 
-                        # Adaptive throttling: Update UI less frequently for better performance
-                        # Every 10 chunks = every 50,000 lines with 5000-line chunks
-                        # This provides good balance between speed and responsiveness
-                        if chunk_count[0] % 10 == 0:
-                            # Very brief yield to allow UI thread to process events
-                            time.sleep(0.0001)  # 0.1ms - minimal but effective
-                            # Trigger UI update if callback provided
+                        # Update every 40 chunks = every 200,000 lines
+                        # Since we don't update UI during parsing, we can afford to update less
+                        if chunk_count[0] % 40 == 0:
+                            time.sleep(0.00001)  # Minimal sleep, just enough to yield GIL
                             if on_progress:
-                                on_progress()
+                                on_progress()  # This just resets a flag, doesn't refresh UI
 
                     result = parse_and_import_file(
                         str(log_file),
@@ -166,19 +172,21 @@ class PastLogsParserService:
                         self.data_store,
                         max_line=max_line,
                         progress_callback=progress_callback,
-                        progress_interval=1  # Call after every chunk
+                        progress_interval=1
                     )
 
                     if result['success']:
                         lines = result['lines_processed']
                         total_lines += lines
-                        on_log(f"  → {log_file.name}: {lines} lines", "debug")
+                        files_processed += 1
+                        # OPTIMIZATION: Only log every other file to reduce debug overhead
+                        if files_processed % 2 == 0 or files_processed == len(log_files):
+                            on_log(f"Progress: {files_processed}/{len(log_files)} files, {total_lines} lines", "debug")
                     else:
-                        on_log(f"  → Error: {result['error']}", "error")
+                        on_log(f"Error in {log_file.name}: {result['error']}", "error")
 
                 if self.is_parsing:
-                    on_log(f"All past logs parsed successfully ({total_lines} total lines)", "info")
-                    # Mark that past logs are now included
+                    on_log(f"Completed: {total_lines} lines from {files_processed} file(s)", "info")
                     self.mark_past_logs_included()
 
         except Exception as e:
