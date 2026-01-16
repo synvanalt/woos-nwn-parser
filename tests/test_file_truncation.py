@@ -21,8 +21,8 @@ def test_file_truncation_detection():
         # Write initial content
         log_file.write_text("Line 1\nLine 2\nLine 3\n")
 
-        # Setup monitor
-        monitor = LogDirectoryMonitor(tmpdir)
+        # Setup monitor with debug_mode enabled to get debug messages
+        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
         monitor.start_monitoring()
 
         # Verify initial position is set to end of file
@@ -65,8 +65,8 @@ def test_append_after_truncation():
         # Initial content
         log_file.write_text("Initial content\n")
 
-        # Setup monitor
-        monitor = LogDirectoryMonitor(tmpdir)
+        # Setup monitor with debug_mode enabled
+        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
         monitor.start_monitoring()
 
         # Truncate and write new content
