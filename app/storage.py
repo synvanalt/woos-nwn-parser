@@ -30,6 +30,17 @@ class DataStore:
         # Immunity tracking: target -> damage_type -> {max_immunity: int, max_damage: int, sample_count: int}
         # This is separate from damage events to avoid double-counting while still tracking immunity data
         self.immunity_data: Dict[str, Dict[str, Dict[str, int]]] = {}
+        # Cached set of all targets for fast lookup (updated on insert)
+        self._targets_cache: set = set()
+        # Cached set of damage dealers for fast lookup
+        self._damage_dealers_cache: set = set()
+        # Attack indices for O(1) lookups
+        self._attacks_by_attacker: Dict[str, List[AttackEvent]] = {}
+        self._attacks_by_target: Dict[str, List[AttackEvent]] = {}
+        self._attacks_by_attacker_target: Dict[Tuple[str, str], List[AttackEvent]] = {}
+        # Damage event indices for O(1) lookups
+        self._events_by_target: Dict[str, List[DamageEvent]] = {}
+        self._events_by_attacker_target: Dict[Tuple[str, str], List[DamageEvent]] = {}
 
     def insert_attack_event(self, attacker: str, target: str, outcome: str, roll: Optional[int] = None,
                            bonus: Optional[int] = None, total: Optional[int] = None) -> None:
@@ -53,6 +64,19 @@ class DataStore:
                 total=total
             )
             self.attacks.append(event)
+            # Update attack indices for O(1) lookups
+            if attacker not in self._attacks_by_attacker:
+                self._attacks_by_attacker[attacker] = []
+            self._attacks_by_attacker[attacker].append(event)
+
+            if target not in self._attacks_by_target:
+                self._attacks_by_target[target] = []
+            self._attacks_by_target[target].append(event)
+
+            key = (attacker, target)
+            if key not in self._attacks_by_attacker_target:
+                self._attacks_by_attacker_target[key] = []
+            self._attacks_by_attacker_target[key].append(event)
 
     def insert_damage_event(self, target: str, damage_type: str, immunity: int, total_damage: int, attacker: str = "", timestamp: Optional[datetime] = None) -> None:
         """Insert a damage event into the in-memory store.
@@ -77,6 +101,21 @@ class DataStore:
                 timestamp=timestamp
             )
             self.events.append(event)
+            # Update targets cache (O(1) set add)
+            self._targets_cache.add(target)
+            # Update damage dealers cache if damage was dealt
+            if total_damage > 0 and attacker:
+                self._damage_dealers_cache.add(attacker)
+            # Update event indices for O(1) lookups
+            if target not in self._events_by_target:
+                self._events_by_target[target] = []
+            self._events_by_target[target].append(event)
+
+            if attacker:
+                key = (attacker, target)
+                if key not in self._events_by_attacker_target:
+                    self._events_by_attacker_target[key] = []
+                self._events_by_attacker_target[key].append(event)
 
     def update_dps_data(self, character: str, damage_amount: int, timestamp: datetime, damage_types: Optional[Dict[str, int]] = None) -> None:
         """Update DPS data for a character.
@@ -92,28 +131,34 @@ class DataStore:
             if self.last_damage_timestamp is None or timestamp > self.last_damage_timestamp:
                 self.last_damage_timestamp = timestamp
 
-            if character not in self.dps_data:
+            char_data = self.dps_data.get(character)
+            if char_data is None:
+                # New character - initialize everything at once
                 self.dps_data[character] = {
                     'total_damage': damage_amount,
                     'first_timestamp': timestamp,
-                    'damage_by_type': {}
+                    'damage_by_type': damage_types.copy() if damage_types else {}
                 }
             else:
-                self.dps_data[character]['total_damage'] += damage_amount
+                # Existing character - update efficiently
+                char_data['total_damage'] += damage_amount
                 # Update first timestamp if this one is older
-                if timestamp < self.dps_data[character]['first_timestamp']:
-                    self.dps_data[character]['first_timestamp'] = timestamp
+                if timestamp < char_data['first_timestamp']:
+                    char_data['first_timestamp'] = timestamp
 
-            # Track damage by type if provided
-            if damage_types:
-                if 'damage_by_type' not in self.dps_data[character]:
-                    self.dps_data[character]['damage_by_type'] = {}
-
-                for damage_type, amount in damage_types.items():
-                    amount_int = int(amount or 0)
-                    if damage_type not in self.dps_data[character]['damage_by_type']:
-                        self.dps_data[character]['damage_by_type'][damage_type] = 0
-                    self.dps_data[character]['damage_by_type'][damage_type] += amount_int
+                # Track damage by type if provided
+                if damage_types:
+                    damage_by_type = char_data.get('damage_by_type')
+                    if damage_by_type is None:
+                        char_data['damage_by_type'] = damage_types.copy()
+                    else:
+                        # Batch update damage types
+                        for damage_type, amount in damage_types.items():
+                            amount_int = int(amount or 0)
+                            if damage_type in damage_by_type:
+                                damage_by_type[damage_type] += amount_int
+                            else:
+                                damage_by_type[damage_type] = amount_int
 
     def get_earliest_timestamp(self) -> Optional[datetime]:
         """Get the earliest timestamp from all recorded DPS data.
@@ -278,8 +323,8 @@ class DataStore:
             List of dicts with keys: damage_type, total_damage, dps
         """
         with self.lock:
-            # Get damage events for this character attacking this specific target
-            target_events = [e for e in self.events if e.attacker == character and e.target == target]
+            # Use indexed events for O(1) lookup
+            target_events = self._events_by_attacker_target.get((character, target), [])
             if not target_events:
                 return []
 
@@ -360,8 +405,8 @@ class DataStore:
             Sorted list of target names
         """
         with self.lock:
-            targets = sorted(set(e.target for e in self.events))
-            return targets
+            # Use cached set for O(1) lookup instead of O(n) iteration
+            return sorted(self._targets_cache)
 
     def get_target_stats(self, target: str) -> Optional[Tuple[int, int, int]]:
         """Get overall stats for a target.
@@ -373,7 +418,8 @@ class DataStore:
             Tuple of (total_hits, total_damage, total_absorbed) or None
         """
         with self.lock:
-            target_events = [e for e in self.events if e.target == target]
+            # Use indexed events for O(1) lookup
+            target_events = self._events_by_target.get(target, [])
             if not target_events:
                 return None
 
@@ -393,14 +439,22 @@ class DataStore:
             Dict with keys 'attacks', 'hits', 'crits', 'misses', 'hit_rate' or None
         """
         with self.lock:
-            target_attacks = [a for a in self.attacks if a.attacker == attacker and a.target == target]
-            if not target_attacks:
+            # Use indexed attacks for O(1) lookup
+            indexed_attacks = self._attacks_by_attacker_target.get((attacker, target), [])
+            if not indexed_attacks:
                 return None
 
-            hits = len([a for a in target_attacks if a.outcome == 'hit'])
-            crits = len([a for a in target_attacks if a.outcome == 'critical_hit'])
-            misses = len([a for a in target_attacks if a.outcome == 'miss'])
-            total_attacks = len(target_attacks)
+            # Single-pass counting
+            hits = crits = misses = 0
+            for a in indexed_attacks:
+                if a.outcome == 'hit':
+                    hits += 1
+                elif a.outcome == 'critical_hit':
+                    crits += 1
+                elif a.outcome == 'miss':
+                    misses += 1
+
+            total_attacks = len(indexed_attacks)
 
             # Calculate hit rate as (hits + crits) / (hits + crits + misses)
             successful = hits + crits
@@ -426,14 +480,22 @@ class DataStore:
             Dict with keys 'attacks', 'hits', 'crits', 'misses', 'hit_rate' or None
         """
         with self.lock:
-            target_attacks = [a for a in self.attacks if a.target == target]
-            if not target_attacks:
+            # Use indexed attacks for O(1) lookup
+            indexed_attacks = self._attacks_by_target.get(target, [])
+            if not indexed_attacks:
                 return None
 
-            hits = len([a for a in target_attacks if a.outcome == 'hit'])
-            crits = len([a for a in target_attacks if a.outcome == 'critical_hit'])
-            misses = len([a for a in target_attacks if a.outcome == 'miss'])
-            total_attacks = len(target_attacks)
+            # Single-pass counting
+            hits = crits = misses = 0
+            for a in indexed_attacks:
+                if a.outcome == 'hit':
+                    hits += 1
+                elif a.outcome == 'critical_hit':
+                    crits += 1
+                elif a.outcome == 'miss':
+                    misses += 1
+
+            total_attacks = len(indexed_attacks)
 
             # Calculate hit rate as (hits + crits) / (hits + crits + misses)
             successful = hits + crits
@@ -459,37 +521,31 @@ class DataStore:
             Dict mapping character name to hit rate percentage (0-100)
         """
         with self.lock:
-            character_hit_rates: Dict[str, float] = {}
+            # Use single-pass aggregation for better performance
+            # attacker -> {'hits': count, 'crits': count, 'misses': count}
+            stats_by_attacker: Dict[str, Dict[str, int]] = {}
 
-            # Filter attacks by target if specified
-            if target:
-                filtered_attacks = [a for a in self.attacks if a.target == target]
-            else:
-                filtered_attacks = self.attacks
-
-            # Group attacks by attacker from the filtered set
-            attackers = set(a.attacker for a in filtered_attacks)
-
-            for attacker in attackers:
-                # Get this attacker's attacks from the already-filtered set
-                if target:
-                    attacker_attacks = [a for a in filtered_attacks if a.attacker == attacker]
-                else:
-                    attacker_attacks = [a for a in self.attacks if a.attacker == attacker]
-
-                if not attacker_attacks:
-                    character_hit_rates[attacker] = 0.0
+            for a in self.attacks:
+                if target and a.target != target:
                     continue
 
-                hits = len([a for a in attacker_attacks if a.outcome == 'hit'])
-                crits = len([a for a in attacker_attacks if a.outcome == 'critical_hit'])
-                misses = len([a for a in attacker_attacks if a.outcome == 'miss'])
+                attacker = a.attacker
+                if attacker not in stats_by_attacker:
+                    stats_by_attacker[attacker] = {'hits': 0, 'crits': 0, 'misses': 0}
 
-                # Calculate hit rate as (hits + crits) / (hits + crits + misses)
-                successful = hits + crits
-                attempted = successful + misses
+                if a.outcome == 'hit':
+                    stats_by_attacker[attacker]['hits'] += 1
+                elif a.outcome == 'critical_hit':
+                    stats_by_attacker[attacker]['crits'] += 1
+                elif a.outcome == 'miss':
+                    stats_by_attacker[attacker]['misses'] += 1
+
+            # Calculate hit rates from aggregated stats
+            character_hit_rates: Dict[str, float] = {}
+            for attacker, stats in stats_by_attacker.items():
+                successful = stats['hits'] + stats['crits']
+                attempted = successful + stats['misses']
                 hit_rate = (successful / attempted * 100) if attempted > 0 else 0.0
-
                 character_hit_rates[attacker] = hit_rate
 
             return character_hit_rates
@@ -507,38 +563,59 @@ class DataStore:
             Dict mapping character name to hit rate percentage (0-100)
         """
         with self.lock:
-            character_hit_rates: Dict[str, float] = {}
-
-            # Determine which characters dealt damage
+            # Determine which characters dealt damage using cached set when possible
             if target:
-                damage_on_target = [e for e in self.events if e.target == target and e.total_damage_dealt > 0]
-                damage_dealers = set(e.attacker for e in damage_on_target)
+                # Use indexed events for O(1) lookup
+                target_events = self._events_by_target.get(target, [])
+                damage_dealers = set(
+                    e.attacker for e in target_events
+                    if e.total_damage_dealt > 0
+                )
             else:
-                damage_dealers = set(e.attacker for e in self.events if e.total_damage_dealt > 0)
+                # Use cached damage dealers set
+                damage_dealers = self._damage_dealers_cache
 
-            # For each character who dealt damage, calculate their hit rate
-            for character in damage_dealers:
-                # Get all attacks by this character
-                if target:
-                    char_attacks = [a for a in self.attacks if a.attacker == character and a.target == target]
-                else:
-                    char_attacks = [a for a in self.attacks if a.attacker == character]
+            if not damage_dealers:
+                return {}
 
-                if not char_attacks:
-                    # Character dealt damage but no attacks recorded - default to 0%
-                    character_hit_rates[character] = 0.0
-                    continue
+            # Use indexed attacks when filtering by target
+            if target:
+                # Use indexed attacks for this target
+                target_attacks = self._attacks_by_target.get(target, [])
+                # Single-pass aggregation for damage dealers only
+                stats_by_attacker: Dict[str, Dict[str, int]] = {d: {'hits': 0, 'crits': 0, 'misses': 0} for d in damage_dealers}
 
-                # Calculate hit rate from actual attack data
-                hits = len([a for a in char_attacks if a.outcome == 'hit'])
-                crits = len([a for a in char_attacks if a.outcome == 'critical_hit'])
-                misses = len([a for a in char_attacks if a.outcome == 'miss'])
+                for a in target_attacks:
+                    if a.attacker not in damage_dealers:
+                        continue
+                    if a.outcome == 'hit':
+                        stats_by_attacker[a.attacker]['hits'] += 1
+                    elif a.outcome == 'critical_hit':
+                        stats_by_attacker[a.attacker]['crits'] += 1
+                    elif a.outcome == 'miss':
+                        stats_by_attacker[a.attacker]['misses'] += 1
+            else:
+                # Use indexed attacks by attacker for each damage dealer
+                stats_by_attacker: Dict[str, Dict[str, int]] = {}
+                for attacker in damage_dealers:
+                    attacker_attacks = self._attacks_by_attacker.get(attacker, [])
+                    stats = {'hits': 0, 'crits': 0, 'misses': 0}
+                    for a in attacker_attacks:
+                        if a.outcome == 'hit':
+                            stats['hits'] += 1
+                        elif a.outcome == 'critical_hit':
+                            stats['crits'] += 1
+                        elif a.outcome == 'miss':
+                            stats['misses'] += 1
+                    stats_by_attacker[attacker] = stats
 
-                successful = hits + crits
-                attempted = successful + misses
+            # Calculate hit rates from aggregated stats
+            character_hit_rates: Dict[str, float] = {}
+            for attacker, stats in stats_by_attacker.items():
+                successful = stats['hits'] + stats['crits']
+                attempted = successful + stats['misses']
                 hit_rate = (successful / attempted * 100) if attempted > 0 else 0.0
-
-                character_hit_rates[character] = hit_rate
+                character_hit_rates[attacker] = hit_rate
 
             return character_hit_rates
 
@@ -556,8 +633,9 @@ class DataStore:
         with self.lock:
             dps_list = []
 
-            # Filter damage events for this specific target
-            damage_on_target = [e for e in self.events if e.target == target and e.total_damage_dealt > 0]
+            # Use indexed events for O(1) lookup
+            target_events = self._events_by_target.get(target, [])
+            damage_on_target = [e for e in target_events if e.total_damage_dealt > 0]
             if not damage_on_target:
                 return dps_list
 
@@ -575,11 +653,9 @@ class DataStore:
                     return dps_list
 
                 for character in attackers:
-                    # Get total damage dealt by this character to this target only
-                    char_damage_on_target = sum(
-                        e.total_damage_dealt for e in self.events
-                        if e.attacker == character and e.target == target
-                    )
+                    # Use indexed events by attacker+target for O(1) lookup
+                    char_events = self._events_by_attacker_target.get((character, target), [])
+                    char_damage_on_target = sum(e.total_damage_dealt for e in char_events)
 
                     if char_damage_on_target == 0:
                         continue
@@ -597,11 +673,8 @@ class DataStore:
             else:
                 # Per-character mode: use each character's first and last damage on this target
                 for character in attackers:
-                    # Get total damage dealt by this character to this target
-                    char_damage_events = [
-                        e for e in self.events
-                        if e.attacker == character and e.target == target
-                    ]
+                    # Use indexed events by attacker+target for O(1) lookup
+                    char_damage_events = self._events_by_attacker_target.get((character, target), [])
 
                     if not char_damage_events:
                         continue
@@ -640,7 +713,8 @@ class DataStore:
             Earliest timestamp for attacks on this target, or None if no attacks
         """
         with self.lock:
-            target_attacks = [a for a in self.attacks if a.target == target]
+            # Use indexed attacks for O(1) lookup
+            target_attacks = self._attacks_by_target.get(target, [])
             if not target_attacks:
                 return None
 
@@ -655,6 +729,15 @@ class DataStore:
             self.dps_data.clear()
             self.immunity_data.clear()
             self.last_damage_timestamp = None
+            # Clear caches
+            self._targets_cache.clear()
+            self._damage_dealers_cache.clear()
+            # Clear indices
+            self._attacks_by_attacker.clear()
+            self._attacks_by_target.clear()
+            self._attacks_by_attacker_target.clear()
+            self._events_by_target.clear()
+            self._events_by_attacker_target.clear()
 
     def close(self) -> None:
         """Close the data store (no-op for in-memory store)."""

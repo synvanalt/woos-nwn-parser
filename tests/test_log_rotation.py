@@ -31,7 +31,7 @@ def test_basic_rotation_log1_to_log2():
 
         # Start monitoring
         print("Step 2: Start monitoring")
-        monitor = LogDirectoryMonitor(tmpdir)
+        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
@@ -113,7 +113,7 @@ def test_full_rotation_sequence():
             f.write("[Thu Jan 09 14:00:00] Combat in Log1\n")
 
         # Start monitoring
-        monitor = LogDirectoryMonitor(tmpdir)
+        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
@@ -164,8 +164,8 @@ def test_rotation_does_not_trigger_truncation_warning():
         with open(log1, 'w') as f:
             f.write("[Thu Jan 09 14:00:00] Combat in Log1\n" * 10)
 
-        # Start monitoring
-        monitor = LogDirectoryMonitor(tmpdir)
+        # Start monitoring with debug_mode enabled
+        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
@@ -215,8 +215,8 @@ def test_truncation_on_same_file_still_works():
         with open(log1, 'w') as f:
             f.write("[Thu Jan 09 14:00:00] Combat before restart\n" * 5)
 
-        # Start monitoring
-        monitor = LogDirectoryMonitor(tmpdir)
+        # Start monitoring with debug_mode enabled
+        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
@@ -270,8 +270,8 @@ def test_rotation_with_content_continuation():
         with open(log1, 'w') as f:
             f.write("[Thu Jan 09 14:00:00] Goblin hit\n")
 
-        # Start monitoring
-        monitor = LogDirectoryMonitor(tmpdir)
+        # Start monitoring with debug_mode enabled
+        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()

@@ -26,6 +26,12 @@ class LogParser:
         # to reduce runtime work. Default is False (OFF) as requested.
         self.parse_immunity = bool(parse_immunity)
 
+        # Pre-compile timestamp pattern for better performance
+        self.timestamp_pattern = re.compile(r'\[CHAT WINDOW TEXT] \[([^]]+)]')
+
+        # Pre-compile damage breakdown pattern for better performance
+        self.damage_breakdown_pattern = re.compile(r"(\d+)\s+(\D+?)(?=\s+\d+|$)")
+
         # Patterns for parsing the log format
         self.patterns = {
             # Flexible damage pattern - skip [CHAT WINDOW TEXT] and timestamp, then capture attacker
@@ -101,19 +107,27 @@ class LogParser:
             datetime object or None if parsing fails
         """
         try:
-            # Match the timestamp between square brackets after [CHAT WINDOW TEXT]
-            match = re.search(r'\[CHAT WINDOW TEXT\]\s+\[([^\]]+)\]', line)
+            # Use pre-compiled pattern for better performance
+            match = self.timestamp_pattern.search(line)
             if match:
                 timestamp_str = match.group(1)
                 # Expected format: "Wed Dec 31 21:07:37"
-                # Extract just the time portion (HH:MM:SS)
-                time_match = re.search(r'(\d{1,2}):(\d{2}):(\d{2})', timestamp_str)
-                if time_match:
-                    hour = int(time_match.group(1))
-                    minute = int(time_match.group(2))
-                    second = int(time_match.group(3))
-                    # Create a datetime with today's date and the extracted time
-                    return datetime.now().replace(hour=hour, minute=minute, second=second, microsecond=0)
+                # Extract just the time portion (HH:MM:SS) - faster than full regex
+                # Find the last colon and work backwards
+                last_colon = timestamp_str.rfind(':')
+                if last_colon > 0:
+                    # Find the second-to-last colon
+                    second_colon = timestamp_str.rfind(':', 0, last_colon)
+                    if second_colon > 0:
+                        # Extract time components directly
+                        time_str = timestamp_str[second_colon-2:last_colon+3]
+                        parts = time_str.split(':')
+                        if len(parts) == 3:
+                            hour = int(parts[0])
+                            minute = int(parts[1])
+                            second = int(parts[2])
+                            # Create datetime with today's date and extracted time
+                            return datetime.now().replace(hour=hour, minute=minute, second=second, microsecond=0)
         except Exception:
             pass
         return None
@@ -138,8 +152,8 @@ class LogParser:
 
         # Match sequences like: <number><space><damage type words> (until next number or end)
         # Example matches: '21 Physical', '13 Positive Energy', '1 Pure'
-        pattern = re.compile(r"(\d+)\s+([^\d]+?)(?=\s+\d+|$)")
-        for m in pattern.finditer(breakdown_str):
+        # Use pre-compiled pattern for better performance
+        for m in self.damage_breakdown_pattern.finditer(breakdown_str):
             amt = int(m.group(1))
             # Damage type string may have trailing/leading spaces; normalize internal whitespace
             dtype = ' '.join(m.group(2).strip().split())
@@ -229,7 +243,7 @@ class LogParser:
         stripped_line = line
         if '[CHAT WINDOW TEXT]' in line:
             # Remove the [CHAT WINDOW TEXT] [timestamp] prefix
-            stripped_line = re.sub(r'^\[CHAT WINDOW TEXT\]\s*\[[^\]]+\]\s*', '', line)
+            stripped_line = re.sub(r'^\[CHAT WINDOW TEXT]\s*\[[^]]+]\s*', '', line)
 
         # Check for attack rolls to estimate AC - try threat roll pattern first (handles critical hits)
         attack_match = self.patterns['attack_with_threat'].search(stripped_line)

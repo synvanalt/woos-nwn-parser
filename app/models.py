@@ -159,7 +159,7 @@ class TargetAttackBonus:
         return "?"
 
 
-@dataclass
+@dataclass(slots=True)
 class DamageEvent:
     """Represents a single damage event record."""
     target: str
@@ -170,7 +170,7 @@ class DamageEvent:
     timestamp: datetime = field(default_factory=datetime.now)
 
 
-@dataclass
+@dataclass(slots=True)
 class AttackEvent:
     """Represents a single attack roll."""
     attacker: str

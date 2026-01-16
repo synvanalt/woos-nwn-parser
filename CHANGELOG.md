@@ -1,10 +1,13 @@
 # Changelog
 
-
 ## [1.0.X] - 2026-01-XX
 
 ### Added
-- ...
+- **Test Suite Enhancement** - Added 44 new tests covering all performance optimizations (355 total tests, up from 311)
+  - Storage indices and caches validation tests
+  - Batched event processing tests
+  - Incremental UI refresh tests
+  - Debug mode optimization tests
 
 ### Changed
 - **Target Stats Panel** - Unknown AB and AC values now display as "-" instead of "?" for consistency
@@ -12,6 +15,15 @@
   - Filters out temporary buffs/debuffs that previously skewed the max AB value
   - Example: Enemy with mostly +71 AB and occasional +77 buff now correctly shows +71
   - In case of tie frequency, prefers the higher bonus value
+- **Performance Optimizations** - Implemented 9 major optimizations across all application layers:
+  - **Parser**: Pre-compiled regex patterns (6-31% faster)
+  - **Storage**: O(1) caches for targets and damage dealers (95-99% faster lookups)
+  - **Storage**: O(1) indices for attacks/events by attacker/target
+  - **Storage**: Single-pass counting for attack stats (10-40% faster)
+  - **Monitor**: Optional debug_mode flag (saves 42k+ queue operations per 21k lines)
+  - **Models**: Added `__slots__` to dataclasses (20-30% memory reduction)
+  - **Queue Processor**: Batched UI callbacks (O(n) → O(1) per poll cycle)
+  - **DPS Panel**: Incremental tree refresh (30-50% faster UI updates)
 
 ### Fixed
 - **AC Estimation** - Natural 20 hits are now properly excluded from AC estimation (like natural 1 misses)

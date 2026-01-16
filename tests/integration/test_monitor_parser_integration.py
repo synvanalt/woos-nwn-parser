@@ -54,7 +54,7 @@ class TestFileRotation:
         # Start with log1
         log1.write_text("Content in log1\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir))
+        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
         monitor.start_monitoring()
 
         assert monitor.current_log_file == log1
@@ -119,7 +119,7 @@ class TestFileRotation:
 
         log1.write_text("Log1\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir))
+        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
         monitor.start_monitoring()
 
         parser = LogParser()
@@ -156,7 +156,7 @@ class TestFileTruncation:
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("Line 1\nLine 2\nLine 3\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir))
+        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
         monitor.start_monitoring()
 
         initial_size = log_file.stat().st_size
@@ -189,7 +189,7 @@ class TestFileTruncation:
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Old line\n" * 10)
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir))
+        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
         monitor.start_monitoring()
 
         initial_position = monitor.last_position
@@ -228,7 +228,7 @@ class TestFileTruncation:
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("Initial content\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir))
+        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
         monitor.start_monitoring()
 
         parser = LogParser()
@@ -267,8 +267,8 @@ class TestRealWorldScenarios:
         with open(log_file, 'w') as f:
             f.write("[Thu Jan 09 14:30:00] You attack Goblin: *hit*: (10 damage)\n")
 
-        # App starts monitoring
-        monitor = LogDirectoryMonitor(str(temp_log_dir))
+        # App starts monitoring with debug_mode enabled
+        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
         monitor.start_monitoring()
 
         parser = LogParser(parse_immunity=False)
