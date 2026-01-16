@@ -92,28 +92,34 @@ class DataStore:
             if self.last_damage_timestamp is None or timestamp > self.last_damage_timestamp:
                 self.last_damage_timestamp = timestamp
 
-            if character not in self.dps_data:
+            char_data = self.dps_data.get(character)
+            if char_data is None:
+                # New character - initialize everything at once
                 self.dps_data[character] = {
                     'total_damage': damage_amount,
                     'first_timestamp': timestamp,
-                    'damage_by_type': {}
+                    'damage_by_type': damage_types.copy() if damage_types else {}
                 }
             else:
-                self.dps_data[character]['total_damage'] += damage_amount
+                # Existing character - update efficiently
+                char_data['total_damage'] += damage_amount
                 # Update first timestamp if this one is older
-                if timestamp < self.dps_data[character]['first_timestamp']:
-                    self.dps_data[character]['first_timestamp'] = timestamp
+                if timestamp < char_data['first_timestamp']:
+                    char_data['first_timestamp'] = timestamp
 
-            # Track damage by type if provided
-            if damage_types:
-                if 'damage_by_type' not in self.dps_data[character]:
-                    self.dps_data[character]['damage_by_type'] = {}
-
-                for damage_type, amount in damage_types.items():
-                    amount_int = int(amount or 0)
-                    if damage_type not in self.dps_data[character]['damage_by_type']:
-                        self.dps_data[character]['damage_by_type'][damage_type] = 0
-                    self.dps_data[character]['damage_by_type'][damage_type] += amount_int
+                # Track damage by type if provided
+                if damage_types:
+                    damage_by_type = char_data.get('damage_by_type')
+                    if damage_by_type is None:
+                        char_data['damage_by_type'] = damage_types.copy()
+                    else:
+                        # Batch update damage types
+                        for damage_type, amount in damage_types.items():
+                            amount_int = int(amount or 0)
+                            if damage_type in damage_by_type:
+                                damage_by_type[damage_type] += amount_int
+                            else:
+                                damage_by_type[damage_type] = amount_int
 
     def get_earliest_timestamp(self) -> Optional[datetime]:
         """Get the earliest timestamp from all recorded DPS data.

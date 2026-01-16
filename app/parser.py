@@ -26,6 +26,9 @@ class LogParser:
         # to reduce runtime work. Default is False (OFF) as requested.
         self.parse_immunity = bool(parse_immunity)
 
+        # Pre-compile timestamp pattern for better performance
+        self.timestamp_pattern = re.compile(r'\[CHAT WINDOW TEXT\] \[([^\]]+)\]')
+
         # Patterns for parsing the log format
         self.patterns = {
             # Flexible damage pattern - skip [CHAT WINDOW TEXT] and timestamp, then capture attacker
@@ -101,19 +104,27 @@ class LogParser:
             datetime object or None if parsing fails
         """
         try:
-            # Match the timestamp between square brackets after [CHAT WINDOW TEXT]
-            match = re.search(r'\[CHAT WINDOW TEXT\]\s+\[([^\]]+)\]', line)
+            # Use pre-compiled pattern for better performance
+            match = self.timestamp_pattern.search(line)
             if match:
                 timestamp_str = match.group(1)
                 # Expected format: "Wed Dec 31 21:07:37"
-                # Extract just the time portion (HH:MM:SS)
-                time_match = re.search(r'(\d{1,2}):(\d{2}):(\d{2})', timestamp_str)
-                if time_match:
-                    hour = int(time_match.group(1))
-                    minute = int(time_match.group(2))
-                    second = int(time_match.group(3))
-                    # Create a datetime with today's date and the extracted time
-                    return datetime.now().replace(hour=hour, minute=minute, second=second, microsecond=0)
+                # Extract just the time portion (HH:MM:SS) - faster than full regex
+                # Find the last colon and work backwards
+                last_colon = timestamp_str.rfind(':')
+                if last_colon > 0:
+                    # Find the second-to-last colon
+                    second_colon = timestamp_str.rfind(':', 0, last_colon)
+                    if second_colon > 0:
+                        # Extract time components directly
+                        time_str = timestamp_str[second_colon-2:last_colon+3]
+                        parts = time_str.split(':')
+                        if len(parts) == 3:
+                            hour = int(parts[0])
+                            minute = int(parts[1])
+                            second = int(parts[2])
+                            # Create datetime with today's date and extracted time
+                            return datetime.now().replace(hour=hour, minute=minute, second=second, microsecond=0)
         except Exception:
             pass
         return None
