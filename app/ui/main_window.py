@@ -77,7 +77,7 @@ class WoosNwnParserApp:
         ttk.Label(file_frame, text="Log Directory:").pack(side="left", padx=5)
         self.dir_text = tk.StringVar(value="No directory selected")
         self.dir_label = ttk.Entry(file_frame, state="readonly", textvariable=self.dir_text, foreground="gray", width=40)
-        self.dir_label.pack(side="left", padx=2)
+        self.dir_label.pack(side="left", fill="x", expand=True, padx=(2, 2))
 
         ttk.Label(file_frame, text="File:").pack(side="left", padx=(10, 0))
         self.active_file_text = tk.StringVar(value="-")

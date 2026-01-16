@@ -113,9 +113,9 @@ class DPSPanel(ttk.Frame):
             textvariable=self.target_filter_var,
             values=["All"],
             state="readonly",
-            width=21,
+            width=40,
         )
-        self.target_filter_combo.pack(side="left", padx=(0, 10))
+        self.target_filter_combo.pack(side="left", fill="x", expand=True, padx=(0, 12))
         self.target_filter_combo.current(0)
 
     def refresh(self) -> None:
