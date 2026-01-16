@@ -380,7 +380,7 @@ class DataStore:
             total_hits = len(target_events)
             total_damage = sum(e.total_damage_dealt for e in target_events)
             total_absorbed = sum(e.immunity_absorbed for e in target_events)
-            return (total_hits, total_damage, total_absorbed)
+            return total_hits, total_damage, total_absorbed
 
     def get_attack_stats(self, attacker: str, target: str) -> Optional[dict]:
         """Get attack statistics for a specific attacker vs target.
