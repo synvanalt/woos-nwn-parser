@@ -94,12 +94,12 @@ Both modes use the same last timestamp (the most recent damage dealt by any char
 **AC (Armor Class)**
 - Shows estimated AC based on attack rolls
 - Format: `AC: 45` (exact) or `AC: 45-48` (range)
-- Natural 1 misses are excluded from calculations
+- Natural 1 misses and natural 20 hits are excluded from calculations
 
 **AB (Attack Bonus)**
-- Shows highest detected attack bonus
-- Format: `AB: +25` or `AB: Unknown`
-- Updated as higher bonuses are observed
+- Shows most common attack bonus (filters out temporary buffs)
+- Format: `AB: 25` or `AB: Unknown`
+- Uses mode (most frequent value) to represent typical AB
 
 **Saves**
 - Tracks Fortitude, Reflex, and Will saves

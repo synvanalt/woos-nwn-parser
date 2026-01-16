@@ -121,6 +121,18 @@ class TestEnemyAC:
         ac.record_miss(3, was_nat1=True)
         assert ac.max_miss == 15  # Should not change
 
+    def test_record_hit_ignores_natural_20(self) -> None:
+        """Test that natural 20 hits are ignored."""
+        ac = EnemyAC(name="TestEnemy")
+        ac.record_hit(25, was_nat20=True)
+        assert ac.min_hit is None  # Should not record natural 20
+
+        ac.record_hit(30, was_nat20=False)
+        assert ac.min_hit == 30
+
+        ac.record_hit(22, was_nat20=True)
+        assert ac.min_hit == 30  # Should not change
+
     def test_get_ac_estimate_exact(self) -> None:
         """Test AC estimation when max_miss + 1 == min_hit."""
         ac = EnemyAC(name="TestEnemy")
@@ -157,13 +169,108 @@ class TestEnemyAC:
         estimate = ac.get_ac_estimate()
         assert estimate == "?"
 
-    def test_get_ac_estimate_conflicting_data(self) -> None:
-        """Test AC estimation when max_miss > min_hit (shouldn't happen but handle it)."""
+    def test_get_ac_estimate_conflicting_data_auto_cleanup(self) -> None:
+        """Test that hits are auto-discarded when a higher miss is recorded.
+
+        This simulates the flat-footed scenario: target was debuffed when hit
+        occurred, so the hit should be discarded when we see a higher miss.
+        """
         ac = EnemyAC(name="TestEnemy")
-        ac.record_hit(15)
-        ac.record_miss(20)
+        ac.record_hit(15)  # Hit when target was flat-footed
+        ac.record_miss(20)  # Miss at target's true AC
+        # The hit at 15 should have been auto-discarded
+        assert ac.min_hit is None
+        assert ac.max_miss == 20
         estimate = ac.get_ac_estimate()
-        assert estimate == "~15"  # Shows approximation
+        assert estimate == ">20"  # Only miss data remains
+
+    def test_flatfooted_scenario_full(self) -> None:
+        """Test complete flat-footed scenario: low hits discarded, true AC found."""
+        ac = EnemyAC(name="Boss")
+
+        # Target is flat-footed initially, player gets some easy hits
+        ac.record_hit(35)  # Hit flat-footed AC
+        ac.record_hit(38)  # Hit flat-footed AC
+        assert ac.min_hit == 35
+
+        # Target recovers, player misses at higher totals
+        ac.record_miss(42)  # Miss at true AC
+
+        # Flat-footed hits should be discarded
+        assert ac.min_hit is None  # All hits were <= 42, so discarded
+        assert ac.max_miss == 42
+
+        # Player finally hits the true AC
+        ac.record_hit(50)
+        assert ac.min_hit == 50
+
+        # AC estimate should now be accurate
+        estimate = ac.get_ac_estimate()
+        assert estimate == "43-50"
+
+    def test_mixed_valid_and_invalid_hits(self) -> None:
+        """Test that only invalid hits are discarded, valid ones remain."""
+        ac = EnemyAC(name="TestEnemy")
+
+        # Some hits at various totals
+        ac.record_hit(25)  # Will be invalidated
+        ac.record_hit(30)  # Will be invalidated
+        ac.record_hit(45)  # Will remain valid
+        ac.record_hit(50)  # Will remain valid
+
+        # Miss that invalidates some hits
+        ac.record_miss(35)
+
+        # Only hits > 35 should remain
+        assert ac.min_hit == 45
+        assert ac.max_miss == 35
+        estimate = ac.get_ac_estimate()
+        assert estimate == "36-45"
+
+    def test_record_hit_rejects_already_invalidated(self) -> None:
+        """Test that new hits below max_miss are rejected."""
+        ac = EnemyAC(name="TestEnemy")
+
+        ac.record_miss(30)  # Establish max_miss
+        ac.record_hit(25)   # This hit is <= max_miss, should be rejected
+
+        assert ac.min_hit is None  # Hit was rejected
+        assert ac.max_miss == 30
+
+        ac.record_hit(35)   # This hit is > max_miss, should be accepted
+        assert ac.min_hit == 35
+
+    def test_multiple_cleanup_rounds(self) -> None:
+        """Test that cleanup works correctly over multiple miss recordings."""
+        ac = EnemyAC(name="TestEnemy")
+
+        # First round of hits
+        ac.record_hit(20)
+        ac.record_hit(25)
+        ac.record_hit(30)
+        assert ac.min_hit == 20
+
+        # First cleanup - removes hits <= 22
+        ac.record_miss(22)
+        assert ac.min_hit == 25  # 20 removed
+
+        # Second cleanup - removes hits <= 28
+        ac.record_miss(28)
+        assert ac.min_hit == 30  # 25 removed
+
+        # Third cleanup - removes all remaining hits
+        ac.record_miss(35)
+        assert ac.min_hit is None  # 30 removed
+
+    def test_hits_property_returns_minimum(self) -> None:
+        """Test that min_hit property correctly returns minimum of hits list."""
+        ac = EnemyAC(name="TestEnemy")
+
+        ac.record_hit(50)
+        ac.record_hit(40)
+        ac.record_hit(60)
+
+        assert ac.min_hit == 40  # Should be minimum
 
 
 class TestTargetAttackBonus:
@@ -181,15 +288,18 @@ class TestTargetAttackBonus:
         tab.record_bonus(10)
         assert tab.max_bonus == 10
 
-    def test_record_bonus_keeps_maximum(self) -> None:
-        """Test record_bonus keeps the maximum value."""
+    def test_record_bonus_tracks_most_frequent(self) -> None:
+        """Test record_bonus tracks the most frequent value."""
         tab = TargetAttackBonus(name="TestEnemy")
         tab.record_bonus(10)
-        tab.record_bonus(15)  # Higher
+        assert tab.max_bonus == 10
+
+        tab.record_bonus(15)  # Different value, each has count of 1
+        # With tie, prefer higher value
         assert tab.max_bonus == 15
 
-        tab.record_bonus(8)  # Lower
-        assert tab.max_bonus == 15  # Should not change
+        tab.record_bonus(10)  # Now 10 appears twice, 15 appears once
+        assert tab.max_bonus == 10  # Should switch to most frequent
 
     def test_record_negative_bonus(self) -> None:
         """Test recording negative attack bonus."""
@@ -208,7 +318,7 @@ class TestTargetAttackBonus:
         tab = TargetAttackBonus(name="TestEnemy")
         tab.record_bonus(10)
         display = tab.get_bonus_display()
-        assert display == "+10"
+        assert display == "10"
 
     def test_get_bonus_display_negative(self) -> None:
         """Test display with negative bonus."""
@@ -222,7 +332,96 @@ class TestTargetAttackBonus:
         tab = TargetAttackBonus(name="TestEnemy")
         tab.record_bonus(0)
         display = tab.get_bonus_display()
-        assert display == "+0"
+        assert display == "0"
+
+    def test_most_frequent_with_temporary_buffs(self) -> None:
+        """Test that temporary high AB buffs don't override most common value."""
+        tab = TargetAttackBonus(name="HYDROXYS")
+
+        # Simulate HYDROXYS scenario: mostly +91, with occasional +96/+97 buffs
+        # Add many attacks at +91 (normal state)
+        for _ in range(20):
+            tab.record_bonus(91)
+
+        # Add a few attacks with temporary buffs
+        tab.record_bonus(96)
+        tab.record_bonus(97)
+        tab.record_bonus(96)
+
+        # Should show 91 as it's the most frequent
+        assert tab.max_bonus == 91
+        assert tab.get_bonus_display() == "91"
+
+    def test_most_frequent_with_tie_prefers_higher(self) -> None:
+        """Test that ties in frequency prefer the higher bonus value."""
+        tab = TargetAttackBonus(name="TestEnemy")
+
+        # Two values with equal frequency
+        tab.record_bonus(10)
+        tab.record_bonus(15)
+
+        # Should prefer higher value (15) in tie
+        assert tab.max_bonus == 15
+
+    def test_most_frequent_updates_dynamically(self) -> None:
+        """Test that most frequent value updates as more data comes in."""
+        tab = TargetAttackBonus(name="TestEnemy")
+
+        # Start with +20 being most common
+        tab.record_bonus(20)
+        tab.record_bonus(20)
+        tab.record_bonus(25)
+        assert tab.max_bonus == 20
+
+        # Now +25 becomes more common
+        tab.record_bonus(25)
+        tab.record_bonus(25)
+        assert tab.max_bonus == 25
+
+        # Back to +20 being most common
+        tab.record_bonus(20)
+        tab.record_bonus(20)
+        assert tab.max_bonus == 20
+
+    def test_most_frequent_with_debuffs(self) -> None:
+        """Test handling of temporary debuffs (lower AB values)."""
+        tab = TargetAttackBonus(name="DebuffedEnemy")
+
+        # Normal AB is +15
+        for _ in range(10):
+            tab.record_bonus(15)
+
+        # Temporarily debuffed to +10
+        tab.record_bonus(10)
+        tab.record_bonus(10)
+
+        # Should still show +15 as most common
+        assert tab.max_bonus == 15
+
+    def test_most_frequent_single_value(self) -> None:
+        """Test with only one unique value recorded."""
+        tab = TargetAttackBonus(name="ConsistentEnemy")
+
+        # All attacks at same bonus
+        for _ in range(5):
+            tab.record_bonus(12)
+
+        assert tab.max_bonus == 12
+
+    def test_most_frequent_with_multiple_ties(self) -> None:
+        """Test with multiple values having same frequency."""
+        tab = TargetAttackBonus(name="TestEnemy")
+
+        # Three values, each appearing twice
+        tab.record_bonus(10)
+        tab.record_bonus(10)
+        tab.record_bonus(15)
+        tab.record_bonus(15)
+        tab.record_bonus(20)
+        tab.record_bonus(20)
+
+        # Should prefer highest (20) when all tied
+        assert tab.max_bonus == 20
 
 
 class TestDamageEvent:

@@ -1,5 +1,34 @@
 # Changelog
 
+
+## [1.0.X] - 2026-01-XX
+
+### Added
+- ...
+
+### Changed
+- **Attack Bonus Tracking** - Now tracks the most common AB value (mode) instead of maximum to better represent typical attack bonus
+  - Filters out temporary buffs/debuffs that previously skewed the max AB value
+  - Example: Enemy with mostly +71 AB and occasional +77 buff now correctly shows +71
+  - In case of tie frequency, prefers the higher bonus value
+
+### Fixed
+- **AC Estimation** - Natural 20 hits are now properly excluded from AC estimation (like natural 1 misses)
+  - Previously, a natural 20 hit could incorrectly lower the estimated minimum AC
+  - This reduces the occurrence of "~" (approximation) symbol in AC estimates
+- **AC Estimation** - Hits against flat-footed targets are now automatically discarded
+  - Tracks all hit totals (AB+d20 roll) instead of just the minimum
+  - When a miss total exceeds recorded hits, those hits are discarded as invalid
+  - This correctly handles temporary AC debuffs (flat-footed, blinded, etc.)
+  - Example: If target was flat-footed (hit at 35), then recovered (miss at 42), the hit at 35 is discarded
+  - Further reduces "~" approximation occurrences and shows true AC estimates
+- **AC Estimation** - Attacks miss due to concealment are now excluded from AC estimation
+  - Attacks that miss due to concealment (displacement, improved invisibility, etc.) don't reveal AC information
+  - These misses had incorrect high totals that would have hit if not for concealment
+  - Excluding them provides much more accurate AC estimates
+  - Added 5 comprehensive tests to prevent regression
+
+
 ## [1.0.3] - 2026-01-13
 
 ### Changed

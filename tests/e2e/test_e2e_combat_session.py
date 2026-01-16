@@ -104,7 +104,7 @@ class TestCompleteCombatSession:
         # 6. Attack Bonus Tracking
         assert 'Goblin Chief' in parser.target_attack_bonus
         ab_display = parser.target_attack_bonus['Goblin Chief'].get_bonus_display()
-        assert ab_display == "+12"
+        assert ab_display == "12"
 
         # 7. Saves Tracking
         assert 'Goblin Chief' in parser.target_saves
@@ -140,7 +140,7 @@ class TestCompleteCombatSession:
         goblin_summary = next((s for s in summary if s['target'] == 'Goblin Chief'), None)
 
         assert goblin_summary is not None
-        assert goblin_summary['ab'] == '+12'
+        assert goblin_summary['ab'] == '12'
         assert goblin_summary['fortitude'] == '5'
 
     def test_multi_target_combat(self, temp_log_dir: Path) -> None:

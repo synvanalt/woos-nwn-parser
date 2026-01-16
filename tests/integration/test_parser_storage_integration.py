@@ -231,7 +231,7 @@ class TestParserStorageIntegration:
 
         goblin_summary = next((s for s in summary if s['target'] == 'Goblin'), None)
         assert goblin_summary is not None
-        assert goblin_summary['ab'] == '+8'  # Attack bonus
+        assert goblin_summary['ab'] == '8'  # Attack bonus
         assert goblin_summary['ac'] == '16-21'  # AC estimate
         assert goblin_summary['fortitude'] == '5'
 

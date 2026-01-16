@@ -237,6 +237,17 @@ class TestAttackParsing:
         assert result['type'] == 'attack_miss'
         assert result['was_nat1'] is True
 
+    def test_parse_attack_natural_20(self, parser: LogParser) -> None:
+        """Test parsing natural 20 hit."""
+        line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo attacks Goblin: *hit*: (20 + 5 = 25)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result['type'] == 'attack_hit'
+        # Natural 20 should not be recorded in AC estimation
+        assert 'Goblin' in parser.target_ac
+        assert parser.target_ac['Goblin'].min_hit is None  # Should be excluded
+
     def test_parse_attack_tracks_ac(self, parser: LogParser) -> None:
         """Test that parsing attacks updates AC tracking."""
         hit_line = "Woo attacks Goblin: *hit*: (16 + 5 = 21)"
@@ -257,6 +268,117 @@ class TestAttackParsing:
 
         assert 'Goblin' in parser.target_attack_bonus
         assert parser.target_attack_bonus['Goblin'].max_bonus == 8
+
+    def test_parse_concealment_miss_excluded_from_ac(self, parser: LogParser) -> None:
+        """Test that concealment misses are excluded from AC estimation.
+
+        When an attack misses due to concealment (displacement, invisibility, etc.),
+        the attack roll total doesn't reveal information about the target's AC.
+        These should be completely excluded from AC tracking.
+        """
+        # First, record a normal hit to establish baseline
+        hit_line = "Orc attacks Hero: *hit*: (10 + 30 = 40)"
+        parser.parse_line(hit_line)
+
+        assert 'Hero' in parser.target_ac
+        assert parser.target_ac['Hero'].min_hit == 40
+        assert parser.target_ac['Hero'].max_miss is None
+
+        # Now a concealment miss with a high total
+        concealment_line = "Orc attacks Hero: *attacker miss chance: 50%*: (19 + 60 = 79)"
+        parser.parse_line(concealment_line)
+
+        # Concealment miss should NOT be recorded as max_miss
+        assert parser.target_ac['Hero'].max_miss is None
+        # The hit should still be there
+        assert parser.target_ac['Hero'].min_hit == 40
+
+        # AC estimate should be based only on the hit, not the concealment miss
+        estimate = parser.target_ac['Hero'].get_ac_estimate()
+        assert estimate == "≤40"
+
+    def test_parse_concealment_miss_does_not_initialize_target(self, parser: LogParser) -> None:
+        """Test that concealment-only attacks don't create AC entries.
+
+        If we only see concealment misses for a target (no real hits/misses),
+        we shouldn't create an AC entry since we have no AC information.
+        """
+        line = "Dragon attacks Mage: *attacker miss chance: 50%*: (15 + 70 = 85)"
+        parser.parse_line(line)
+
+        # Should not create target_ac entry for concealment-only attacks
+        assert 'Mage' not in parser.target_ac
+
+    def test_parse_concealment_with_regular_misses(self, parser: LogParser) -> None:
+        """Test that concealment misses don't interfere with regular AC estimation.
+
+        Scenario: Enemy has displacement. Some attacks miss normally (too low roll),
+        others miss due to concealment (high roll but concealment triggers).
+        Only the normal misses should affect AC estimation.
+        """
+        # Regular miss - should be recorded
+        parser.parse_line("Warrior attacks DisplacedBoss: *miss*: (8 + 30 = 38)")
+
+        assert 'DisplacedBoss' in parser.target_ac
+        assert parser.target_ac['DisplacedBoss'].max_miss == 38
+
+        # Concealment miss - should be ignored
+        parser.parse_line("Warrior attacks DisplacedBoss: *attacker miss chance: 50%*: (18 + 30 = 48)")
+
+        # max_miss should still be 38, not 48
+        assert parser.target_ac['DisplacedBoss'].max_miss == 38
+
+        # Regular hit
+        parser.parse_line("Warrior attacks DisplacedBoss: *hit*: (15 + 30 = 45)")
+
+        # AC should be estimated as 39-45, not affected by concealment miss at 48
+        assert parser.target_ac['DisplacedBoss'].min_hit == 45
+        estimate = parser.target_ac['DisplacedBoss'].get_ac_estimate()
+        assert estimate == "39-45"
+
+    def test_parse_concealment_percentage_variations(self, parser: LogParser) -> None:
+        """Test parsing concealment misses with different percentages."""
+        parser.parse_line("Rogue attacks Target: *hit*: (10 + 40 = 50)")
+
+        # Test various concealment percentages
+        parser.parse_line("Rogue attacks Target: *attacker miss chance: 20%*: (15 + 40 = 55)")
+        parser.parse_line("Rogue attacks Target: *attacker miss chance: 50%*: (18 + 40 = 58)")
+        parser.parse_line("Rogue attacks Target: *attacker miss chance: 100%*: (19 + 40 = 59)")
+
+        # None of these should affect AC estimation
+        assert parser.target_ac['Target'].max_miss is None
+        assert parser.target_ac['Target'].min_hit == 50
+        assert parser.target_ac['Target'].get_ac_estimate() == "≤50"
+
+    def test_parse_concealment_real_world_scenario(self, parser: LogParser) -> None:
+        """Test real-world scenario from user's logs.
+
+        This reproduces the bug where Woo Wildrock's AC was incorrectly estimated
+        as 97 due to concealment misses being treated as regular misses.
+        """
+        # Some regular hits when AC is normal
+        parser.parse_line("Enemy attacks WooWildrock: *hit*: (10 + 50 = 60)")
+        parser.parse_line("Enemy attacks WooWildrock: *hit*: (12 + 45 = 57)")
+
+        # Regular miss establishes max_miss
+        parser.parse_line("Enemy attacks WooWildrock: *miss*: (2 + 53 = 55)")
+
+        assert parser.target_ac['WooWildrock'].min_hit == 57
+        assert parser.target_ac['WooWildrock'].max_miss == 55
+
+        # Concealment misses with high totals (from displacement/invisibility)
+        parser.parse_line("Enemy attacks WooWildrock: *attacker miss chance: 50%*: (19 + 60 = 79)")
+        parser.parse_line("Enemy attacks WooWildrock: *attacker miss chance: 50%*: (18 + 56 = 74)")
+
+        # AC should be 56 (based on hit at 57, miss at 55), NOT 79!
+        assert parser.target_ac['WooWildrock'].max_miss == 55  # Not 79!
+
+        # Hit at 56 should survive (not filtered by concealment miss)
+        parser.parse_line("Enemy attacks WooWildrock: *hit*: (11 + 45 = 56)")
+
+        # AC estimate should be exact: 56 (miss at 55, hit at 56)
+        estimate = parser.target_ac['WooWildrock'].get_ac_estimate()
+        assert estimate == "56"
 
 
 class TestAttackPrefixCombinations:

@@ -119,8 +119,10 @@ def test_target_stats_panel_selection_preservation(tk_root, notebook) -> None:
 
     # Add some test data - properly create EnemyAC and TargetAttackBonus objects
     # TargetStatsPanel shows stats about targets that were ATTACKED (not attackers)
-    ac1 = EnemyAC(name="Monster1", min_hit=20)
-    ac2 = EnemyAC(name="Monster2", min_hit=25)
+    ac1 = EnemyAC(name="Monster1")
+    ac1.record_hit(20)
+    ac2 = EnemyAC(name="Monster2")
+    ac2.record_hit(25)
     parser.target_ac["Monster1"] = ac1
     parser.target_ac["Monster2"] = ac2
 
@@ -261,7 +263,8 @@ def test_multiple_selection_preservation(tk_root, notebook) -> None:
     # Add test data for multiple targets - Hero attacking multiple Monsters
     for i in range(1, 4):
         target = f"Monster{i}"
-        ac = EnemyAC(name=target, min_hit=20 + i)
+        ac = EnemyAC(name=target)
+        ac.record_hit(20 + i)
         parser.target_ac[target] = ac
         bonus = TargetAttackBonus(name=target, max_bonus=15 + i)
         parser.target_attack_bonus[target] = bonus

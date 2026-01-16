@@ -248,25 +248,30 @@ class LogParser:
             total_str = attack_match.group('total')
 
             # Handle outcomes including special miss chance
-            is_hit = 'hit' in outcome and 'miss' not in outcome and 'attacker miss chance' not in outcome
+            # outcome can only be: hit, critical hit, miss, parried, resisted, or attacker miss chance
+            is_hit = 'hit' in outcome
             is_crit = 'critical' in outcome
-            is_miss = 'miss' in outcome or 'parried' in outcome or 'resisted' in outcome or 'attacker miss chance' in outcome
+            is_miss = 'miss' in outcome or 'parried' in outcome or 'resisted' in outcome
+            is_concealment = 'attacker miss chance' in outcome
 
             if roll_str and total_str:
                 roll = int(roll_str)
                 total = int(total_str)
                 was_nat1 = roll == 1
+                was_nat20 = roll == 20
                 bonus_str = attack_match.group('bonus')
                 bonus = int(bonus_str) if bonus_str else None
 
                 # Track AC for all attacks against targets (for AC estimation)
+                # EXCEPT concealment misses which don't reveal AC information
                 # Initialize target tracking if needed
-                if target not in self.target_ac:
+                if target not in self.target_ac and not is_concealment:
                     self.target_ac[target] = EnemyAC(name=target)
 
                 if is_hit:
-                    self.target_ac[target].record_hit(total)
-                elif is_miss:
+                    self.target_ac[target].record_hit(total, was_nat20)
+                elif is_miss and not is_concealment:
+                    # Exclude concealment misses from AC estimation
                     self.target_ac[target].record_miss(total, was_nat1)
 
                 # Track attack bonus for the ATTACKER (when they attack others)
