@@ -142,14 +142,23 @@ class PastLogsParserService:
                         max_line = monitoring_start_position[log_file.name]
                         on_log(f"  → Parsing past logs up to line {max_line}", "debug")
 
-                    # Create progress callback that calls the on_progress callback and yields
+                    # Create progress callback with adaptive throttling
+                    # For large files, update UI even less frequently to maximize speed
+                    chunk_count = [0]  # Use list to allow modification in nested function
+
                     def progress_callback(lines_count: int) -> None:
-                        """Called after each chunk - yields control and triggers UI update."""
-                        # Yield control to allow UI thread to process events
-                        time.sleep(0.001)
-                        # Trigger UI update if callback provided
-                        if on_progress:
-                            on_progress()
+                        """Called after each chunk - yields control periodically and triggers UI update."""
+                        chunk_count[0] += 1
+
+                        # Adaptive throttling: Update UI less frequently for better performance
+                        # Every 10 chunks = every 50,000 lines with 5000-line chunks
+                        # This provides good balance between speed and responsiveness
+                        if chunk_count[0] % 10 == 0:
+                            # Very brief yield to allow UI thread to process events
+                            time.sleep(0.0001)  # 0.1ms - minimal but effective
+                            # Trigger UI update if callback provided
+                            if on_progress:
+                                on_progress()
 
                     result = parse_and_import_file(
                         str(log_file),
@@ -201,8 +210,11 @@ class PastLogsParserService:
 
         This allows us to restore the session-only view when the user
         toggles off "Include Past Logs".
+
+        Note: We deep copy here so restoration is fast (just assignment).
         """
         with self.data_store.lock:
+            # Deep copy only once during save (not during restore)
             self.session_only_state = {
                 'events': copy.deepcopy(self.data_store.events),
                 'attacks': copy.deepcopy(self.data_store.attacks),
@@ -215,19 +227,24 @@ class PastLogsParserService:
             }
 
     def restore_session_state(self) -> None:
-        """Restore the session-only state (exclude past logs from view)."""
+        """Restore the session-only state (exclude past logs from view).
+
+        Fast operation - just reassigns the saved deep copies.
+        """
         if self.session_only_state is None:
             return
 
         with self.data_store.lock:
-            self.data_store.events = copy.deepcopy(self.session_only_state['events'])
-            self.data_store.attacks = copy.deepcopy(self.session_only_state['attacks'])
-            self.data_store.dps_data = copy.deepcopy(self.session_only_state['dps_data'])
+            # Direct assignment - no need to deep copy again
+            # The session_only_state already contains deep copies
+            self.data_store.events = self.session_only_state['events']
+            self.data_store.attacks = self.session_only_state['attacks']
+            self.data_store.dps_data = self.session_only_state['dps_data']
             self.data_store.last_damage_timestamp = self.session_only_state['last_damage_timestamp']
-            self.data_store.immunity_data = copy.deepcopy(self.session_only_state['immunity_data'])
-            self.parser.target_ac = copy.deepcopy(self.session_only_state['target_ac'])
-            self.parser.target_saves = copy.deepcopy(self.session_only_state['target_saves'])
-            self.parser.target_attack_bonus = copy.deepcopy(self.session_only_state['target_attack_bonus'])
+            self.data_store.immunity_data = self.session_only_state['immunity_data']
+            self.parser.target_ac = self.session_only_state['target_ac']
+            self.parser.target_saves = self.session_only_state['target_saves']
+            self.parser.target_attack_bonus = self.session_only_state['target_attack_bonus']
 
         self.past_logs_included = False
 

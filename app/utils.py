@@ -158,9 +158,9 @@ def parse_and_import_file(file_path: str, parser, database, max_line: Optional[i
         # Track the last damage_dealt for each target to match immunities
         last_damage_dealt = {}
 
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore', buffering=65536) as f:  # 64KB buffer
             while True:
-                lines = f.readlines(5000)  # Read in smaller chunks (100 lines instead of 10000)
+                lines = f.readlines(5000)  # Read 5000 lines per chunk
                 if not lines:
                     break
 

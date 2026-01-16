@@ -50,6 +50,7 @@ class WoosNwnParserApp:
         self.polling_job = None
         self.dps_refresh_job = None
         self.parse_refresh_job = None
+        self.parse_ui_update_pending = False  # Throttle UI updates during parsing
 
         # Debug mode
         self.debug_mode = False
@@ -229,9 +230,12 @@ class WoosNwnParserApp:
             self.root.after(0, self._on_parsing_complete)
 
         def on_progress() -> None:
-            """Called periodically during parsing - schedule UI update on main thread."""
-            # This is called from background thread, so we must schedule on main thread
-            self.root.after(0, self._refresh_parsing_ui_immediate)
+            """Called periodically during parsing - schedule UI update on main thread with throttling."""
+            # Only schedule update if no update is already pending
+            # This prevents flooding the event queue with hundreds of updates
+            if not self.parse_ui_update_pending:
+                self.parse_ui_update_pending = True
+                self.root.after(0, self._refresh_parsing_ui_immediate)
 
         self.past_logs_service.start_parsing(
             self.log_directory,
@@ -273,11 +277,15 @@ class WoosNwnParserApp:
     def _refresh_parsing_ui_immediate(self) -> None:
         """Immediately refresh UI during background parsing (called from progress callback)."""
         if not self.past_logs_service.is_parsing_active():
+            self.parse_ui_update_pending = False
             return
 
         # Refresh all UI elements with current data
         self.refresh_targets()
         self.dps_panel.refresh()
+
+        # Reset flag to allow next update
+        self.parse_ui_update_pending = False
 
 
     def _on_parsing_complete(self) -> None:
