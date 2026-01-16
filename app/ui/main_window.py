@@ -14,8 +14,7 @@ from tkinter import ttk, filedialog, messagebox, font
 from ..parser import LogParser
 from ..storage import DataStore
 from ..monitor import LogDirectoryMonitor
-from ..utils import parse_and_import_file
-from ..services import QueueProcessor, DPSCalculationService
+from ..services import QueueProcessor, DPSCalculationService, PastLogsParserService
 from .formatters import get_default_log_directory
 from .widgets import DPSPanel, TargetStatsPanel, ImmunityPanel, DebugConsolePanel
 
@@ -39,6 +38,7 @@ class WoosNwnParserApp:
         self.data_store = DataStore()
         self.queue_processor = QueueProcessor(self.data_store, self.parser)
         self.dps_service = DPSCalculationService(self.data_store)
+        self.past_logs_service = PastLogsParserService(self.data_store, self.parser)
 
         # Queue and monitoring
         self.data_queue = queue.Queue()
@@ -49,6 +49,7 @@ class WoosNwnParserApp:
         # Polling and refresh jobs
         self.polling_job = None
         self.dps_refresh_job = None
+        self.parse_refresh_job = None
 
         # Debug mode
         self.debug_mode = False
@@ -97,7 +98,17 @@ class WoosNwnParserApp:
         self.pause_btn.pack(side="left", padx=5)
 
         ttk.Button(buttons_frame, text="Reset Data", command=self.reset_data).pack(side="left", padx=5)
-        # ttk.Button(buttons_frame, text="Load & Parse Logs", command=self.load_and_parse_directory).pack(side="left", padx=5)
+
+        # Include Past Logs checkbutton (Switch style)
+        self.parse_past_logs_var = tk.BooleanVar(value=False)
+        self.parse_past_logs_check = ttk.Checkbutton(
+            buttons_frame,
+            text="Include Past Logs",
+            variable=self.parse_past_logs_var,
+            command=self.toggle_parse_past_logs,
+            style="Switch.TCheckbutton",
+        )
+        self.parse_past_logs_check.pack(side="left", padx=5)
 
         # Status indicator
         self.status_label = ttk.Label(buttons_frame, text="● Paused", foreground="red")
@@ -170,61 +181,123 @@ class WoosNwnParserApp:
             if not self.is_monitoring:
                 self.start_btn.config(state=tk.NORMAL)
 
-    def load_and_parse_directory(self) -> None:
-        """Load and parse all log files in the directory."""
+    def toggle_parse_past_logs(self) -> None:
+        """Toggle background parsing of past log files."""
+        if self.parse_past_logs_var.get():
+            # User turned ON - Start parsing past logs
+            self.start_background_parsing()
+        else:
+            # User turned OFF - Restore session-only view
+            if self.past_logs_service.is_past_logs_included():
+                self.restore_session_only_view()
+
+    def start_background_parsing(self) -> None:
+        """Start parsing past logs in a background thread."""
         if not self.log_directory:
             messagebox.showwarning("No Directory", "Please select a log directory first.")
+            self.parse_past_logs_var.set(False)
+            return
+
+        if self.past_logs_service.is_parsing_active():
             return
 
         # Enable debug mode temporarily to show progress
         was_debug_enabled = self.debug_mode
         self.debug_mode = True
 
-        self.log_debug(f"Loading and parsing all files from: {self.log_directory}")
+        self.log_debug(f"Starting background parsing of past logs from: {self.log_directory}")
 
-        # Disable UI controls during load
-        self.start_btn.config(state=tk.DISABLED)
-        self.pause_btn.config(state=tk.DISABLED)
+        # Get monitoring start positions if monitoring is active
+        monitoring_start_positions = None
+        if self.is_monitoring and self.directory_monitor:
+            monitoring_start_positions = self.directory_monitor.get_monitoring_start_positions()
+            self.log_debug(f"Monitoring start positions: {monitoring_start_positions}")
 
-        try:
-            # Clear all existing data once before processing files
-            self.data_store.clear_all_data()
-            self.parser.target_ac.clear()
-            self.parser.target_saves.clear()
-            self.parser.target_attack_bonus.clear()
+        # Don't disable buttons - allow user to continue using the app while parsing
+        self.parse_past_logs_check.config(state=tk.DISABLED)  # Disable toggle during parsing
 
-            # Parse all log files in the directory (in order: log1, log2, log3, log4)
-            log_dir = Path(self.log_directory)
-            log_files = sorted(log_dir.glob('nwclientLog[1-4].txt'))
+        # Start parsing via service
+        def on_log(message: str, msg_type: str) -> None:
+            """Forward log messages to debug console."""
+            self.log_debug(message, msg_type=msg_type)
 
-            if not log_files:
-                self.log_debug("No log files found in directory")
-            else:
-                total_lines = 0
-                for log_file in log_files:
-                    self.log_debug(f"Parsing: {log_file.name}")
-                    result = parse_and_import_file(str(log_file), self.parser, self.data_store)
-                    if result['success']:
-                        lines = result['lines_processed']
-                        total_lines += lines
-                        self.log_debug(f"  → {log_file.name}: {lines} lines")
-                    else:
-                        self.log_debug(f"  → Error: {result['error']}", msg_type='error')
-
-                self.log_debug(f"All files loaded and parsed successfully ({total_lines} total lines)")
-        finally:
+        def on_complete() -> None:
+            """Handle parsing completion."""
             # Restore debug mode
             self.debug_mode = was_debug_enabled
+            # Schedule UI update on main thread
+            self.root.after(0, self._on_parsing_complete)
 
-            # Re-enable UI controls
-            self.start_btn.config(state=tk.NORMAL)
-            self.pause_btn.config(state=tk.DISABLED)
+        def on_progress() -> None:
+            """Called periodically during parsing - schedule UI update on main thread."""
+            # This is called from background thread, so we must schedule on main thread
+            self.root.after(0, self._refresh_parsing_ui_immediate)
 
-            # Refresh all UI elements
-            self.refresh_targets()
+        self.past_logs_service.start_parsing(
+            self.log_directory,
+            on_log=on_log,
+            on_complete=on_complete,
+            on_progress=on_progress,
+            monitoring_start_position=monitoring_start_positions
+        )
 
-            # Refresh DPS display with loaded data
-            self.dps_panel.refresh()
+        # Start periodic UI refresh (every 500ms) as backup
+        self.parse_refresh_job = self.root.after(500, self._refresh_parsing_ui)
+
+    def restore_session_only_view(self) -> None:
+        """Restore the session-only data view (exclude past logs)."""
+        self.log_debug("Restoring session-only view...")
+
+        # Restore state via service
+        self.past_logs_service.restore_session_state()
+
+        # Refresh all UI elements
+        self.refresh_targets()
+        self.dps_panel.refresh()
+
+        self.log_debug("Session-only view restored")
+
+
+    def _refresh_parsing_ui(self) -> None:
+        """Periodically refresh UI during background parsing."""
+        if not self.past_logs_service.is_parsing_active():
+            return
+
+        # Refresh all UI elements with current data
+        self.refresh_targets()
+        self.dps_panel.refresh()
+
+        # Schedule next refresh
+        self.parse_refresh_job = self.root.after(500, self._refresh_parsing_ui)
+
+    def _refresh_parsing_ui_immediate(self) -> None:
+        """Immediately refresh UI during background parsing (called from progress callback)."""
+        if not self.past_logs_service.is_parsing_active():
+            return
+
+        # Refresh all UI elements with current data
+        self.refresh_targets()
+        self.dps_panel.refresh()
+
+
+    def _on_parsing_complete(self) -> None:
+        """Handle parsing completion in the main thread."""
+        # Cancel refresh job if still active
+        if self.parse_refresh_job:
+            self.root.after_cancel(self.parse_refresh_job)
+            self.parse_refresh_job = None
+
+        # Keep the switch ON - past logs are now included in the view
+        # Do NOT uncheck: self.parse_past_logs_var.set(False)
+
+        # Re-enable the checkbutton so user can toggle it
+        self.parse_past_logs_check.config(state=tk.NORMAL)
+
+        # Final refresh of all UI elements
+        self.refresh_targets()
+        self.dps_panel.refresh()
+
+        self.log_debug("Past logs successfully included in view")
 
     def start_monitoring(self) -> None:
         """Start monitoring the log directory for new log files."""
@@ -291,7 +364,7 @@ class WoosNwnParserApp:
                 self.active_file_text.set(value="-")
 
     def reset_data(self) -> None:
-        """Clear all collected data."""
+        """Clear all collected data and reset monitoring start position."""
         # Cancel any pending refresh from Global mode
         if self.dps_refresh_job is not None:
             self.root.after_cancel(self.dps_refresh_job)
@@ -313,6 +386,18 @@ class WoosNwnParserApp:
 
         # Reset DPS service state
         self.dps_service.set_global_start_time(None)
+
+        # Update monitoring start position if monitoring is active
+        # This marks a new session start point for "Include Past Logs"
+        if self.is_monitoring and self.directory_monitor:
+            self.directory_monitor.update_monitoring_start_position()
+            self.log_debug("Monitoring start position updated after reset")
+
+        # Clear past logs service state (user wants fresh session)
+        self.past_logs_service.clear_state()
+        # Turn off "Include Past Logs" switch if it was on
+        if self.parse_past_logs_var.get():
+            self.parse_past_logs_var.set(False)
 
         self.refresh_targets()
 

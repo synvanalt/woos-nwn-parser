@@ -6,7 +6,7 @@ supporting automatic rotation between nwclientLog1.txt through nwclientLog4.txt.
 
 import queue
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 
 
 class LogDirectoryMonitor:
@@ -27,6 +27,7 @@ class LogDirectoryMonitor:
         self.current_log_file: Optional[Path] = None
         self.last_position = 0
         self.last_mtime = 0.0  # Track file modification time
+        self.monitoring_start_positions: Dict[str, int] = {}  # Track line number where monitoring started for each file
 
     def find_active_log_file(self) -> Optional[Path]:
         """Find the currently active log file based on most recent modification time.
@@ -61,12 +62,53 @@ class LogDirectoryMonitor:
         """Initialize file position for incremental reading.
 
         Finds the currently active log file and sets up position tracking.
+        Also records the starting line number for each log file to enable
+        parsing of past logs later.
         """
         self.current_log_file = self.get_active_log_file()
         if self.current_log_file and self.current_log_file.exists():
             file_stat = self.current_log_file.stat()
             self.last_position = file_stat.st_size
             self.last_mtime = file_stat.st_mtime
+
+            # Record starting line number for the current file
+            # Count lines up to current position
+            line_count = 0
+            with open(self.current_log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                while f.tell() < self.last_position:
+                    if f.readline():
+                        line_count += 1
+                    else:
+                        break
+
+            self.monitoring_start_positions[self.current_log_file.name] = line_count
+
+    def get_monitoring_start_positions(self) -> Dict[str, int]:
+        """Get the line numbers where monitoring started for each log file.
+
+        Returns:
+            Dict mapping log file names to starting line numbers
+        """
+        return self.monitoring_start_positions.copy()
+
+    def update_monitoring_start_position(self) -> None:
+        """Update the monitoring start position to the current position.
+
+        This should be called when user resets data to mark a new session
+        start point for "Include Past Logs" functionality.
+        """
+        if self.current_log_file and self.current_log_file.exists():
+            # Count lines up to current position
+            line_count = 0
+            with open(self.current_log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                while f.tell() < self.last_position:
+                    if f.readline():
+                        line_count += 1
+                    else:
+                        break
+
+            # Update the start position for current file
+            self.monitoring_start_positions[self.current_log_file.name] = line_count
 
     def read_new_lines(self, parser, data_queue: queue.Queue) -> None:
         """Read new lines from the current log file, handling rotation to new files.

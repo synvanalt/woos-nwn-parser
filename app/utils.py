@@ -132,7 +132,7 @@ def calculate_immunity_percentage(max_damage: int, max_absorbed: int) -> Optiona
     return pick_immunity(matches)
 
 
-def parse_and_import_file(file_path: str, parser, database) -> Dict:
+def parse_and_import_file(file_path: str, parser, database, max_line: Optional[int] = None, progress_callback=None, progress_interval: int = 100) -> Dict:
     """Parse a log file and import data into database.
 
     Does not depend on GUI components, making it testable without Tkinter.
@@ -145,6 +145,9 @@ def parse_and_import_file(file_path: str, parser, database) -> Dict:
         file_path: Path to the log file
         parser: LogParser instance
         database: DataStore instance
+        max_line: Optional maximum line number to parse (for parsing past logs only)
+        progress_callback: Optional callback function called periodically with lines_processed
+        progress_interval: How often to call progress_callback (every N lines)
 
     Returns:
         dict with keys: 'success' (bool), 'lines_processed' (int), 'error' (str or None)
@@ -157,11 +160,26 @@ def parse_and_import_file(file_path: str, parser, database) -> Dict:
 
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             while True:
-                lines = f.readlines(10000)  # Read in chunks
+                lines = f.readlines(5000)  # Read in smaller chunks (100 lines instead of 10000)
                 if not lines:
                     break
+
+                # Yield control after reading each chunk to keep UI responsive
+                if progress_callback:
+                    progress_callback(lines_processed)
+
                 for line in lines:
                     lines_processed += 1
+
+                    # Stop if we've reached the max_line (monitoring start position)
+                    if max_line is not None and lines_processed > max_line:
+                        return {
+                            'success': True,
+                            'lines_processed': lines_processed - 1,
+                            'error': None
+                        }
+
+
                     parsed_data = parser.parse_line(line)
                     if parsed_data:
                         if parsed_data['type'] == 'damage_dealt':
