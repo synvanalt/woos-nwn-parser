@@ -77,7 +77,7 @@ class WoosNwnParserApp:
         ttk.Label(file_frame, text="Log Directory:").pack(side="left", padx=5)
         self.dir_text = tk.StringVar(value="No directory selected")
         self.dir_label = ttk.Entry(file_frame, state="readonly", textvariable=self.dir_text, foreground="gray", width=40)
-        self.dir_label.pack(side="left", padx=2)
+        self.dir_label.pack(side="left", fill="x", expand=True, padx=(2, 2))
 
         ttk.Label(file_frame, text="File:").pack(side="left", padx=(10, 0))
         self.active_file_text = tk.StringVar(value="-")
@@ -97,7 +97,7 @@ class WoosNwnParserApp:
         self.pause_btn.pack(side="left", padx=5)
 
         ttk.Button(buttons_frame, text="Reset Data", command=self.reset_data).pack(side="left", padx=5)
-        ttk.Button(buttons_frame, text="Load & Parse Logs", command=self.load_and_parse_directory).pack(side="left", padx=5)
+        # ttk.Button(buttons_frame, text="Load & Parse Logs", command=self.load_and_parse_directory).pack(side="left", padx=5)
 
         # Status indicator
         self.status_label = ttk.Label(buttons_frame, text="● Paused", foreground="red")

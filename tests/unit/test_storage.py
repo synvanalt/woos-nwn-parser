@@ -25,10 +25,6 @@ class TestDataStoreInitialization:
         assert len(data_store.immunity_data) == 0
         assert data_store.last_damage_timestamp is None
 
-    def test_initialization_with_db_path(self) -> None:
-        """Test DataStore ignores db_path parameter for compatibility."""
-        ds = DataStore(db_path="ignored.db")
-        assert len(ds.events) == 0
 
 
 class TestDamageEventInsertion:

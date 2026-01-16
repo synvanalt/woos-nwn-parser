@@ -7,6 +7,7 @@
 - ...
 
 ### Changed
+- **Target Stats Panel** - Unknown AB and AC values now display as "-" instead of "?" for consistency
 - **Attack Bonus Tracking** - Now tracks the most common AB value (mode) instead of maximum to better represent typical attack bonus
   - Filters out temporary buffs/debuffs that previously skewed the max AB value
   - Example: Enemy with mostly +71 AB and occasional +77 buff now correctly shows +71
