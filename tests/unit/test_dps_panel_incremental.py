@@ -6,25 +6,37 @@ Tests the new incremental tree update logic that avoids full rebuilds.
 import pytest
 import tkinter as tk
 from tkinter import ttk
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 
 from app.ui.widgets.dps_panel import DPSPanel
 from app.storage import DataStore
 from app.services.dps_service import DPSCalculationService
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def root():
     """Create a Tk root for testing."""
     root = tk.Tk()
+    root.withdraw()  # Hide the window
     yield root
-    root.destroy()
+    try:
+        root.destroy()
+    except:
+        pass
 
 
 @pytest.fixture
 def notebook(root):
     """Create a notebook for the panel."""
-    return ttk.Notebook(root)
+    nb = ttk.Notebook(root)
+    yield nb
+    # Cleanup widgets after each test
+    try:
+        for child in nb.winfo_children():
+            child.destroy()
+        nb.destroy()
+    except:
+        pass
 
 
 @pytest.fixture
@@ -306,6 +318,7 @@ class TestRefreshSelectionPreservation:
         dps_panel.refresh()
 
         # Select item
+        selected_before = ()
         children = dps_panel.tree.get_children()
         if children:
             dps_panel.tree.selection_set(children[0])

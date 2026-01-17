@@ -8,6 +8,7 @@ from tkinter import ttk
 
 from ...storage import DataStore
 from ...parser import LogParser
+from .sorted_treeview import SortedTreeview
 
 
 class TargetStatsPanel(ttk.Frame):
@@ -46,7 +47,7 @@ class TargetStatsPanel(ttk.Frame):
 
         # Treeview for displaying all targets with AB, AC, and saves
         summary_columns = ("Target", "AB", "AC", "Fortitude", "Reflex", "Will")
-        self.tree = ttk.Treeview(
+        self.tree = SortedTreeview(
             self,
             columns=summary_columns,
             show="headings",
@@ -55,7 +56,6 @@ class TargetStatsPanel(ttk.Frame):
         )
 
         for col in summary_columns:
-            self.tree.heading(col, text=col)
             if col == "Target":
                 self.tree.column(col, width=275)
             else:
@@ -63,6 +63,9 @@ class TargetStatsPanel(ttk.Frame):
 
         self.tree.pack(fill="both", expand=True)
         summary_scrollbar.config(command=self.tree.yview)
+
+        # Set default sort by Target name ascending
+        self.tree.set_default_sort("Target", reverse=False)
 
     def refresh(self) -> None:
         """Refresh the target stats display with current data."""
@@ -105,3 +108,9 @@ class TargetStatsPanel(ttk.Frame):
         if items_to_select:
             self.tree.selection_set(items_to_select)
 
+        # Apply sort only if needed:
+        # - If user has never sorted, apply default sort
+        # - If user has sorted, maintain their sort preference
+        # This is efficient: only sorts when structure changes, not on every update
+        if self.tree._last_sorted_col:
+            self.tree.apply_current_sort()

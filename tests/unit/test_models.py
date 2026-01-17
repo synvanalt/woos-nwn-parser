@@ -167,7 +167,7 @@ class TestEnemyAC:
         """Test AC estimation with no data."""
         ac = EnemyAC(name="TestEnemy")
         estimate = ac.get_ac_estimate()
-        assert estimate == "?"
+        assert estimate == "-"
 
     def test_get_ac_estimate_conflicting_data_auto_cleanup(self) -> None:
         """Test that hits are auto-discarded when a higher miss is recorded.
@@ -311,7 +311,7 @@ class TestTargetAttackBonus:
         """Test display with no data."""
         tab = TargetAttackBonus(name="TestEnemy")
         display = tab.get_bonus_display()
-        assert display == "?"
+        assert display == "-"
 
     def test_get_bonus_display_positive(self) -> None:
         """Test display with positive bonus."""

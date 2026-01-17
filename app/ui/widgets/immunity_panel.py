@@ -13,6 +13,7 @@ from ...storage import DataStore
 from ...parser import LogParser
 from ...utils import calculate_immunity_percentage
 from ..formatters import damage_type_to_color, apply_tag_to_tree
+from .sorted_treeview import SortedTreeview
 
 
 class ImmunityPanel(ttk.Frame):
@@ -86,12 +87,11 @@ class ImmunityPanel(ttk.Frame):
 
         # Treeview for displaying damage type breakdown
         columns = ("Damage Type", "Max Damage", "Absorbed", "Immunity %", "Samples")
-        self.tree = ttk.Treeview(
+        self.tree = SortedTreeview(
             self, columns=columns, show="headings", yscrollcommand=scrollbar.set
         )
 
         for col in columns:
-            self.tree.heading(col, text=col)
             if col == "Damage Type":
                 self.tree.column(col, width=140)
             elif col == "Max Damage":
@@ -105,6 +105,9 @@ class ImmunityPanel(ttk.Frame):
 
         self.tree.pack(fill="both", expand=True)
         scrollbar.config(command=self.tree.yview)
+
+        # Set default sort by Damage Type name ascending
+        self.tree.set_default_sort("Damage Type", reverse=False)
 
     def refresh_target_details(self, target: str) -> None:
         """Display detailed resist data for selected target.
@@ -213,6 +216,13 @@ class ImmunityPanel(ttk.Frame):
         # Restore selection
         if items_to_select:
             self.tree.selection_set(items_to_select)
+
+        # Apply sort only if needed:
+        # - If user has never sorted, apply default sort
+        # - If user has sorted, maintain their sort preference
+        # This is efficient: only sorts when structure changes, not on every update
+        if self.tree._last_sorted_col:
+            self.tree.apply_current_sort()
 
     def update_target_list(self, targets: list) -> None:
         """Update the target selector combobox.

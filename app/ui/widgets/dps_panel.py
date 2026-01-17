@@ -10,6 +10,7 @@ from tkinter import ttk
 from ...storage import DataStore
 from ...services import DPSCalculationService
 from ..formatters import damage_type_to_color, apply_tag_to_tree, format_time
+from .sorted_treeview import SortedTreeview
 
 
 class DPSPanel(ttk.Frame):
@@ -57,7 +58,7 @@ class DPSPanel(ttk.Frame):
         dps_scrollbar.pack(side="right", fill="y")
 
         dps_columns = ("Character", "DPS", "Total Damage", "Hit Rate", "Time")
-        self.tree = ttk.Treeview(
+        self.tree = SortedTreeview(
             dps_treeview_frame,
             columns=dps_columns,
             show="tree headings",
@@ -69,7 +70,6 @@ class DPSPanel(ttk.Frame):
         self.tree.heading("#0", text="")
 
         for col in dps_columns:
-            self.tree.heading(col, text=col)
             if col == "Character":
                 self.tree.column(col, width=150)
             elif col == "DPS":
@@ -80,6 +80,9 @@ class DPSPanel(ttk.Frame):
                 self.tree.column(col, width=100)
             else:  # Time
                 self.tree.column(col, width=100)
+
+        # Set default sort by DPS descending (matches storage default)
+        self.tree.set_default_sort("DPS", reverse=True)
 
         self.tree.pack(fill="both", expand=True)
         dps_scrollbar.config(command=self.tree.yview)
@@ -146,11 +149,25 @@ class DPSPanel(ttk.Frame):
             breakdown = self.dps_service.get_damage_type_breakdown(character, selected_target)
             new_breakdown[character] = [(d["damage_type"], d["total_damage"], d["dps"]) for d in breakdown]
 
-        # Check if we need a full rebuild (target changed, characters added/removed)
+        # Check if we need a full rebuild
         current_characters = set(self._cached_data.keys())
         new_characters = set(new_data.keys())
 
-        if current_characters != new_characters or not self._item_ids:
+        needs_full_refresh = (
+            current_characters != new_characters or  # Characters added/removed
+            not self._item_ids  # First refresh
+        )
+
+        # If user is using the default sort (DPS descending), check if order changed
+        if not needs_full_refresh and self.tree.get_children():
+            if self.tree._last_sorted_col == "DPS" and self.tree._sort_reverse:
+                # Quick O(n) check: compare tree order with dps_list order
+                # Only valid when sorted by DPS descending (default)
+                tree_order = [self.tree.item(item, "values")[0] for item in self.tree.get_children()]
+                dps_list_order = [item["character"] for item in dps_list]
+                needs_full_refresh = tree_order != dps_list_order
+
+        if needs_full_refresh:
             # Full rebuild needed
             self._full_refresh(dps_list, new_data, new_breakdown, selected_target)
         else:
@@ -335,6 +352,16 @@ class DPSPanel(ttk.Frame):
         # Update caches
         self._cached_data = new_data
         self._cached_breakdown = new_breakdown
+
+        # Reapply current sort if user has sorted by a column
+        # (maintains user's sort preference after data updates)
+        if self.tree._last_sorted_col and self.tree._last_sorted_col != "DPS":
+            # Only reapply if user sorted by something other than DPS
+            # (DPS is already sorted correctly from storage)
+            self.tree.apply_current_sort()
+        elif self.tree._last_sorted_col == "DPS" and not self.tree._sort_reverse:
+            # User sorted DPS ascending (non-default)
+            self.tree.apply_current_sort()
 
     def get_time_tracking_mode(self) -> str:
         """Get selected first timestamp mode.

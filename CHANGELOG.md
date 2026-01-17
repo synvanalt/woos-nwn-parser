@@ -1,13 +1,16 @@
 # Changelog
 
+
 ## [1.0.X] - 2026-01-XX
 
 ### Added
-- **Test Suite Enhancement** - Added 44 new tests covering all performance optimizations (355 total tests, up from 311)
-  - Storage indices and caches validation tests
-  - Batched event processing tests
-  - Incremental UI refresh tests
-  - Debug mode optimization tests
+- **Column Sorting** - All treeviews now support sortable columns via header clicks
+  - Click any column header to sort ascending/descending
+  - Visual indicators (↑ ascending, ↓ descending) show current sort state
+  - Intelligent type detection (numeric vs string) for optimal sorting
+  - Sort preferences persist during data updates
+  - Handles formatted numbers (percentages, commas, decimals)
+  - New `SortedTreeview` widget component (`app/ui/widgets/sorted_treeview.py`)
 
 ### Changed
 - **Target Stats Panel** - Unknown AB and AC values now display as "-" instead of "?" for consistency
@@ -24,6 +27,14 @@
   - **Models**: Added `__slots__` to dataclasses (20-30% memory reduction)
   - **Queue Processor**: Batched UI callbacks (O(n) → O(1) per poll cycle)
   - **DPS Panel**: Incremental tree refresh (30-50% faster UI updates)
+- **UI Panels** - All panels now use `SortedTreeview` instead of `ttk.Treeview`
+  - DPS Panel with hierarchical parent/child structure
+  - Target Stats Panel for target statistics
+  - Immunity Panel for damage type immunities
+- **Sort Persistence** - Optimized to only re-sort when necessary
+  - Skips sorting if user hasn't interacted with sort headers
+  - Applies sort only after structural changes (new items added/removed)
+  - Reduces unnecessary O(n log n) operations during rapid updates
 
 ### Fixed
 - **AC Estimation** - Natural 20 hits are now properly excluded from AC estimation (like natural 1 misses)
