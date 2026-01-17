@@ -11,17 +11,17 @@ from typing import Optional
 
 # Palette for damage type colors (case-insensitive substring matching)
 DAMAGE_TYPE_PALETTE = {
-    'physical':  '#D97706',  # rich orange
-    'fire':      '#DC2626',  # deep red
-    'cold':      '#0EA5E9',  # icy blue
-    'acid':      '#10B981',  # emerald green
-    'electrical':'#2563EB',  # electric blue
-    'sonic':     '#F59E0B',  # amber
-    'negative':  '#6B7280',  # dark gray
-    'positive':  '#D1D5DB',  # light gray
-    'pure':      '#E879F9',  # magenta
-    'magical':   '#8B5CF6',  # violet
-    'divine':    '#FACC15',  # golden yellow
+    'physical':     '#D45603',  # rich orange
+    'fire':         '#DF0303',  # deep red
+    'cold':         '#88DDDD',  # icy blue
+    'acid':         '#096F06',  # dark green
+    'electrical':   '#0559DC',  # electric blue
+    'sonic':        '#DC8401',  # amber
+    'negative':     '#7A797A',  # dark gray
+    'positive':     '#CFCED1',  # light gray
+    'pure':         '#CC159C',  # magenta
+    'magical':      '#B067DA',  # violet
+    'divine':       '#E1DE02',  # golden yellow
 }
 
 
