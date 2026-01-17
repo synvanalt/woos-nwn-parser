@@ -146,11 +146,24 @@ class DPSPanel(ttk.Frame):
             breakdown = self.dps_service.get_damage_type_breakdown(character, selected_target)
             new_breakdown[character] = [(d["damage_type"], d["total_damage"], d["dps"]) for d in breakdown]
 
-        # Check if we need a full rebuild (target changed, characters added/removed)
+        # Check if we need a full rebuild
         current_characters = set(self._cached_data.keys())
         new_characters = set(new_data.keys())
 
-        if current_characters != new_characters or not self._item_ids:
+        # Check if sort order has changed by comparing tree order with dps_list order
+        # Note: dps_list is already sorted by DPS descending from storage
+        needs_full_refresh = (
+            current_characters != new_characters or  # Characters added/removed
+            not self._item_ids  # First refresh
+        )
+
+        if not needs_full_refresh and self.tree.get_children():
+            # Quick O(n) check: compare tree order with dps_list order
+            tree_order = [self.tree.item(item, "values")[0] for item in self.tree.get_children()]
+            dps_list_order = [item["character"] for item in dps_list]
+            needs_full_refresh = tree_order != dps_list_order
+
+        if needs_full_refresh:
             # Full rebuild needed
             self._full_refresh(dps_list, new_data, new_breakdown, selected_target)
         else:
