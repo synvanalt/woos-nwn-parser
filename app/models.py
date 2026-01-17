@@ -120,7 +120,7 @@ class EnemyAC:
             return f"≤{min_hit}"
         elif self.max_miss is not None:
             return f">{self.max_miss}"
-        return "?"
+        return "-"
 
 
 @dataclass
@@ -152,11 +152,11 @@ class TargetAttackBonus:
         """Return the most common attack bonus found for this target.
 
         Returns:
-            String representation of attack bonus, e.g. "15" or "?"
+            String representation of attack bonus, e.g. "15" or "-"
         """
         if self.max_bonus is not None:
             return str(self.max_bonus)
-        return "?"
+        return "-"
 
 
 @dataclass(slots=True)
