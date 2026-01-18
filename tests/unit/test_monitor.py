@@ -139,7 +139,7 @@ class TestIncrementalReading:
         log1 = temp_log_dir / "nwclientLog1.txt"
         log1.write_text("Initial content\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         # Append new content
@@ -149,7 +149,7 @@ class TestIncrementalReading:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
         # Should queue debug messages about reading
         items = []
@@ -191,7 +191,7 @@ class TestFileRotation:
 
         log1.write_text("Log 1 content\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         assert monitor.current_log_file == log1
@@ -203,7 +203,7 @@ class TestFileRotation:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
         # Should detect rotation
         assert monitor.current_log_file == log2
@@ -252,7 +252,7 @@ class TestFileTruncation:
         log1 = temp_log_dir / "nwclientLog1.txt"
         log1.write_text("Initial content\n" * 10)
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         old_position = monitor.last_position
@@ -263,7 +263,7 @@ class TestFileTruncation:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
         # Position should be reset
         assert monitor.last_position < old_position
@@ -284,7 +284,7 @@ class TestFileTruncation:
         log1 = temp_log_dir / "nwclientLog1.txt"
         log1.write_text("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Old line\n" * 10)
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         initial_position = monitor.last_position
@@ -302,7 +302,7 @@ class TestFileTruncation:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
         items = []
         while not data_queue.empty():

@@ -14,22 +14,12 @@ from app.parser import LogParser
 class TestDebugMode:
     """Test suite for debug_mode flag optimization."""
 
-    def test_default_debug_mode_is_false(self, temp_log_dir: Path) -> None:
-        """Test that debug_mode defaults to False."""
-        monitor = LogDirectoryMonitor(str(temp_log_dir))
-        assert monitor.debug_mode is False
-
-    def test_debug_mode_can_be_enabled(self, temp_log_dir: Path) -> None:
-        """Test that debug_mode can be explicitly enabled."""
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
-        assert monitor.debug_mode is True
-
     def test_debug_mode_false_skips_debug_messages(self, temp_log_dir: Path) -> None:
-        """Test that debug messages are not queued when debug_mode=False."""
+        """Test that debug messages are not queued when debug_enabled=False."""
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("[Thu Jan 09 14:30:00] Test line\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=False)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         # Append new line
@@ -39,7 +29,7 @@ class TestDebugMode:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=False)
 
         # Collect queue items
         items = []
@@ -51,11 +41,11 @@ class TestDebugMode:
         assert len(debug_items) == 0
 
     def test_debug_mode_true_includes_debug_messages(self, temp_log_dir: Path) -> None:
-        """Test that debug messages ARE queued when debug_mode=True."""
+        """Test that debug messages ARE queued when debug_enabled=True."""
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("[Thu Jan 09 14:30:00] Test line\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         # Append new line
@@ -65,7 +55,7 @@ class TestDebugMode:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
         # Collect queue items
         items = []
@@ -77,12 +67,12 @@ class TestDebugMode:
         assert len(debug_items) > 0
 
     def test_debug_mode_false_reduces_queue_operations(self, temp_log_dir: Path) -> None:
-        """Test that debug_mode=False significantly reduces queue operations."""
+        """Test that debug_enabled=False significantly reduces queue operations."""
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("")
 
-        monitor_with_debug = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
-        monitor_without_debug = LogDirectoryMonitor(str(temp_log_dir), debug_mode=False)
+        monitor_with_debug = LogDirectoryMonitor(str(temp_log_dir))
+        monitor_without_debug = LogDirectoryMonitor(str(temp_log_dir))
 
         monitor_with_debug.start_monitoring()
         monitor_without_debug.start_monitoring()
@@ -96,7 +86,7 @@ class TestDebugMode:
 
         # Test with debug
         queue_with_debug = queue.Queue()
-        monitor_with_debug.read_new_lines(parser, queue_with_debug)
+        monitor_with_debug.read_new_lines(parser, queue_with_debug, debug_enabled=True)
 
         items_with_debug = []
         while not queue_with_debug.empty():
@@ -107,7 +97,7 @@ class TestDebugMode:
 
         # Test without debug
         queue_without_debug = queue.Queue()
-        monitor_without_debug.read_new_lines(parser, queue_without_debug)
+        monitor_without_debug.read_new_lines(parser, queue_without_debug, debug_enabled=False)
 
         items_without_debug = []
         while not queue_without_debug.empty():
@@ -119,13 +109,13 @@ class TestDebugMode:
         assert len(items_without_debug) < len(items_with_debug)
 
     def test_debug_mode_false_with_rotation(self, temp_log_dir: Path) -> None:
-        """Test that rotation messages are skipped when debug_mode=False."""
+        """Test that rotation messages are skipped when debug_enabled=False."""
         log1 = temp_log_dir / "nwclientLog1.txt"
         log2 = temp_log_dir / "nwclientLog2.txt"
 
         log1.write_text("[Thu Jan 09 14:00:00] Content in log1\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=False)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         # Simulate rotation
@@ -136,7 +126,7 @@ class TestDebugMode:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=False)
 
         # Collect items
         items = []
@@ -151,13 +141,13 @@ class TestDebugMode:
         assert len(rotation_messages) == 0
 
     def test_debug_mode_true_with_rotation(self, temp_log_dir: Path) -> None:
-        """Test that rotation messages are included when debug_mode=True."""
+        """Test that rotation messages are included when debug_enabled=True."""
         log1 = temp_log_dir / "nwclientLog1.txt"
         log2 = temp_log_dir / "nwclientLog2.txt"
 
         log1.write_text("[Thu Jan 09 14:00:00] Content in log1\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         # Simulate rotation
@@ -168,7 +158,7 @@ class TestDebugMode:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
         # Collect items
         items = []
@@ -183,11 +173,11 @@ class TestDebugMode:
         assert len(rotation_messages) > 0
 
     def test_debug_mode_false_with_truncation(self, temp_log_dir: Path) -> None:
-        """Test that truncation messages are skipped when debug_mode=False."""
+        """Test that truncation messages are skipped when debug_enabled=False."""
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("Initial content\n" * 10)
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=False)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         initial_position = monitor.last_position
@@ -198,7 +188,7 @@ class TestDebugMode:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=False)
 
         # Collect items
         items = []
@@ -221,7 +211,7 @@ class TestDebugMode:
             for i in range(1000):
                 f.write(f"[Thu Jan 09 14:{i%60:02d}:{i%60:02d}] Line {i}\n")
 
-        monitor_disabled = LogDirectoryMonitor(str(temp_log_dir), debug_mode=False)
+        monitor_disabled = LogDirectoryMonitor(str(temp_log_dir))
         monitor_disabled.start_monitoring()
 
         # Reset to start
@@ -230,7 +220,7 @@ class TestDebugMode:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor_disabled.read_new_lines(parser, data_queue)
+        monitor_disabled.read_new_lines(parser, data_queue, debug_enabled=False)
 
         items = []
         while not data_queue.empty():
@@ -250,11 +240,11 @@ class TestDebugModeBackwardCompatibility:
     """Test that debug_mode doesn't break existing functionality."""
 
     def test_parsing_works_with_debug_disabled(self, temp_log_dir: Path) -> None:
-        """Test that parsing still works when debug_mode=False."""
+        """Test that parsing still works when debug_enabled=False."""
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=False)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         # Write parseable damage line (proper format with timestamp)
@@ -264,7 +254,7 @@ class TestDebugModeBackwardCompatibility:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=False)
 
         # Should still get parsed damage event
         items = []
