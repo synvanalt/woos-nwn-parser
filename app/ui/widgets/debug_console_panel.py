@@ -44,7 +44,7 @@ class DebugConsolePanel(ttk.Frame):
         """Setup the panel UI components."""
         # Debug output switcher
         debug_controls_frame = ttk.Frame(self)
-        debug_controls_frame.pack(fill="x", padx=(10, 10), pady=(10, 10))
+        debug_controls_frame.pack(fill="x", padx=(10, 10), pady=(8, 10))
 
         # Debug Switcher to enable/disable debug output
         ttk.Checkbutton(
@@ -53,6 +53,9 @@ class DebugConsolePanel(ttk.Frame):
             variable=self.debug_mode_var,
             style="Switch.TCheckbutton",
         ).pack(side="left", padx=0, pady=0)
+
+        # Clear debug button
+        ttk.Button(debug_controls_frame, text="Clear Debug Log", command=self.clear).pack(side="right", pady=0)
 
         # Debug text widget with scrollbar
         debug_scroll = ttk.Scrollbar(self)
@@ -74,9 +77,6 @@ class DebugConsolePanel(ttk.Frame):
         self.text.tag_configure("error", foreground="red")  # Errors
 
         debug_scroll.config(command=self.text.yview)
-
-        # Clear debug button
-        ttk.Button(self, text="Clear Debug Log", command=self.clear).pack(pady=5)
 
     def log(self, message: str, msg_type: str = "debug") -> None:
         """Add a message to the debug console.

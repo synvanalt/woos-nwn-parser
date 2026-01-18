@@ -17,18 +17,16 @@ class LogDirectoryMonitor:
     and handles switching to the next file when rotation occurs.
     """
 
-    def __init__(self, log_directory: str, debug_mode: bool = False) -> None:
+    def __init__(self, log_directory: str) -> None:
         """Initialize the directory monitor.
 
         Args:
             log_directory: Path to the directory containing nwclientLog*.txt files
-            debug_mode: Whether to emit debug messages (default False for performance)
         """
         self.log_directory = Path(log_directory)
         self.current_log_file: Optional[Path] = None
         self.last_position = 0
         self.last_mtime = 0.0  # Track file modification time
-        self.debug_mode = debug_mode
 
     def find_active_log_file(self) -> Optional[Path]:
         """Find the currently active log file based on most recent modification time.
@@ -70,12 +68,13 @@ class LogDirectoryMonitor:
             self.last_position = file_stat.st_size
             self.last_mtime = file_stat.st_mtime
 
-    def read_new_lines(self, parser, data_queue: queue.Queue) -> None:
+    def read_new_lines(self, parser, data_queue: queue.Queue, debug_enabled: bool = False) -> None:
         """Read new lines from the current log file, handling rotation to new files.
 
         Args:
             parser: LogParser instance for parsing lines
             data_queue: Queue for passing parsed data to UI
+            debug_enabled: Whether to emit debug messages (default False for performance)
         """
         try:
             # Check if we've rotated to a new log file
@@ -83,7 +82,7 @@ class LogDirectoryMonitor:
 
             # Handle rotation: if we switched to a new file, reset position and notify
             if active_file != self.current_log_file:
-                if self.debug_mode:
+                if debug_enabled:
                     data_queue.put({
                         'type': 'debug',
                         'message': f"Log file rotation detected: {self.current_log_file.name if self.current_log_file else 'None'} → {active_file.name if active_file else 'None'}"
@@ -105,7 +104,7 @@ class LogDirectoryMonitor:
             # 1. File size is smaller than our last read position (truncation detected)
             # 2. Modification time changed but size is smaller (file was rewritten)
             if current_size < self.last_position:
-                if self.debug_mode:
+                if debug_enabled:
                     data_queue.put({
                         'type': 'debug',
                         'message': f"⚠️ File truncation detected: {self.current_log_file.name} (was {self.last_position} bytes, now {current_size} bytes) - resetting to beginning"
@@ -114,7 +113,7 @@ class LogDirectoryMonitor:
                 self.last_mtime = current_mtime
             elif current_size == 0 and self.last_position > 0:
                 # Special case: file was completely cleared
-                if self.debug_mode:
+                if debug_enabled:
                     data_queue.put({
                         'type': 'debug',
                         'message': f"⚠️ File cleared: {self.current_log_file.name} - resetting to beginning"
@@ -128,27 +127,27 @@ class LogDirectoryMonitor:
                 self.last_position = f.tell()
                 self.last_mtime = current_mtime
 
-                if new_lines and self.debug_mode:
+                if new_lines and debug_enabled:
                     data_queue.put({
                         'type': 'debug',
                         'message': f"Read {len(new_lines)} new line(s) from {self.current_log_file.name}"
                     })
 
                 for line in new_lines:
-                    # Only emit debug/info messages when debug_mode is enabled
-                    if self.debug_mode:
+                    # Only emit debug/info messages when debug_enabled is True
+                    if debug_enabled:
                         data_queue.put({'type': 'info', 'message': f"Raw line: {line.strip()}"})
 
                     parsed_data = parser.parse_line(line)
                     if parsed_data:
-                        if self.debug_mode:
+                        if debug_enabled:
                             data_queue.put({'type': 'debug', 'message': f"✓ Parsed: {parsed_data['type']}"})
                             if parsed_data['type'] == 'damage_dealt':
                                 # Show damage breakdown for debugging
                                 data_queue.put({'type': 'debug',
                                                      'message': f"  → Target: {parsed_data['target']}, Damage types: {list(parsed_data['damage_types'].keys())}"})
                         data_queue.put(parsed_data)
-                    elif self.debug_mode:
+                    elif debug_enabled:
                         data_queue.put({'type': 'debug', 'message': f"✗ No match for line"})
         except Exception as e:
             data_queue.put({'type': 'error', 'message': str(e)})

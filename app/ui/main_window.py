@@ -273,7 +273,11 @@ class WoosNwnParserApp:
     def poll_log_file(self) -> None:
         """Manually poll the log directory for changes."""
         if self.is_monitoring and self.directory_monitor:
-            self.directory_monitor.read_new_lines(self.parser, self.data_queue)
+            self.directory_monitor.read_new_lines(
+                self.parser,
+                self.data_queue,
+                debug_enabled=self.debug_panel.get_debug_enabled()
+            )
             # Update the active file label
             self.update_active_file_label()
             # Update target lists when new data arrives
@@ -415,6 +419,7 @@ class WoosNwnParserApp:
             on_target_selected=self._on_target_details_needed,
             on_immunity_changed=self._on_immunity_changed,
             on_damage_dealt=self._on_damage_dealt,
+            debug_enabled=self.debug_panel.get_debug_enabled(),
         )
 
         # Schedule next check
