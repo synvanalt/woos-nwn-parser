@@ -46,6 +46,7 @@ class QueueProcessor:
         on_target_selected: Callable[[str], None],
         on_immunity_changed: Callable[[str], None],
         on_damage_dealt: Callable[[str], None] = None,
+        debug_enabled: bool = False,
     ) -> None:
         """Process all events in queue and invoke callbacks for UI updates.
 
@@ -59,6 +60,7 @@ class QueueProcessor:
             on_target_selected: Callback to refresh target details
             on_immunity_changed: Callback when immunity data changes
             on_damage_dealt: Callback when damage is dealt to a target
+            debug_enabled: Whether to emit debug messages (default False for performance)
         """
         # Batch tracking - collect what needs updating
         dps_updated = False
@@ -76,6 +78,7 @@ class QueueProcessor:
                 result = self._handle_event_batched(
                     data,
                     on_log_message,
+                    debug_enabled,
                 )
 
                 if result:
@@ -115,12 +118,14 @@ class QueueProcessor:
         self,
         data: Dict[str, Any],
         on_log_message: Callable,
+        debug_enabled: bool,
     ) -> Dict[str, Any]:
         """Route event to appropriate handler and return what needs UI update.
 
         Args:
             data: Event data from queue
             on_log_message: Callback for logging
+            debug_enabled: Whether to emit debug messages
 
         Returns:
             Dict with keys indicating what needs updating:
@@ -133,16 +138,16 @@ class QueueProcessor:
         result = {}
 
         if event_type == 'damage_dealt':
-            result = self._handle_damage_dealt_batched(data, on_log_message)
+            result = self._handle_damage_dealt_batched(data, on_log_message, debug_enabled)
         elif event_type == 'immunity':
-            result = self._handle_immunity_batched(data, on_log_message)
+            result = self._handle_immunity_batched(data, on_log_message, debug_enabled)
         elif event_type in (
             'attack_hit',
             'attack_miss',
             'attack_hit_critical',
             'critical_hit',
         ):
-            result = self._handle_attack_batched(data, on_log_message)
+            result = self._handle_attack_batched(data, on_log_message, debug_enabled)
         else:
             # Log other message types
             on_log_message(data.get('message', ''), event_type)
@@ -153,12 +158,14 @@ class QueueProcessor:
         self,
         data: Dict[str, Any],
         on_log_message: Callable,
+        debug_enabled: bool,
     ) -> Dict[str, Any]:
         """Handle damage_dealt event (batched version - no immediate callbacks).
 
         Args:
             data: Event data containing damage information
             on_log_message: Callback for logging
+            debug_enabled: Whether to emit debug messages
 
         Returns:
             Dict indicating what needs UI update
@@ -176,9 +183,10 @@ class QueueProcessor:
                 self.data_store.update_dps_data(
                     attacker, total_damage, timestamp, damage_types
                 )
-                on_log_message(
-                    f"DPS update: {attacker} dealt {total_damage} damage", 'debug'
-                )
+                if debug_enabled:
+                    on_log_message(
+                        f"DPS update: {attacker} dealt {total_damage} damage", 'debug'
+                    )
                 result['dps_updated'] = True
         except Exception as e:
             on_log_message(f"DPS tracking error: {e}", 'error')
@@ -207,7 +215,7 @@ class QueueProcessor:
             on_log_message(f"Data store error on damage_dealt: {e}", 'error')
 
         # Process queued immunities (internal, returns if any were processed)
-        immunity_processed = self._process_queued_immunities_batched(target, data, on_log_message)
+        immunity_processed = self._process_queued_immunities_batched(target, data, on_log_message, debug_enabled)
 
         result['damage_target'] = target
         if immunity_processed:
@@ -218,12 +226,14 @@ class QueueProcessor:
         self,
         data: Dict[str, Any],
         on_log_message: Callable,
+        debug_enabled: bool,
     ) -> Dict[str, Any]:
         """Handle immunity event (batched version).
 
         Args:
             data: Event data containing immunity information
             on_log_message: Callback for logging
+            debug_enabled: Whether to emit debug messages
 
         Returns:
             Dict indicating what needs UI update
@@ -231,11 +241,12 @@ class QueueProcessor:
         result = {}
 
         if not self.parser.parse_immunity:
-            on_log_message(
-                f"Skipping immunity event for {data.get('target')}/{data.get('damage_type')} "
-                "(parsing disabled)",
-                'debug',
-            )
+            if debug_enabled:
+                on_log_message(
+                    f"Skipping immunity event for {data.get('target')}/{data.get('damage_type')} "
+                    "(parsing disabled)",
+                    'debug',
+                )
             return result
 
         target = data['target']
@@ -257,11 +268,12 @@ class QueueProcessor:
                     self.data_store.record_immunity(
                         target, damage_type, int(immunity or 0), inferred_amount
                     )
-                    on_log_message(
-                        f"immunity_event: target={target}, type={damage_type}, "
-                        f"inferred_amount={inferred_amount}, immunity={immunity}",
-                        'debug',
-                    )
+                    if debug_enabled:
+                        on_log_message(
+                            f"immunity_event: target={target}, type={damage_type}, "
+                            f"inferred_amount={inferred_amount}, immunity={immunity}",
+                            'debug',
+                        )
                 except Exception as e:
                     on_log_message(f"Data store error: {e}", 'error')
 
@@ -276,12 +288,14 @@ class QueueProcessor:
         self,
         data: Dict[str, Any],
         on_log_message: Callable,
+        debug_enabled: bool,
     ) -> Dict[str, Any]:
         """Handle attack_hit, attack_miss, or critical_hit event (batched version).
 
         Args:
             data: Event data containing attack information
             on_log_message: Callback for logging
+            debug_enabled: Whether to emit debug messages
 
         Returns:
             Dict indicating what needs UI update
@@ -305,9 +319,10 @@ class QueueProcessor:
             data.get('total'),
         )
 
-        on_log_message(
-            f"Attack: {attacker} vs {target} ({event_type})", 'debug'
-        )
+        if debug_enabled:
+            on_log_message(
+                f"Attack: {attacker} vs {target} ({event_type})", 'debug'
+            )
 
         return {'target': target}
 
@@ -316,6 +331,7 @@ class QueueProcessor:
         target: str,
         damage_event: Dict[str, Any],
         on_log_message: Callable,
+        debug_enabled: bool,
     ) -> bool:
         """Process any immunities waiting for this damage event (no callbacks).
 
@@ -323,6 +339,7 @@ class QueueProcessor:
             target: Target name
             damage_event: The damage event data
             on_log_message: Callback for logging
+            debug_enabled: Whether to emit debug messages
 
         Returns:
             True if any immunities were processed, False otherwise
@@ -351,18 +368,20 @@ class QueueProcessor:
                         self.data_store.record_immunity(
                             target, damage_type, immunity, inferred_amount
                         )
-                        on_log_message(
-                            f"Processed queued immunity: target={target}, type={damage_type}",
-                            'debug',
-                        )
+                        if debug_enabled:
+                            on_log_message(
+                                f"Processed queued immunity: target={target}, type={damage_type}",
+                                'debug',
+                            )
                         processed_any = True
                     except Exception as e:
                         on_log_message(f"Data store error processing queued immunity: {e}", 'error')
                 else:
-                    on_log_message(
-                        f"! Immunity time mismatch for {target}/{damage_type}: {time_diff}s apart",
-                        'debug',
-                    )
+                    if debug_enabled:
+                        on_log_message(
+                            f"! Immunity time mismatch for {target}/{damage_type}: {time_diff}s apart",
+                            'debug',
+                        )
 
             # Clear processed queue
             del self.pending_immunity_queue[target][damage_type]

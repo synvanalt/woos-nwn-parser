@@ -785,7 +785,8 @@ class TestErrorHandling:
 
         queue_processor.process_queue(
             data_queue,
-            on_log_message, Mock(), Mock(), Mock()
+            on_log_message, Mock(), Mock(), Mock(),
+            debug_enabled=True
         )
 
         # Should log that immunity is skipped

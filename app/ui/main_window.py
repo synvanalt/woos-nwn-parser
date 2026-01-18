@@ -419,6 +419,7 @@ class WoosNwnParserApp:
             on_target_selected=self._on_target_details_needed,
             on_immunity_changed=self._on_immunity_changed,
             on_damage_dealt=self._on_damage_dealt,
+            debug_enabled=self.debug_panel.get_debug_enabled(),
         )
 
         # Schedule next check
