@@ -10,6 +10,8 @@ import tempfile
 
 from app.monitor import LogDirectoryMonitor
 from app.parser import LogParser
+from conftest import LogMessageCapture
+
 
 
 def test_real_world_scenario():
@@ -28,7 +30,7 @@ def test_real_world_scenario():
 
         # Step 2: App starts monitoring
         print("Step 2: App starts monitoring")
-        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
+        monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
@@ -36,8 +38,10 @@ def test_real_world_scenario():
 
         # Step 3: Simulate first poll - should read nothing (already at end)
         print("Step 3: First poll (no new data)")
-        monitor.read_new_lines(parser, data_queue)
-        items = []
+        log_capture = LogMessageCapture()
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
+        
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
         print(f"  Items queued: {len(items)}")
@@ -51,8 +55,10 @@ def test_real_world_scenario():
         print(f"  Log file size: {log_file.stat().st_size} bytes")
 
         # Poll again
-        monitor.read_new_lines(parser, data_queue)
-        items = []
+        log_capture = LogMessageCapture()
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
+        
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
         print(f"  Items queued: {len(items)}")
@@ -78,9 +84,10 @@ def test_real_world_scenario():
 
         # Step 7: Next poll happens (without user touching anything!)
         print("Step 7: Next automatic poll (500ms later)")
-        monitor.read_new_lines(parser, data_queue)
-
-        items = []
+        log_capture = LogMessageCapture()
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
+        
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 
@@ -90,12 +97,14 @@ def test_real_world_scenario():
         # Check results
         debug_msgs = [i for i in items if i.get('type') == 'debug']
         info_msgs = [i for i in items if i.get('type') == 'info']
+        warning_msgs = [i for i in items if i.get('type') == 'warning']
 
         print(f"\n  Debug messages: {len(debug_msgs)}")
         for msg in debug_msgs:
             print(f"    - {msg.get('message', '')}")
 
-        truncation_detected = any('truncat' in msg.get('message', '').lower() for msg in debug_msgs)
+        # Truncation is logged as 'warning' type
+        truncation_detected = any('truncat' in msg.get('message', '').lower() for msg in warning_msgs)
         new_content_found = any('Orc' in msg.get('message', '') for msg in info_msgs)
 
         print(f"\n  ✓ Truncation detected: {truncation_detected}")
@@ -112,8 +121,10 @@ def test_real_world_scenario():
         with open(log_file, 'a') as f:
             f.write("[Thu Jan 09 14:35:01] You attack Orc: *hit*: (25 damage)\n")
 
-        monitor.read_new_lines(parser, data_queue)
-        items = []
+        log_capture = LogMessageCapture()
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
+        
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 

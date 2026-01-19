@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app.monitor import LogDirectoryMonitor
 from app.parser import LogParser
+from conftest import LogMessageCapture
 
 
 class TestMonitorParserIntegration:
@@ -30,7 +31,7 @@ class TestMonitorParserIntegration:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
         # Collect parsed events
         events = []
@@ -54,7 +55,7 @@ class TestFileRotation:
         # Start with log1
         log1.write_text("Content in log1\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         assert monitor.current_log_file == log1
@@ -65,20 +66,21 @@ class TestFileRotation:
 
         parser = LogParser()
         data_queue = queue.Queue()
+        log_capture = LogMessageCapture()
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
 
         # Should detect rotation
         assert monitor.current_log_file == log2
 
         # Check for rotation debug message
-        items = []
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 
         rotation_detected = any(
             'rotation' in item.get('message', '').lower()
-            for item in items if item.get('type') == 'debug'
+            for item in items if item.get('type') == 'info'
         )
         assert rotation_detected
 
@@ -99,7 +101,7 @@ class TestFileRotation:
         # Rotate to log2
         time.sleep(0.1)
         log2.write_text("Log2\n")
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
         assert monitor.current_log_file == log2
 
         # Clear queue
@@ -109,7 +111,7 @@ class TestFileRotation:
         # Rotate to log3
         time.sleep(0.1)
         log3.write_text("Log3\n")
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
         assert monitor.current_log_file == log3
 
     def test_continue_monitoring_after_rotation(self, temp_log_dir: Path) -> None:
@@ -119,29 +121,31 @@ class TestFileRotation:
 
         log1.write_text("Log1\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         parser = LogParser()
         data_queue = queue.Queue()
+        log_capture = LogMessageCapture()
 
         # Rotate to log2
         time.sleep(0.1)
         log2.write_text("Log2\n")
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
 
-        # Clear queue
+        # Clear queue and log capture
         while not data_queue.empty():
             data_queue.get()
+        log_capture.clear()
 
         # Append to log2
         with open(log2, 'a') as f:
             f.write("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Orc: 100 (100 Physical)\n")
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
 
-        # Should read new content
-        items = []
+        # Should read new content - check in log messages (Raw line: ...)
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 
@@ -156,7 +160,7 @@ class TestFileTruncation:
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("Line 1\nLine 2\nLine 3\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         initial_size = log_file.stat().st_size
@@ -167,20 +171,21 @@ class TestFileTruncation:
 
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
+        log_capture = LogMessageCapture()
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
 
         # Position should be reset
         assert monitor.last_position < initial_size
 
-        # Check for truncation message
-        items = []
+        # Check for truncation message in log capture
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 
         truncation_detected = any(
             'truncat' in item.get('message', '').lower()
-            for item in items if item.get('type') == 'debug'
+            for item in items if item.get('type') == 'warning'
         )
         assert truncation_detected
 
@@ -189,7 +194,7 @@ class TestFileTruncation:
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Old line\n" * 10)
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         initial_position = monitor.last_position
@@ -207,9 +212,10 @@ class TestFileTruncation:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue)
-
-        items = []
+        log_capture = LogMessageCapture()
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
+        
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 
@@ -219,7 +225,7 @@ class TestFileTruncation:
         # Should have truncation detection message
         truncation_messages = [
             item for item in items
-            if item.get('type') == 'debug' and 'truncat' in item.get('message', '').lower()
+            if item.get('type') == 'warning' and 'truncat' in item.get('message', '').lower()
         ]
         assert len(truncation_messages) > 0, f"Expected truncation message"
 
@@ -228,28 +234,30 @@ class TestFileTruncation:
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("Initial content\n")
 
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         parser = LogParser()
         data_queue = queue.Queue()
+        log_capture = LogMessageCapture()
 
         # Truncate
         log_file.write_text("After restart\n")
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
 
-        # Clear queue
+        # Clear queue and log capture
         while not data_queue.empty():
             data_queue.get()
+        log_capture.clear()
 
         # Append more content
         with open(log_file, 'a') as f:
             f.write("New action line\n")
 
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
 
-        # Should read new line
-        items = []
+        # Should read new line - check in log messages (Raw line: ...)
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 
@@ -268,7 +276,7 @@ class TestRealWorldScenarios:
             f.write("[Thu Jan 09 14:30:00] You attack Goblin: *hit*: (10 damage)\n")
 
         # App starts monitoring with debug_mode enabled
-        monitor = LogDirectoryMonitor(str(temp_log_dir), debug_mode=True)
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
         parser = LogParser(parse_immunity=False)
@@ -276,7 +284,7 @@ class TestRealWorldScenarios:
         is_monitoring = True
 
         # First poll (no new data)
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
         # Player continues gaming
         time.sleep(0.05)
@@ -284,7 +292,7 @@ class TestRealWorldScenarios:
             f.write("[Thu Jan 09 14:30:02] You attack Goblin: *hit*: (15 damage)\n")
 
         # Poll again
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
         # Game restarts - clears file
         time.sleep(0.05)
@@ -292,16 +300,17 @@ class TestRealWorldScenarios:
             f.write("[Thu Jan 09 14:35:00] You attack Orc: *hit*: (20 damage)\n")
 
         # Next automatic poll
-        monitor.read_new_lines(parser, data_queue)
-
-        items = []
+        log_capture = LogMessageCapture()
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
+        
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 
         # Verify truncation was detected
         truncation_detected = any(
             'truncat' in item.get('message', '').lower()
-            for item in items if item.get('type') == 'debug'
+            for item in items if item.get('type') == 'warning'
         )
         assert truncation_detected
 
@@ -316,9 +325,10 @@ class TestRealWorldScenarios:
         with open(log_file, 'a') as f:
             f.write("[Thu Jan 09 14:35:01] You attack Orc: *hit*: (25 damage)\n")
 
-        monitor.read_new_lines(parser, data_queue)
-
-        items = []
+        log_capture = LogMessageCapture()
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
+        
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 
@@ -343,7 +353,7 @@ class TestRealWorldScenarios:
                 f.write(f"Line {i}\n")
 
             # Poll
-            monitor.read_new_lines(parser, data_queue)
+            monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
             # Clear queue
             while not data_queue.empty():
@@ -363,14 +373,14 @@ class TestRealWorldScenarios:
         data_queue = queue.Queue()
 
         # Poll with no files (should not error)
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
         # Now create a log file
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("New content\n")
 
         # Next poll should detect it
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
         # Should now be monitoring the file
         assert monitor.current_log_file is not None

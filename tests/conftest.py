@@ -13,6 +13,51 @@ from app.services.dps_service import DPSCalculationService
 from app.services.queue_processor import QueueProcessor
 
 
+__all__ = ['LogMessageCapture']
+
+
+def pytest_configure(config):
+    """Make LogMessageCapture available for import in test files."""
+    import sys
+    sys.modules['conftest'] = sys.modules[__name__]
+
+
+class LogMessageCapture:
+    """Helper class to capture log messages from monitor callbacks.
+
+    Provides compatibility with tests that expect messages in dict format.
+    """
+    def __init__(self):
+        self.messages = []
+
+    def __call__(self, message: str, msg_type: str):
+        """Callback function to capture messages."""
+        self.messages.append({'message': message, 'type': msg_type})
+
+    def get_by_type(self, msg_type: str) -> list:
+        """Get all messages of a specific type."""
+        return [m for m in self.messages if m.get('type') == msg_type]
+
+    def get_all(self) -> list:
+        """Get all captured messages."""
+        return self.messages
+
+    def clear(self):
+        """Clear all captured messages."""
+        self.messages.clear()
+
+
+@pytest.fixture
+def log_capture():
+    """Create a LogMessageCapture instance for tests."""
+    return LogMessageCapture()
+
+
+# Make LogMessageCapture available to all tests without fixture
+import sys
+sys.modules[__name__].LogMessageCapture = LogMessageCapture
+
+
 @pytest.fixture
 def parser() -> LogParser:
     """Create a LogParser instance for testing."""
