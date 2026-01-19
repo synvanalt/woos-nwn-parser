@@ -41,7 +41,7 @@ class TestDebugMode:
         assert len(debug_items) == 0
 
     def test_debug_mode_true_includes_debug_messages(self, temp_log_dir: Path) -> None:
-        """Test that debug messages ARE queued when debug_enabled=True."""
+        """Test that debug messages ARE emitted when debug_enabled=True."""
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("[Thu Jan 09 14:30:00] Test line\n")
 
@@ -55,19 +55,18 @@ class TestDebugMode:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
+        # Mock callback to capture debug messages
+        debug_messages = []
+        def mock_log(message, msg_type):
+            debug_messages.append({'message': message, 'type': msg_type})
 
-        # Collect queue items
-        items = []
-        while not data_queue.empty():
-            items.append(data_queue.get())
+        monitor.read_new_lines(parser, data_queue, on_log_message=mock_log, debug_enabled=True)
 
-        # Should have debug/info messages
-        debug_items = [i for i in items if i.get('type') in ('debug', 'info')]
-        assert len(debug_items) > 0
+        # Should have debug messages via callback
+        assert len(debug_messages) > 0
 
     def test_debug_mode_false_reduces_queue_operations(self, temp_log_dir: Path) -> None:
-        """Test that debug_enabled=False significantly reduces queue operations."""
+        """Test that debug_enabled=False reduces callback overhead."""
         log_file = temp_log_dir / "nwclientLog1.txt"
         log_file.write_text("")
 
@@ -85,28 +84,28 @@ class TestDebugMode:
         parser = LogParser()
 
         # Test with debug
-        queue_with_debug = queue.Queue()
-        monitor_with_debug.read_new_lines(parser, queue_with_debug, debug_enabled=True)
+        debug_messages_with = []
+        def mock_log_with(message, msg_type):
+            debug_messages_with.append({'message': message, 'type': msg_type})
 
-        items_with_debug = []
-        while not queue_with_debug.empty():
-            items_with_debug.append(queue_with_debug.get())
+        queue_with_debug = queue.Queue()
+        monitor_with_debug.read_new_lines(parser, queue_with_debug, on_log_message=mock_log_with, debug_enabled=True)
 
         # Reset file position for second monitor
         monitor_without_debug.last_position = 0
 
         # Test without debug
+        debug_messages_without = []
+        def mock_log_without(message, msg_type):
+            debug_messages_without.append({'message': message, 'type': msg_type})
+
         queue_without_debug = queue.Queue()
-        monitor_without_debug.read_new_lines(parser, queue_without_debug, debug_enabled=False)
+        monitor_without_debug.read_new_lines(parser, queue_without_debug, on_log_message=mock_log_without, debug_enabled=False)
 
-        items_without_debug = []
-        while not queue_without_debug.empty():
-            items_without_debug.append(queue_without_debug.get())
-
-        # Without debug should have significantly fewer items
-        # With debug: each line generates ~3-4 queue items (info, debug, maybe parsed data)
-        # Without debug: only parsed data (if parseable) or nothing
-        assert len(items_without_debug) < len(items_with_debug)
+        # Without debug should have no debug callback invocations
+        # With debug: callback is invoked for file reading messages
+        assert len(debug_messages_without) == 0
+        assert len(debug_messages_with) > 0
 
     def test_debug_mode_false_with_rotation(self, temp_log_dir: Path) -> None:
         """Test that rotation messages are skipped when debug_enabled=False."""
@@ -158,17 +157,17 @@ class TestDebugMode:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
+        # Mock callback to capture debug messages
+        debug_messages = []
+        def mock_log(message, msg_type):
+            debug_messages.append({'message': message, 'type': msg_type})
 
-        # Collect items
-        items = []
-        while not data_queue.empty():
-            items.append(data_queue.get())
+        monitor.read_new_lines(parser, data_queue, on_log_message=mock_log, debug_enabled=True)
 
-        # Should have rotation debug message
+        # Should have rotation debug message via callback
         rotation_messages = [
-            i for i in items
-            if i.get('type') == 'debug' and 'rotation' in i.get('message', '').lower()
+            msg for msg in debug_messages
+            if 'rotation' in msg['message'].lower()
         ]
         assert len(rotation_messages) > 0
 

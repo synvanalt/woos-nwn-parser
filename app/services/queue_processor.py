@@ -175,6 +175,7 @@ class QueueProcessor:
         try:
             attacker = data.get('attacker')
             if attacker:
+                target = data.get('target')
                 total_damage = data.get('total_damage', 0)
                 timestamp = data.get('timestamp', datetime.now())
                 damage_types = data.get('damage_types', {})
@@ -185,7 +186,7 @@ class QueueProcessor:
                 )
                 if debug_enabled:
                     on_log_message(
-                        f"DPS update: {attacker} dealt {total_damage} damage", 'debug'
+                        f"💥 DAMAGE: {attacker} vs {target} ({total_damage} damage)", 'debug'
                     )
                 result['dps_updated'] = True
         except Exception as e:
@@ -228,10 +229,10 @@ class QueueProcessor:
         on_log_message: Callable,
         debug_enabled: bool,
     ) -> Dict[str, Any]:
-        """Handle immunity event (batched version).
+        """Handle dmg_absorbed event (batched version).
 
         Args:
-            data: Event data containing immunity information
+            data: Event data containing dmg_absorbed information
             on_log_message: Callback for logging
             debug_enabled: Whether to emit debug messages
 
@@ -243,7 +244,7 @@ class QueueProcessor:
         if not self.parser.parse_immunity:
             if debug_enabled:
                 on_log_message(
-                    f"Skipping immunity event for {data.get('target')}/{data.get('damage_type')} "
+                    f"Skipping dmg_absorbed event for {data.get('target')}/{data.get('damage_type')} "
                     "(parsing disabled)",
                     'debug',
                 )
@@ -258,20 +259,19 @@ class QueueProcessor:
                 target in self.damage_buffer
                 and damage_type in self.damage_buffer[target].get('damage_types', {})
             ):
-                immunity = data.get('immunity_points', 0)
+                dmg_absorbed = data.get('immunity_points', 0)
                 damage_dealt = self.damage_buffer[target]['damage_types'].get(
                     damage_type, 0
                 )
 
                 try:
-                    inferred_amount = int(damage_dealt or 0)
+                    dmg_inflicted = int(damage_dealt or 0)
                     self.data_store.record_immunity(
-                        target, damage_type, int(immunity or 0), inferred_amount
+                        target, damage_type, int(dmg_absorbed or 0), dmg_inflicted
                     )
                     if debug_enabled:
                         on_log_message(
-                            f"immunity_event: target={target}, type={damage_type}, "
-                            f"inferred_amount={inferred_amount}, immunity={immunity}",
+                            f"🛡️ IMMUNITY: {target} absorbed {dmg_absorbed} {damage_type} (inflicted {dmg_inflicted})",
                             'debug',
                         )
                 except Exception as e:
@@ -279,7 +279,7 @@ class QueueProcessor:
 
                 result['target'] = target
             else:
-                # Queue immunity for later
+                # Queue dmg_absorbed for later
                 self._queue_immunity(target, damage_type, data)
 
         return result
@@ -321,7 +321,7 @@ class QueueProcessor:
 
         if debug_enabled:
             on_log_message(
-                f"Attack: {attacker} vs {target} ({event_type})", 'debug'
+                f"⚔️ ATTACK: {attacker} vs {target} ({event_type})", 'debug'
             )
 
         return {'target': target}
@@ -362,7 +362,7 @@ class QueueProcessor:
                     (damage_timestamp - immunity_timestamp).total_seconds()
                 )
 
-                if time_diff <= 1:  # Allow 1 second difference
+                if time_diff <= 1:  # Allow 1-second difference
                     try:
                         inferred_amount = int(damage_dealt or 0)
                         self.data_store.record_immunity(
@@ -370,7 +370,7 @@ class QueueProcessor:
                         )
                         if debug_enabled:
                             on_log_message(
-                                f"Processed queued immunity: target={target}, type={damage_type}",
+                                f"🛡️ IMMUNITY QUEUE: Processed {target}/{damage_type}",
                                 'debug',
                             )
                         processed_any = True
@@ -379,7 +379,7 @@ class QueueProcessor:
                 else:
                     if debug_enabled:
                         on_log_message(
-                            f"! Immunity time mismatch for {target}/{damage_type}: {time_diff}s apart",
+                            f"⚠️ IMMUNITY QUEUE: Mismatched {target}/{damage_type} ({time_diff:.1f}s)",
                             'debug',
                         )
 

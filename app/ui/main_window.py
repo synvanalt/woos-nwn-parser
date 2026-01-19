@@ -276,6 +276,7 @@ class WoosNwnParserApp:
             self.directory_monitor.read_new_lines(
                 self.parser,
                 self.data_queue,
+                on_log_message=self.log_debug,
                 debug_enabled=self.debug_panel.get_debug_enabled()
             )
             # Update the active file label
