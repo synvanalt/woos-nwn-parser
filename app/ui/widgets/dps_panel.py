@@ -397,3 +397,7 @@ class DPSPanel(ttk.Frame):
         self._item_ids.clear()
         self._child_ids.clear()
 
+    def reset_target_filter(self) -> None:
+        """Reset the target filter selection to default 'All'."""
+        self.target_filter_var.set("All")
+

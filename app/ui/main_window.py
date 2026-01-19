@@ -319,6 +319,9 @@ class WoosNwnParserApp:
         # Reset DPS service state
         self.dps_service.set_global_start_time(None)
 
+        # Reset DPS panel target filter to "All"
+        self.dps_panel.reset_target_filter()
+
         self.refresh_targets()
 
     def refresh_targets(self) -> None:
