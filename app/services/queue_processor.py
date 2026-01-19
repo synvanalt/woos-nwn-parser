@@ -148,9 +148,23 @@ class QueueProcessor:
             'critical_hit',
         ):
             result = self._handle_attack_batched(data, on_log_message, debug_enabled)
+        elif event_type == 'save':
+            # Save events are parsed but not processed further (used for save bonus tracking in parser)
+            if debug_enabled:
+                target = data.get('target', 'Unknown')
+                save_type = data.get('save_type', 'Unknown')
+                bonus = data.get('bonus', 0)
+                on_log_message(
+                    f"⚕️ SAVE: {target} ({save_type.title()} {bonus})",
+                    'debug'
+                )
         else:
-            # Log other message types
-            on_log_message(data.get('message', ''), event_type)
+            # Log other message types with proper formatting
+            message = data.get('message', '')
+            if not message:
+                # If no message, create one from the event data
+                message = f"Event: {event_type} - {data}"
+            on_log_message(message, event_type)
 
         return result
 
@@ -271,7 +285,7 @@ class QueueProcessor:
                     )
                     if debug_enabled:
                         on_log_message(
-                            f"🛡️ IMMUNITY: {target} absorbed {dmg_absorbed} {damage_type} (inflicted {dmg_inflicted})",
+                            f"🛟 IMMUNITY: {target} absorbed {dmg_absorbed} {damage_type} (inflicted {dmg_inflicted})",
                             'debug',
                         )
                 except Exception as e:
@@ -370,7 +384,7 @@ class QueueProcessor:
                         )
                         if debug_enabled:
                             on_log_message(
-                                f"🛡️ IMMUNITY QUEUE: Processed {target}/{damage_type}",
+                                f"🛟 IMMUNITY: Queue processed {target}/{damage_type}",
                                 'debug',
                             )
                         processed_any = True
@@ -379,7 +393,7 @@ class QueueProcessor:
                 else:
                     if debug_enabled:
                         on_log_message(
-                            f"⚠️ IMMUNITY QUEUE: Mismatched {target}/{damage_type} ({time_diff:.1f}s)",
+                            f"🛟 IMMUNITY: Queue mismatched {target}/{damage_type} ({time_diff:.1f}s)",
                             'debug',
                         )
 
