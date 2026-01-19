@@ -316,6 +316,9 @@ class WoosNwnParserApp:
         # Clear immunity panel cache
         self.immunity_panel.clear_cache()
 
+        # Clear DPS panel cache
+        self.dps_panel.clear_cache()
+
         # Reset DPS service state
         self.dps_service.set_global_start_time(None)
 
