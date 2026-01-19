@@ -51,6 +51,7 @@
   - These misses had incorrect high totals that would have hit if not for concealment
   - Excluding them provides much more accurate AC estimates
   - Added 5 comprehensive tests to prevent regression
+- `Reset Data` button now reverts the "Filter Target" dropdown to "All" after resetting
 
 
 ## [1.0.3] - 2026-01-13

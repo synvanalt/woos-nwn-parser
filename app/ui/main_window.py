@@ -276,6 +276,7 @@ class WoosNwnParserApp:
             self.directory_monitor.read_new_lines(
                 self.parser,
                 self.data_queue,
+                on_log_message=self.log_debug,
                 debug_enabled=self.debug_panel.get_debug_enabled()
             )
             # Update the active file label
@@ -315,8 +316,14 @@ class WoosNwnParserApp:
         # Clear immunity panel cache
         self.immunity_panel.clear_cache()
 
+        # Clear DPS panel cache
+        self.dps_panel.clear_cache()
+
         # Reset DPS service state
         self.dps_service.set_global_start_time(None)
+
+        # Reset DPS panel target filter to "All"
+        self.dps_panel.reset_target_filter()
 
         self.refresh_targets()
 

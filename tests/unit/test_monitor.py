@@ -149,16 +149,16 @@ class TestIncrementalReading:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
+        # Mock callback to capture debug messages
+        debug_messages = []
+        def mock_log(message, msg_type):
+            debug_messages.append({'message': message, 'type': msg_type})
 
-        # Should queue debug messages about reading
-        items = []
-        while not data_queue.empty():
-            items.append(data_queue.get())
+        monitor.read_new_lines(parser, data_queue, on_log_message=mock_log, debug_enabled=True)
 
-        assert len(items) > 0
-        # Should contain the new line
-        assert any("New line" in str(item.get('message', '')) for item in items)
+        # Should have logged reading new lines
+        assert len(debug_messages) > 0
+        assert any("Read" in msg['message'] and "line" in msg['message'] for msg in debug_messages)
 
     def test_read_new_lines_updates_position(self, temp_log_dir: Path) -> None:
         """Test that read_new_lines updates position."""
@@ -203,20 +203,21 @@ class TestFileRotation:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
+        # Mock callback to capture debug messages
+        debug_messages = []
+        def mock_log(message, msg_type):
+            debug_messages.append({'message': message, 'type': msg_type})
+
+        monitor.read_new_lines(parser, data_queue, on_log_message=mock_log, debug_enabled=True)
 
         # Should detect rotation
         assert monitor.current_log_file == log2
         assert monitor.last_position >= 0
 
-        # Should queue debug message about rotation
-        items = []
-        while not data_queue.empty():
-            items.append(data_queue.get())
-
+        # Should log message about rotation
         rotation_messages = [
-            item for item in items
-            if item.get('type') == 'debug' and 'rotation' in item.get('message', '').lower()
+            msg for msg in debug_messages
+            if 'rotation' in msg['message'].lower()
         ]
         assert len(rotation_messages) > 0
 
@@ -263,19 +264,20 @@ class TestFileTruncation:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
+        # Mock callback to capture debug messages
+        debug_messages = []
+        def mock_log(message, msg_type):
+            debug_messages.append({'message': message, 'type': msg_type})
+
+        monitor.read_new_lines(parser, data_queue, on_log_message=mock_log, debug_enabled=True)
 
         # Position should be reset
         assert monitor.last_position < old_position
 
-        # Should queue debug message about truncation
-        items = []
-        while not data_queue.empty():
-            items.append(data_queue.get())
-
+        # Should log message about truncation
         truncation_messages = [
-            item for item in items
-            if item.get('type') == 'debug' and 'truncat' in item.get('message', '').lower()
+            msg for msg in debug_messages
+            if 'truncat' in msg['message'].lower()
         ]
         assert len(truncation_messages) > 0
 
@@ -302,19 +304,20 @@ class TestFileTruncation:
         parser = LogParser()
         data_queue = queue.Queue()
 
-        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
+        # Mock callback to capture debug messages
+        debug_messages = []
+        def mock_log(message, msg_type):
+            debug_messages.append({'message': message, 'type': msg_type})
 
-        items = []
-        while not data_queue.empty():
-            items.append(data_queue.get())
+        monitor.read_new_lines(parser, data_queue, on_log_message=mock_log, debug_enabled=True)
 
-        # Should have read lines from the file (truncation message + line reading messages)
-        assert len(items) > 0, f"Expected items in queue but got none. Position was {initial_position}, now {new_size}"
+        # Should have logged truncation and reading
+        assert len(debug_messages) > 0, f"Expected debug messages. Position was {initial_position}, now {new_size}"
 
         # Should have truncation detection message
         truncation_messages = [
-            item for item in items
-            if item.get('type') == 'debug' and 'truncat' in item.get('message', '').lower()
+            msg for msg in debug_messages
+            if 'truncat' in msg['message'].lower()
         ]
         assert len(truncation_messages) > 0, f"Expected truncation message, got: {[i.get('message', '') for i in items]}"
 

@@ -16,6 +16,8 @@ import tempfile
 
 from app.monitor import LogDirectoryMonitor
 from app.parser import LogParser
+from conftest import LogMessageCapture
+
 
 
 def test_exact_user_scenario():
@@ -35,17 +37,18 @@ def test_exact_user_scenario():
 
         # Step 2: I open app and click Start Monitoring
         print("\n2. I open app and click Start Monitoring")
-        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
+        monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
         is_monitoring = True
+        log_capture = LogMessageCapture()  # Create log capture instance
         print(f"   ✓ Monitoring started (position: {monitor.last_position})")
 
         # Simulate polling loop
         def simulate_poll():
             if is_monitoring:
-                monitor.read_new_lines(parser, data_queue)
+                monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
 
         # Step 3: I start hitting target, parser works as expected
         print("\n3. I start hitting target, parser works as expected")
@@ -95,15 +98,18 @@ def test_exact_user_scenario():
         time.sleep(0.1)
         simulate_poll()
 
-        items_after = []
+        # Collect items from both queue and log capture
+        items_after = list(log_capture.get_all())
         while not data_queue.empty():
             items_after.append(data_queue.get())
 
         # Verify results
         debug_msgs = [i for i in items_after if i.get('type') == 'debug']
         info_msgs = [i for i in items_after if i.get('type') == 'info']
+        warning_msgs = [i for i in items_after if i.get('type') == 'warning']
 
-        truncation_detected = any('truncat' in msg.get('message', '').lower() for msg in debug_msgs)
+        # Truncation is logged as 'warning' type
+        truncation_detected = any('truncat' in msg.get('message', '').lower() for msg in warning_msgs)
         orc_content = [msg for msg in info_msgs if 'Orc' in msg.get('message', '')]
 
         print(f"\n   ✓ Truncation detected: {truncation_detected}")

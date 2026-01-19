@@ -12,6 +12,11 @@ import tempfile
 
 from app.monitor import LogDirectoryMonitor
 from app.parser import LogParser
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+from conftest import LogMessageCapture
+
 
 
 def test_basic_rotation_log1_to_log2():
@@ -31,7 +36,7 @@ def test_basic_rotation_log1_to_log2():
 
         # Start monitoring
         print("Step 2: Start monitoring")
-        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
+        monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
@@ -46,8 +51,9 @@ def test_basic_rotation_log1_to_log2():
         with open(log1, 'a') as f:
             f.write("[Thu Jan 09 14:00:02] You attack Goblin: *hit*: (15 damage)\n")
 
-        monitor.read_new_lines(parser, data_queue)
-        items = []
+        log_capture = LogMessageCapture()
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 
@@ -66,17 +72,22 @@ def test_basic_rotation_log1_to_log2():
 
         # Next poll should detect rotation
         print("Step 5: Next poll detects rotation")
-        monitor.read_new_lines(parser, data_queue)
 
-        items = []
+        # Capture log messages via callback
+        log_capture = LogMessageCapture()
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
+
+        # Combine queue items and log messages
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 
         debug_msgs = [i for i in items if i.get('type') == 'debug']
         info_msgs = [i for i in items if i.get('type') == 'info']
+        warning_msgs = [i for i in items if i.get('type') == 'warning']
 
-        # Check rotation was detected
-        rotation_detected = any('rotation' in msg.get('message', '').lower() for msg in debug_msgs)
+        # Check rotation was detected (rotation is logged as 'info' type)
+        rotation_detected = any('rotation' in msg.get('message', '').lower() for msg in info_msgs)
         orc_content = [msg for msg in info_msgs if 'Orc' in msg.get('message', '')]
 
         print(f"  Rotation detected: {rotation_detected}")
@@ -113,7 +124,7 @@ def test_full_rotation_sequence():
             f.write("[Thu Jan 09 14:00:00] Combat in Log1\n")
 
         # Start monitoring
-        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
+        monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
@@ -132,7 +143,7 @@ def test_full_rotation_sequence():
                 f.write(f"[Thu Jan 09 14:{i:02d}:00] Combat in Log{i + 1}\n")
 
             # Poll
-            monitor.read_new_lines(parser, data_queue)
+            monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
             # Clear queue
             items = []
@@ -165,7 +176,7 @@ def test_rotation_does_not_trigger_truncation_warning():
             f.write("[Thu Jan 09 14:00:00] Combat in Log1\n" * 10)
 
         # Start monitoring with debug_mode enabled
-        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
+        monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
@@ -180,16 +191,19 @@ def test_rotation_does_not_trigger_truncation_warning():
             f.write("[Thu Jan 09 14:01:00] Combat in Log2\n")
 
         # Poll - should detect rotation, NOT truncation
-        monitor.read_new_lines(parser, data_queue)
-
-        items = []
+        log_capture = LogMessageCapture()
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 
         debug_msgs = [i for i in items if i.get('type') == 'debug']
+        info_msgs = [i for i in items if i.get('type') == 'info']
+        warning_msgs = [i for i in items if i.get('type') == 'warning']
 
-        rotation_detected = any('rotation' in msg.get('message', '').lower() for msg in debug_msgs)
-        truncation_detected = any('truncat' in msg.get('message', '').lower() for msg in debug_msgs)
+        # Rotation is logged as 'info', truncation as 'warning'
+        rotation_detected = any('rotation' in msg.get('message', '').lower() for msg in info_msgs)
+        truncation_detected = any('truncat' in msg.get('message', '').lower() for msg in warning_msgs)
 
         print(f"  Rotation detected: {rotation_detected}")
         print(f"  Truncation detected: {truncation_detected}")
@@ -216,7 +230,7 @@ def test_truncation_on_same_file_still_works():
             f.write("[Thu Jan 09 14:00:00] Combat before restart\n" * 5)
 
         # Start monitoring with debug_mode enabled
-        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
+        monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
@@ -235,15 +249,17 @@ def test_truncation_on_same_file_still_works():
         print(f"  Truncation: {new_size < initial_position}\n")
 
         # Poll - should detect truncation
-        monitor.read_new_lines(parser, data_queue)
-
-        items = []
+        log_capture = LogMessageCapture()
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 
         debug_msgs = [i for i in items if i.get('type') == 'debug']
+        warning_msgs = [i for i in items if i.get('type') == 'warning']
 
-        truncation_detected = any('truncat' in msg.get('message', '').lower() for msg in debug_msgs)
+        # Truncation is logged as 'warning' type
+        truncation_detected = any('truncat' in msg.get('message', '').lower() for msg in warning_msgs)
 
         print(f"  Truncation detected: {truncation_detected}")
         print(f"  Still monitoring: {monitor.current_log_file.name}")
@@ -271,13 +287,13 @@ def test_rotation_with_content_continuation():
             f.write("[Thu Jan 09 14:00:00] Goblin hit\n")
 
         # Start monitoring with debug_mode enabled
-        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
+        monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
 
         # Poll log1
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
         while not data_queue.empty():
             data_queue.get()
 
@@ -291,9 +307,9 @@ def test_rotation_with_content_continuation():
             f.write("[Thu Jan 09 14:01:01] Orc hit line 2\n")
 
         # Poll - should read ALL content from log2
-        monitor.read_new_lines(parser, data_queue)
-
-        items = []
+        log_capture = LogMessageCapture()
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 
@@ -309,9 +325,9 @@ def test_rotation_with_content_continuation():
             f.write("[Thu Jan 09 14:01:02] Orc hit line 3\n")
 
         # Poll again
-        monitor.read_new_lines(parser, data_queue)
-
-        items = []
+        log_capture = LogMessageCapture()
+        monitor.read_new_lines(parser, data_queue, on_log_message=log_capture, debug_enabled=True)
+        items = list(log_capture.get_all())
         while not data_queue.empty():
             items.append(data_queue.get())
 

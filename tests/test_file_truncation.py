@@ -22,7 +22,7 @@ def test_file_truncation_detection():
         log_file.write_text("Line 1\nLine 2\nLine 3\n")
 
         # Setup monitor with debug_mode enabled to get debug messages
-        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
+        monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
 
         # Verify initial position is set to end of file
@@ -35,18 +35,18 @@ def test_file_truncation_detection():
         # Read new lines
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
-        monitor.read_new_lines(parser, data_queue)
+
+        # Capture messages via callback
+        messages = []
+        def capture_message(msg, msg_type):
+            messages.append(msg)
+
+        monitor.read_new_lines(parser, data_queue, on_log_message=capture_message, debug_enabled=True)
 
         # Verify that monitor detected truncation and reset position
         assert monitor.last_position < initial_size, "Position should be reset after truncation"
 
-        # Verify debug message about truncation was queued
-        messages = []
-        while not data_queue.empty():
-            item = data_queue.get()
-            if item.get('type') in ('debug', 'info'):
-                messages.append(item['message'])
-
+        # Verify debug message about truncation was logged
         truncation_detected = any('truncat' in msg.lower() for msg in messages)
         assert truncation_detected, f"Expected truncation message, got: {messages}"
 
@@ -66,7 +66,7 @@ def test_append_after_truncation():
         log_file.write_text("Initial content\n")
 
         # Setup monitor with debug_mode enabled
-        monitor = LogDirectoryMonitor(tmpdir, debug_mode=True)
+        monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
 
         # Truncate and write new content
@@ -75,7 +75,7 @@ def test_append_after_truncation():
         # First read (should detect truncation)
         parser = LogParser(parse_immunity=False)
         data_queue = queue.Queue()
-        monitor.read_new_lines(parser, data_queue)
+        monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 
         # Clear queue
         while not data_queue.empty():
@@ -86,15 +86,13 @@ def test_append_after_truncation():
             f.write("New action line\n")
 
         # Second read (should read new appended line)
-        monitor.read_new_lines(parser, data_queue)
+        messages = []
+        def capture_message(msg, msg_type):
+            messages.append(msg)
+
+        monitor.read_new_lines(parser, data_queue, on_log_message=capture_message, debug_enabled=True)
 
         # Verify new line was read
-        messages = []
-        while not data_queue.empty():
-            item = data_queue.get()
-            if item.get('type') in ('debug', 'info'):
-                messages.append(item['message'])
-
         new_line_detected = any('New action line' in msg for msg in messages)
         assert new_line_detected, f"Expected new appended line to be read, got: {messages}"
 
