@@ -23,8 +23,8 @@ root_dir = Path(SPECPATH)
 # Create version info
 version_info = VSVersionInfo(
     ffi=FixedFileInfo(
-        filevers=(1, 0, 3, 0),
-        prodvers=(1, 0, 3, 0),
+        filevers=(1, 1, 0, 0),
+        prodvers=(1, 1, 0, 0),
         mask=0x3f,
         flags=0x0,
         OS=0x40004,
@@ -40,12 +40,12 @@ version_info = VSVersionInfo(
                     [
                         StringStruct('CompanyName', 'Woo\'s NWN Tools'),
                         StringStruct('FileDescription', 'Woo\'s NWN Parser'),
-                        StringStruct('FileVersion', '1.0.3.0'),
+                        StringStruct('FileVersion', '1.1.0.0'),
                         StringStruct('InternalName', 'WoosNwnParser'),
                         StringStruct('LegalCopyright', 'Copyright © 2026 Woo\'s NWN Tools'),
                         StringStruct('OriginalFilename', 'WoosNwnParser.exe'),
                         StringStruct('ProductName', 'Woo\'s NWN Parser'),
-                        StringStruct('ProductVersion', '1.0.3.0')
+                        StringStruct('ProductVersion', '1.1.0.0')
                     ]
                 )
             ]
