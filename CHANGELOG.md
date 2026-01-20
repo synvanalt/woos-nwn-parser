@@ -1,7 +1,6 @@
 # Changelog
 
-
-## [1.0.X] - 2026-01-XX
+## [1.1.0] - 2026-01-20
 
 ### Added
 - **Column Sorting** - All treeviews now support sortable columns via header clicks
@@ -37,7 +36,10 @@
   - Reduces unnecessary O(n log n) operations during rapid updates
 
 ### Fixed
-- **AC Estimation** - Natural 20 hits are now properly excluded from AC estimation (like natural 1 misses)
+- **Timestamp Parsing** - Fixed incorrect elapsed time calculation when gameplay crosses midnight
+  - Previously, timestamps only parsed the time portion (HH:MM:SS) and applied it to today's date
+  - Now uses efficient manual parsing to extract the full date (month and day) from log timestamps
+- **AC Estimation** - Natural 20 hits are now properly excluded from AC estimation (like natural-1 misses)
   - Previously, a natural 20 hit could incorrectly lower the estimated minimum AC
   - This reduces the occurrence of "~" (approximation) symbol in AC estimates
 - **AC Estimation** - Hits against flat-footed targets are now automatically discarded
