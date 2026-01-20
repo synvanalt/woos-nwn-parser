@@ -111,6 +111,45 @@ class TestTimestampExtraction:
         result = parser.extract_timestamp_from_line(line)
         assert result is None
 
+    def test_extract_timestamp_preserves_date(self, parser: LogParser) -> None:
+        """Test that timestamp extraction preserves the date from the log.
+
+        This is critical for correctly calculating elapsed time when gameplay
+        crosses midnight. Without date preservation, a timestamp like 19:46:31
+        on one day and 00:42:47 on the next day would be incorrectly calculated
+        as negative time or 23+ hours elapsed.
+        """
+        # Parse two timestamps on consecutive days
+        line1 = "[CHAT WINDOW TEXT] [Mon Jan 19 19:46:31] Woo damages Goblin: 10 (10 Physical)"
+        line2 = "[CHAT WINDOW TEXT] [Tue Jan 20 00:42:47] Woo damages Goblin: 10 (10 Physical)"
+
+        ts1 = parser.extract_timestamp_from_line(line1)
+        ts2 = parser.extract_timestamp_from_line(line2)
+
+        assert ts1 is not None
+        assert ts2 is not None
+
+        # Verify individual timestamp components
+        assert ts1.day == 19
+        assert ts1.hour == 19
+        assert ts1.minute == 46
+        assert ts1.second == 31
+
+        assert ts2.day == 20
+        assert ts2.hour == 0
+        assert ts2.minute == 42
+        assert ts2.second == 47
+
+        # Verify elapsed time calculation is correct (not negative or ~24 hours)
+        elapsed = ts2 - ts1
+        elapsed_seconds = elapsed.total_seconds()
+
+        # Expected elapsed time: ~4 hours, 56 minutes, 16 seconds = ~17776 seconds
+        # Should be positive and less than 24 hours (86400 seconds)
+        assert elapsed_seconds > 0, "Elapsed time should be positive when crossing midnight"
+        assert elapsed_seconds < 86400, "Elapsed time should be less than 24 hours"
+        assert 17700 < elapsed_seconds < 17800, f"Expected ~17776 seconds, got {elapsed_seconds}"
+
 
 class TestDamageDealtParsing:
     """Test suite for parsing damage_dealt lines."""

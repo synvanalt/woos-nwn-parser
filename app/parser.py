@@ -111,23 +111,31 @@ class LogParser:
             match = self.timestamp_pattern.search(line)
             if match:
                 timestamp_str = match.group(1)
-                # Expected format: "Wed Dec 31 21:07:37"
-                # Extract just the time portion (HH:MM:SS) - faster than full regex
-                # Find the last colon and work backwards
-                last_colon = timestamp_str.rfind(':')
-                if last_colon > 0:
-                    # Find the second-to-last colon
-                    second_colon = timestamp_str.rfind(':', 0, last_colon)
-                    if second_colon > 0:
-                        # Extract time components directly
-                        time_str = timestamp_str[second_colon-2:last_colon+3]
-                        parts = time_str.split(':')
-                        if len(parts) == 3:
-                            hour = int(parts[0])
-                            minute = int(parts[1])
-                            second = int(parts[2])
-                            # Create datetime with today's date and extracted time
-                            return datetime.now().replace(hour=hour, minute=minute, second=second, microsecond=0)
+                # Expected format: "Wed Dec 31 21:07:37" (Day Mon DD HH:MM:SS)
+                # Manual parsing for performance while preserving date for midnight crossing accuracy
+
+                # Split the timestamp: ['Wed', 'Dec', '31', '21:07:37']
+                parts = timestamp_str.split()
+                if len(parts) >= 4:
+                    # Month name mapping
+                    months = {
+                        'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+                        'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+                    }
+
+                    month_str = parts[1]
+                    day = int(parts[2])
+                    time_parts = parts[3].split(':')
+
+                    if len(time_parts) == 3 and month_str in months:
+                        hour = int(time_parts[0])
+                        minute = int(time_parts[1])
+                        second = int(time_parts[2])
+                        month = months[month_str]
+                        current_year = datetime.now().year
+
+                        # Create datetime with full date to handle midnight crossings correctly
+                        return datetime(current_year, month, day, hour, minute, second)
         except Exception:
             pass
         return None
