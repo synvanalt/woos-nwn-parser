@@ -78,42 +78,51 @@ class TargetStatsPanel(ttk.Frame):
             if values and len(values) > 0:
                 selected_targets.add(values[0])  # Target name is first column
 
-        # Clear existing data
-        self.tree.delete(*self.tree.get_children())
+        # Suppress visual updates during bulk operations
+        original_show = self.tree.cget("show")
+        self.tree.configure(show="")
 
-        # Get summary data for all targets
-        summary_data = self.data_store.get_all_targets_summary(self.parser)
+        try:
+            # Clear existing data
+            self.tree.delete(*self.tree.get_children())
 
-        # Track items to restore selection
-        items_to_select = []
+            # Get summary data for all targets
+            summary_data = self.data_store.get_all_targets_summary(self.parser)
 
-        # Populate treeview with target data
-        for item in summary_data:
-            item_id = self.tree.insert(
-                "",
-                "end",
-                values=(
-                    item["target"],
-                    item["ab"],
-                    item["ac"],
-                    item["fortitude"],
-                    item["reflex"],
-                    item["will"],
-                    item["damage_taken"],
-                ),
-            )
+            # Track items to restore selection
+            items_to_select = []
 
-            # Check if this target should be selected
-            if item["target"] in selected_targets:
-                items_to_select.append(item_id)
+            # Populate treeview with target data
+            for item in summary_data:
+                item_id = self.tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        item["target"],
+                        item["ab"],
+                        item["ac"],
+                        item["fortitude"],
+                        item["reflex"],
+                        item["will"],
+                        item["damage_taken"],
+                    ),
+                )
 
-        # Restore selection
+                # Check if this target should be selected
+                if item["target"] in selected_targets:
+                    items_to_select.append(item_id)
+
+            # Apply sort only if needed:
+            # - If user has never sorted, apply default sort
+            # - If user has sorted, maintain their sort preference
+            # This is efficient: only sorts when structure changes, not on every update
+            if self.tree._last_sorted_col:
+                self.tree.apply_current_sort()
+
+        finally:
+            # Restore visual updates
+            self.tree.configure(show=original_show)
+
+        # Restore selection (after show is restored)
         if items_to_select:
             self.tree.selection_set(items_to_select)
-
-        # Apply sort only if needed:
-        # - If user has never sorted, apply default sort
-        # - If user has sorted, maintain their sort preference
-        # This is efficient: only sorts when structure changes, not on every update
-        if self.tree._last_sorted_col:
-            self.tree.apply_current_sort()

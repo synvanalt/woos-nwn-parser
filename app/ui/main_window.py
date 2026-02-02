@@ -50,6 +50,9 @@ class WoosNwnParserApp:
         self.polling_job = None
         self.dps_refresh_job = None
 
+        # Version tracking for dirty checking (avoids redundant refreshes)
+        self._last_refresh_version: int = 0
+
         # Debug mode
         self.debug_mode = False
 
@@ -281,8 +284,11 @@ class WoosNwnParserApp:
             )
             # Update the active file label
             self.update_active_file_label()
-            # Update target lists when new data arrives
-            self.refresh_targets()
+            # Only refresh targets if data has changed (dirty checking)
+            current_version = self.data_store.version
+            if current_version != self._last_refresh_version:
+                self.refresh_targets()
+                self._last_refresh_version = current_version
             # Schedule next poll in 500ms
             self.polling_job = self.root.after(500, self.poll_log_file)
 

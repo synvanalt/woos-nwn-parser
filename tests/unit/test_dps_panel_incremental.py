@@ -13,22 +13,13 @@ from app.storage import DataStore
 from app.services.dps_service import DPSCalculationService
 
 
-@pytest.fixture(scope="module")
-def root():
-    """Create a Tk root for testing."""
-    root = tk.Tk()
-    root.withdraw()  # Hide the window
-    yield root
-    try:
-        root.destroy()
-    except:
-        pass
-
-
 @pytest.fixture
-def notebook(root):
-    """Create a notebook for the panel."""
-    nb = ttk.Notebook(root)
+def notebook(shared_tk_root):
+    """Create a notebook for the panel using the shared Tk root."""
+    if shared_tk_root is None:
+        pytest.skip("Tkinter not available")
+
+    nb = ttk.Notebook(shared_tk_root)
     yield nb
     # Cleanup widgets after each test
     try:
