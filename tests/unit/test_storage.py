@@ -436,6 +436,42 @@ class TestTargetSummary:
         assert "Goblin" in targets
         assert "Orc" in targets
 
+    def test_get_all_targets_summary_includes_damage_taken(self, data_store: DataStore) -> None:
+        """Test that summary includes total damage taken by each target."""
+        parser = LogParser()
+
+        # Add multiple damage events against same target from different attackers
+        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
+        data_store.insert_damage_event("Goblin", "Cold", 0, 30, "Rogue")
+        data_store.insert_damage_event("Goblin", "Physical", 0, 20, "Woo")
+        data_store.insert_damage_event("Orc", "Fire", 0, 100, "Woo")
+
+        summary = data_store.get_all_targets_summary(parser)
+
+        # Find Goblin and Orc in the summary
+        goblin_summary = next(s for s in summary if s["target"] == "Goblin")
+        orc_summary = next(s for s in summary if s["target"] == "Orc")
+
+        # Goblin took 50 + 30 + 20 = 100 total damage
+        assert goblin_summary["damage_taken"] == "100"
+        # Orc took 100 total damage
+        assert orc_summary["damage_taken"] == "100"
+
+    def test_get_all_targets_summary_damage_taken_zero_when_no_damage(self, data_store: DataStore) -> None:
+        """Test that damage_taken is 0 when target has no damage events."""
+        parser = LogParser()
+
+        # Insert an attack event but no damage event for target
+        data_store.insert_attack_event("Woo", "Goblin", "miss")
+
+        # Manually add target via damage event with 0 damage to get it in the list
+        data_store.insert_damage_event("Goblin", "Physical", 0, 0, "Woo")
+
+        summary = data_store.get_all_targets_summary(parser)
+
+        goblin_summary = next(s for s in summary if s["target"] == "Goblin")
+        assert goblin_summary["damage_taken"] == "0"
+
 
 class TestThreadSafety:
     """Test suite for thread safety."""

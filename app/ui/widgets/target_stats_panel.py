@@ -46,7 +46,7 @@ class TargetStatsPanel(ttk.Frame):
         summary_scrollbar.pack(side="right", fill="y")
 
         # Treeview for displaying all targets with AB, AC, and saves
-        summary_columns = ("Target", "AB", "AC", "Fortitude", "Reflex", "Will")
+        summary_columns = ("Target", "AB", "AC", "Fortitude", "Reflex", "Will", "Dmg Taken")
         self.tree = SortedTreeview(
             self,
             columns=summary_columns,
@@ -57,9 +57,11 @@ class TargetStatsPanel(ttk.Frame):
 
         for col in summary_columns:
             if col == "Target":
-                self.tree.column(col, width=275)
+                self.tree.column(col, width=220)
+            elif col == "Dmg Taken":
+                self.tree.column(col, width=80)
             else:
-                self.tree.column(col, width=75)
+                self.tree.column(col, width=70)
 
         self.tree.pack(fill="both", expand=True)
         summary_scrollbar.config(command=self.tree.yview)
@@ -97,6 +99,7 @@ class TargetStatsPanel(ttk.Frame):
                     item["fortitude"],
                     item["reflex"],
                     item["will"],
+                    item["damage_taken"],
                 ),
             )
 
