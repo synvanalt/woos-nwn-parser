@@ -17,23 +17,13 @@ from app.ui.widgets import DPSPanel, TargetStatsPanel, ImmunityPanel
 from app.models import EnemyAC, TargetAttackBonus
 
 
-@pytest.fixture(scope="module")
-def tk_root():
-    """Create a shared Tk root for all tests in this module."""
-    root = tk.Tk()
-    root.withdraw()  # Hide the window
-    yield root
-    # Cleanup after all tests
-    try:
-        root.destroy()
-    except:
-        pass
-
-
 @pytest.fixture
-def notebook(tk_root):
-    """Create a fresh notebook widget for each test."""
-    nb = ttk.Notebook(tk_root)
+def notebook(shared_tk_root):
+    """Create a fresh notebook widget for each test using the shared Tk root."""
+    if shared_tk_root is None:
+        pytest.skip("Tkinter not available")
+
+    nb = ttk.Notebook(shared_tk_root)
     yield nb
     # Cleanup widgets after each test
     try:
@@ -44,8 +34,9 @@ def notebook(tk_root):
         pass
 
 
-def test_dps_panel_selection_preservation(tk_root, notebook) -> None:
+def test_dps_panel_selection_preservation(shared_tk_root, notebook) -> None:
     """Test that DPS panel preserves selection after refresh."""
+
     print("\n=== Testing DPS Panel Selection Preservation ===")
 
     # Setup
@@ -108,7 +99,7 @@ def test_dps_panel_selection_preservation(tk_root, notebook) -> None:
     print(f"✅ DPS Panel: Selection preserved after refresh ({new_char})")
 
 
-def test_target_stats_panel_selection_preservation(tk_root, notebook) -> None:
+def test_target_stats_panel_selection_preservation(shared_tk_root, notebook) -> None:
     """Test that Target Stats panel preserves selection after refresh."""
     print("\n=== Testing Target Stats Panel Selection Preservation ===")
 
@@ -183,7 +174,7 @@ def test_target_stats_panel_selection_preservation(tk_root, notebook) -> None:
     print(f"✅ Target Stats Panel: Selection preserved after refresh ({new_target})")
 
 
-def test_immunity_panel_selection_preservation(tk_root, notebook) -> None:
+def test_immunity_panel_selection_preservation(shared_tk_root, notebook) -> None:
     """Test that Immunity panel preserves selection after refresh."""
     print("\n=== Testing Immunity Panel Selection Preservation ===")
 
@@ -251,8 +242,8 @@ def test_immunity_panel_selection_preservation(tk_root, notebook) -> None:
     print(f"✅ Immunity Panel: Selection preserved after refresh ({new_damage_type})")
 
 
-def test_multiple_selection_preservation(tk_root, notebook) -> None:
-    """Test that multiple selections are preserved."""
+def test_multiple_selection_preservation(shared_tk_root, notebook) -> None:
+    """Test that multiple selections are preserved across panels."""
     print("\n=== Testing Multiple Selection Preservation ===")
 
     # Setup Target Stats Panel for multi-select test

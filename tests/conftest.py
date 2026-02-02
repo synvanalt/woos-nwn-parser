@@ -22,6 +22,42 @@ def pytest_configure(config):
     sys.modules['conftest'] = sys.modules[__name__]
 
 
+@pytest.fixture(scope="function", autouse=True)
+def cleanup_tkinter():
+    """Clean up Tkinter resources after each test to prevent resource warnings in threaded tests."""
+    yield
+    # After each test, try to clean up any lingering Tkinter state
+    try:
+        import tkinter as tk
+        # Force garbage collection of any Tk objects
+        import gc
+        gc.collect()
+    except (ImportError, Exception):
+        pass  # Tkinter not available or already cleaned up
+
+
+@pytest.fixture(scope="session")
+def shared_tk_root():
+    """Create a shared Tk root for all tests to avoid multiple Tk instance issues.
+
+    This fixture is session-scoped to prevent the "_tkinter.TclError: invalid command name"
+    errors that occur when creating multiple Tk instances in pytest.
+    """
+    try:
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        yield root
+        try:
+            root.quit()
+            root.destroy()
+        except tk.TclError:
+            pass
+    except (ImportError, tk.TclError, Exception):
+        # Tkinter not available or can't create root
+        yield None
+
+
 class LogMessageCapture:
     """Helper class to capture log messages from monitor callbacks.
 
