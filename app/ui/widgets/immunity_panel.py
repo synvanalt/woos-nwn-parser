@@ -122,107 +122,116 @@ class ImmunityPanel(ttk.Frame):
             if values and len(values) > 0:
                 selected_damage_types.add(values[0])  # Damage type is first column
 
-        # Clear existing data
-        self.tree.delete(*self.tree.get_children())
+        # Suppress visual updates during bulk operations
+        original_show = self.tree.cget("show")
+        self.tree.configure(show="")
 
-        # Initialize cache for this target if needed
-        if target not in self.immunity_pct_cache:
-            self.immunity_pct_cache[target] = {}
+        try:
+            # Clear existing data
+            self.tree.delete(*self.tree.get_children())
 
-        # Get resist data (damage types with immunity records)
-        # Returns: (damage_type, max_damage, immunity_absorbed, sample_count)
-        # where max_damage and immunity_absorbed are from the same hit
-        resists = self.data_store.get_target_resists(target)
-        resist_dict = {
-            damage_type: (max_damage, immunity_absorbed, sample_count)
-            for damage_type, max_damage, immunity_absorbed, sample_count in resists
-        }
+            # Initialize cache for this target if needed
+            if target not in self.immunity_pct_cache:
+                self.immunity_pct_cache[target] = {}
 
-        # Get all damage types for this target from events (whether or not they have immunity)
-        all_damage_types_for_target = set()
-        for event in self.data_store.events:
-            if event.target == target:
-                all_damage_types_for_target.add(event.damage_type)
+            # Get resist data (damage types with immunity records)
+            # Returns: (damage_type, max_damage, immunity_absorbed, sample_count)
+            # where max_damage and immunity_absorbed are from the same hit
+            resists = self.data_store.get_target_resists(target)
+            resist_dict = {
+                damage_type: (max_damage, immunity_absorbed, sample_count)
+                for damage_type, max_damage, immunity_absorbed, sample_count in resists
+            }
 
-        # Combine: use all damage types found, filling in immunity data where available
-        all_damage_types = sorted(all_damage_types_for_target)
+            # Get all damage types for this target from events (whether or not they have immunity)
+            all_damage_types_for_target = set()
+            for event in self.data_store.events:
+                if event.target == target:
+                    all_damage_types_for_target.add(event.damage_type)
 
-        # Track items to restore selection
-        items_to_select = []
+            # Combine: use all damage types found, filling in immunity data where available
+            all_damage_types = sorted(all_damage_types_for_target)
 
-        for damage_type in all_damage_types:
-            tag_name = f"dt_{re.sub(r'[^0-9a-zA-Z]+', '_', damage_type.lower())}"
-            color = damage_type_to_color(damage_type)
-            apply_tag_to_tree(self.tree, tag_name, color)
+            # Track items to restore selection
+            items_to_select = []
 
-            # Get immunity data if available, otherwise use defaults
-            # resist_dict values are: (max_damage, immunity_absorbed, sample_count) - all coupled from same hit
-            if damage_type in resist_dict:
-                max_damage_from_immunity, immunity_absorbed, sample_count = resist_dict[damage_type]
-            else:
-                max_damage_from_immunity = 0
-                immunity_absorbed = 0
-                sample_count = 0
+            for damage_type in all_damage_types:
+                tag_name = f"dt_{re.sub(r'[^0-9a-zA-Z]+', '_', damage_type.lower())}"
+                color = damage_type_to_color(damage_type)
+                apply_tag_to_tree(self.tree, tag_name, color)
 
-            # For immunity percentage calculation, we MUST use the coupled data from immunity_data
-            # (max_damage_from_immunity and immunity_absorbed are from the same hit)
-            #
-            # For display purposes:
-            # - When Parse Immunities is enabled: show the coupled max_damage from immunity tracking
-            # - When disabled: fall back to showing max damage from all events
-            if self.parser.parse_immunity and max_damage_from_immunity > 0:
-                max_damage = max_damage_from_immunity
-            else:
-                # Fall back to max damage from events for display when immunity parsing disabled
-                max_damage = self.data_store.get_max_damage_from_events_for_target_and_type(
-                    target, damage_type
+                # Get immunity data if available, otherwise use defaults
+                # resist_dict values are: (max_damage, immunity_absorbed, sample_count) - all coupled from same hit
+                if damage_type in resist_dict:
+                    max_damage_from_immunity, immunity_absorbed, sample_count = resist_dict[damage_type]
+                else:
+                    max_damage_from_immunity = 0
+                    immunity_absorbed = 0
+                    sample_count = 0
+
+                # For immunity percentage calculation, we MUST use the coupled data from immunity_data
+                # (max_damage_from_immunity and immunity_absorbed are from the same hit)
+                #
+                # For display purposes:
+                # - When Parse Immunities is enabled: show the coupled max_damage from immunity tracking
+                # - When disabled: fall back to showing max damage from all events
+                if self.parser.parse_immunity and max_damage_from_immunity > 0:
+                    max_damage = max_damage_from_immunity
+                else:
+                    # Fall back to max damage from events for display when immunity parsing disabled
+                    max_damage = self.data_store.get_max_damage_from_events_for_target_and_type(
+                        target, damage_type
+                    )
+
+                # Format the display strings
+                max_damage_display = str(max_damage) if max_damage > 0 else "-"
+                absorbed_display = str(immunity_absorbed) if immunity_absorbed > 0 else "-"
+                samples_display = str(sample_count) if sample_count > 0 else "-"
+
+                # Calculate and cache immunity percentage
+                immunity_pct_display = "-"
+
+                # Check if we have a cached value for this damage type
+                if damage_type in self.immunity_pct_cache[target]:
+                    cached_pct = self.immunity_pct_cache[target][damage_type]
+                    if cached_pct is not None:
+                        immunity_pct_display = f"{cached_pct}%"
+
+                # Update cache if Parse Immunities is enabled
+                if self.parser.parse_immunity and max_damage > 0 and immunity_absorbed > 0:
+                    immunity_pct = calculate_immunity_percentage(max_damage, immunity_absorbed)
+                    if immunity_pct is not None:
+                        immunity_pct_display = f"{immunity_pct}%"
+                        self.immunity_pct_cache[target][damage_type] = immunity_pct
+                    else:
+                        self.immunity_pct_cache[target][damage_type] = None
+
+                # Display in simplified column format
+                item_id = self.tree.insert(
+                    "",
+                    "end",
+                    values=(damage_type, max_damage_display, absorbed_display, immunity_pct_display, samples_display),
+                    tags=(tag_name,),
                 )
 
-            # Format the display strings
-            max_damage_display = str(max_damage) if max_damage > 0 else "-"
-            absorbed_display = str(immunity_absorbed) if immunity_absorbed > 0 else "-"
-            samples_display = str(sample_count) if sample_count > 0 else "-"
+                # Check if this damage type should be selected
+                if damage_type in selected_damage_types:
+                    items_to_select.append(item_id)
 
-            # Calculate and cache immunity percentage
-            immunity_pct_display = "-"
+            # Apply sort only if needed:
+            # - If user has never sorted, apply default sort
+            # - If user has sorted, maintain their sort preference
+            # This is efficient: only sorts when structure changes, not on every update
+            if self.tree._last_sorted_col:
+                self.tree.apply_current_sort()
 
-            # Check if we have a cached value for this damage type
-            if damage_type in self.immunity_pct_cache[target]:
-                cached_pct = self.immunity_pct_cache[target][damage_type]
-                if cached_pct is not None:
-                    immunity_pct_display = f"{cached_pct}%"
+        finally:
+            # Restore visual updates
+            self.tree.configure(show=original_show)
 
-            # Update cache if Parse Immunities is enabled
-            if self.parser.parse_immunity and max_damage > 0 and immunity_absorbed > 0:
-                immunity_pct = calculate_immunity_percentage(max_damage, immunity_absorbed)
-                if immunity_pct is not None:
-                    immunity_pct_display = f"{immunity_pct}%"
-                    self.immunity_pct_cache[target][damage_type] = immunity_pct
-                else:
-                    self.immunity_pct_cache[target][damage_type] = None
-
-            # Display in simplified column format
-            item_id = self.tree.insert(
-                "",
-                "end",
-                values=(damage_type, max_damage_display, absorbed_display, immunity_pct_display, samples_display),
-                tags=(tag_name,),
-            )
-
-            # Check if this damage type should be selected
-            if damage_type in selected_damage_types:
-                items_to_select.append(item_id)
-
-        # Restore selection
+        # Restore selection (after show is restored)
         if items_to_select:
             self.tree.selection_set(items_to_select)
-
-        # Apply sort only if needed:
-        # - If user has never sorted, apply default sort
-        # - If user has sorted, maintain their sort preference
-        # This is efficient: only sorts when structure changes, not on every update
-        if self.tree._last_sorted_col:
-            self.tree.apply_current_sort()
 
     def update_target_list(self, targets: list) -> None:
         """Update the target selector combobox.

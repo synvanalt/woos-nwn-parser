@@ -23,6 +23,8 @@ class DataStore:
         self.events: List[DamageEvent] = []
         self.attacks: List[AttackEvent] = []
         self.lock = threading.RLock()
+        # Version counter for change detection (incremented on data modifications)
+        self._version: int = 0
         # DPS tracking: character_name -> {'damage': total, 'first_timestamp': datetime, 'last_timestamp': datetime, 'damage_by_type': {type: amount}}
         self.dps_data: Dict[str, Dict] = {}
         # Global timestamp of the most recent damage dealt by ANY character
@@ -42,6 +44,18 @@ class DataStore:
         self._events_by_target: Dict[str, List[DamageEvent]] = {}
         self._events_by_attacker_target: Dict[Tuple[str, str], List[DamageEvent]] = {}
 
+    @property
+    def version(self) -> int:
+        """Get the current data version for change detection.
+
+        This version is incremented on every data modification, allowing
+        callers to efficiently detect when data has changed.
+
+        Returns:
+            Current version number
+        """
+        return self._version
+
     def insert_attack_event(self, attacker: str, target: str, outcome: str, roll: Optional[int] = None,
                            bonus: Optional[int] = None, total: Optional[int] = None) -> None:
         """Insert an attack event into the in-memory store.
@@ -55,6 +69,7 @@ class DataStore:
             total: Total attack roll (roll + bonus)
         """
         with self.lock:
+            self._version += 1
             event = AttackEvent(
                 attacker=attacker,
                 target=target,
@@ -90,6 +105,7 @@ class DataStore:
             timestamp: Timestamp when the damage occurred (defaults to now if not provided)
         """
         with self.lock:
+            self._version += 1
             if timestamp is None:
                 timestamp = datetime.now()
             event = DamageEvent(
@@ -127,6 +143,7 @@ class DataStore:
             damage_types: Dictionary mapping damage type to amount for this hit
         """
         with self.lock:
+            self._version += 1
             # Always update the global last damage timestamp
             if self.last_damage_timestamp is None or timestamp > self.last_damage_timestamp:
                 self.last_damage_timestamp = timestamp

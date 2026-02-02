@@ -50,6 +50,9 @@ class WoosNwnParserApp:
         self.polling_job = None
         self.dps_refresh_job = None
 
+        # Version tracking for dirty checking (avoids redundant refreshes)
+        self._last_refresh_version: int = 0
+
         # Debug mode
         self.debug_mode = False
 
@@ -97,7 +100,7 @@ class WoosNwnParserApp:
         self.pause_btn.pack(side="left", padx=5)
 
         ttk.Button(buttons_frame, text="Reset Data", command=self.reset_data).pack(side="left", padx=5)
-        # ttk.Button(buttons_frame, text="Load & Parse Logs", command=self.load_and_parse_directory).pack(side="left", padx=5)
+        ttk.Button(buttons_frame, text="Load & Parse Logs", command=self.load_and_parse_directory).pack(side="left", padx=5)
 
         # Status indicator
         self.status_label = ttk.Label(buttons_frame, text="● Paused", foreground="red")
@@ -281,8 +284,11 @@ class WoosNwnParserApp:
             )
             # Update the active file label
             self.update_active_file_label()
-            # Update target lists when new data arrives
-            self.refresh_targets()
+            # Only refresh targets if data has changed (dirty checking)
+            current_version = self.data_store.version
+            if current_version != self._last_refresh_version:
+                self.refresh_targets()
+                self._last_refresh_version = current_version
             # Schedule next poll in 500ms
             self.polling_job = self.root.after(500, self.poll_log_file)
 
