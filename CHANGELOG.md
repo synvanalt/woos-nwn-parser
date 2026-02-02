@@ -6,6 +6,8 @@
 - **Target Stats Panel** - New "Damage Taken" column showing total damage each target has received
   - Displays the sum of all damage dealt to each target from all attackers
   - Column is sortable like all other columns in the panel
+
+### Changed
 - **UI Performance Optimizations** - Improved tab switching and panel refresh responsiveness
   - **Dirty Flag Refresh**: `poll_log_file()` now only calls `refresh_targets()` when data has actually changed, using a version counter in DataStore. Eliminates redundant refreshes every 500ms when idle.
   - **Optimized Sorting**: `SortedTreeview.apply_current_sort()` now checks if data is already in correct order before sorting, skipping O(n log n) sort operations when unnecessary.
