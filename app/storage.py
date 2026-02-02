@@ -797,7 +797,7 @@ class DataStore:
             parser: LogParser instance with target_ac, target_saves, and target_attack_bonus data
 
         Returns:
-            List of dicts with keys: target, ab, ac, fortitude, reflex, will,
+            List of dicts with keys: target, ab, ac, fortitude, reflex, will, damage_taken,
             Sorted alphabetically by target name
         """
         with self.lock:
@@ -825,13 +825,19 @@ class DataStore:
                     ref_display = str(saves.reflex) if saves.reflex is not None else "-"
                     will_display = str(saves.will) if saves.will is not None else "-"
 
+                # Calculate total damage taken by this target
+                damage_taken = sum(
+                    e.total_damage_dealt for e in self._events_by_target.get(target, [])
+                )
+
                 summary.append({
                     'target': target,
                     'ab': ab_display,
                     'ac': ac_display,
                     'fortitude': fort_display,
                     'reflex': ref_display,
-                    'will': will_display
+                    'will': will_display,
+                    'damage_taken': str(damage_taken)
                 })
 
             return summary

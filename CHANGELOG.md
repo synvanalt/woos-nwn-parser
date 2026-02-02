@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0] - 2026-02-02
+
+### Added
+- **Target Stats Panel** - New "Damage Taken" column showing total damage each target has received
+  - Displays the sum of all damage dealt to each target from all attackers
+  - Column is sortable like all other columns in the panel
+
 ## [1.1.0] - 2026-01-20
 
 ### Added
