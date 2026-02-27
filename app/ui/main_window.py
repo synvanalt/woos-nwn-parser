@@ -264,7 +264,7 @@ class WoosNwnParserApp:
         self.import_modal.title("Parsing Logs")
         self.import_modal.resizable(False, False)
         self.import_modal.transient(self.root)
-        self._center_window_on_parent(self.import_modal, 480, 150)
+        self._center_window_on_parent(self.import_modal, 480, 140)
         self._apply_modal_icon(self.import_modal)
         try:
             apply_dark_title_bar(self.import_modal)
@@ -289,7 +289,7 @@ class WoosNwnParserApp:
         self.import_modal._progressbar = progress
 
         self.import_abort_button = ttk.Button(container, text="Abort", command=self.abort_load_parse)
-        self.import_abort_button.pack(anchor="e", pady=(14, 0))
+        self.import_abort_button.pack(anchor="se", pady=(14, 0))
 
     def _start_import_worker(self, selected_files: List[Path]) -> None:
         """Start worker process for import operation."""
