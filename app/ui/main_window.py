@@ -7,6 +7,7 @@ application window, UI components, and event processing.
 import queue
 import threading
 import multiprocessing as mp
+import time
 from collections import deque
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -78,6 +79,12 @@ class WoosNwnParserApp:
         self._last_modal_file: str = ""
         self._last_modal_files_completed: int = -1
         self.window_icon_path: Optional[str] = None
+        self.notebook: Optional[ttk.Notebook] = None
+        self._debug_tab_visible = False
+        self._dps_tab_click_times: deque[float] = deque()
+        self._debug_unlock_click_target = 7
+        self._debug_unlock_window_seconds = 3.0
+        self._dps_tab_text = "Damage Per Second"
 
         # Get the font object defined by the Sun Valley theme to use inside tk non-themed widgets (e.g., tk.Text)
         self.theme_font = font.nametofont("SunValleyBodyFont")
@@ -147,28 +154,28 @@ class WoosNwnParserApp:
             self.dir_text.set(value=dir_display)
 
         # Main content area with notebook for multiple targets
-        notebook = ttk.Notebook(self.root)
-        notebook.pack(fill="both", expand=True, padx=10, pady=(5, 10))
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill="both", expand=True, padx=10, pady=(5, 10))
 
         # Tab 1: DPS Panel (using DPSPanel widget)
-        self.dps_panel = DPSPanel(notebook, self.data_store, self.dps_service)
-        notebook.add(self.dps_panel, text="Damage Per Second")
+        self.dps_panel = DPSPanel(self.notebook, self.data_store, self.dps_service)
+        self.notebook.add(self.dps_panel, text=self._dps_tab_text)
         self.dps_panel.time_tracking_combo.bind("<<ComboboxSelected>>", self._on_time_tracking_mode_changed)
         self.dps_panel.target_filter_combo.bind("<<ComboboxSelected>>", self._on_target_filter_changed)
 
         # Tab 2: Target Stats Panel (using TargetStatsPanel widget)
-        self.stats_panel = TargetStatsPanel(notebook, self.data_store, self.parser)
-        notebook.add(self.stats_panel, text="Target Stats")
+        self.stats_panel = TargetStatsPanel(self.notebook, self.data_store, self.parser)
+        self.notebook.add(self.stats_panel, text="Target Stats")
 
         # Tab 3: Immunity Panel (using ImmunityPanel widget)
-        self.immunity_panel = ImmunityPanel(notebook, self.data_store, self.parser)
-        notebook.add(self.immunity_panel, text="Target Immunities")
+        self.immunity_panel = ImmunityPanel(self.notebook, self.data_store, self.parser)
+        self.notebook.add(self.immunity_panel, text="Target Immunities")
         self.immunity_panel.target_combo.bind("<<ComboboxSelected>>", self.on_target_selected)
 
         # Tab 4: Debug Console Panel (using DebugConsolePanel widget)
-        self.debug_panel = DebugConsolePanel(notebook)
-        notebook.add(self.debug_panel, text="Debug Console")
+        self.debug_panel = DebugConsolePanel(self.notebook)
         self.debug_panel.debug_mode_var.trace("w", self._on_debug_toggle)
+        self.notebook.bind("<Button-1>", self._on_notebook_click, add=True)
 
     def browse_directory(self) -> None:
         """Open directory dialog to select log directory."""
@@ -863,3 +870,46 @@ class WoosNwnParserApp:
         """Handle debug mode toggle from the debug panel."""
         self.debug_mode = bool(self.debug_panel.debug_mode_var.get())
         self.log_debug(f"Debug output {'enabled' if self.debug_mode else 'disabled'}")
+
+    def _on_notebook_click(self, event: tk.Event) -> None:
+        """Track tab-title clicks to unlock advanced debug tab for this session."""
+        if self._debug_tab_visible or self.notebook is None:
+            return
+
+        if self.notebook.identify(event.x, event.y) != "label":
+            self._dps_tab_click_times.clear()
+            return
+
+        try:
+            tab_index = self.notebook.index(f"@{event.x},{event.y}")
+        except tk.TclError:
+            self._dps_tab_click_times.clear()
+            return
+
+        clicked_tab_text = str(self.notebook.tab(tab_index, "text"))
+        if clicked_tab_text != self._dps_tab_text:
+            self._dps_tab_click_times.clear()
+            return
+
+        self._record_dps_tab_click_and_maybe_unlock()
+
+    def _record_dps_tab_click_and_maybe_unlock(self) -> None:
+        """Count rapid DPS tab clicks and reveal the debug tab on threshold."""
+        now = time.monotonic()
+        self._dps_tab_click_times.append(now)
+
+        window_start = now - self._debug_unlock_window_seconds
+        while self._dps_tab_click_times and self._dps_tab_click_times[0] < window_start:
+            self._dps_tab_click_times.popleft()
+
+        if len(self._dps_tab_click_times) >= self._debug_unlock_click_target:
+            self._show_debug_tab()
+            self._dps_tab_click_times.clear()
+
+    def _show_debug_tab(self) -> None:
+        """Show the hidden debug tab exactly once for the current session."""
+        if self._debug_tab_visible or self.notebook is None:
+            return
+
+        self.notebook.add(self.debug_panel, text="Debug Console")
+        self._debug_tab_visible = True
