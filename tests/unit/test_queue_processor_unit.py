@@ -762,6 +762,33 @@ class TestCallbacks:
         # Callback should be called with target
         on_damage_dealt.assert_called_with('Goblin')
 
+    def test_on_death_snippet_called(self, queue_processor: QueueProcessor) -> None:
+        """Test that on_death_snippet callback is called for death snippet events."""
+        data_queue = queue.Queue()
+        death_event = {
+            'type': 'death_snippet',
+            'target': 'Woo Wildrock',
+            'killer': 'Hydroxys',
+            'lines': [
+                "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] Hydroxys killed Woo Wildrock",
+                "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] Your God refuses to hear your prayers!",
+            ],
+            'timestamp': datetime.now(),
+        }
+        data_queue.put(death_event)
+
+        on_death_snippet = Mock()
+        queue_processor.process_queue(
+            data_queue,
+            Mock(), Mock(), Mock(), Mock(),
+            on_death_snippet=on_death_snippet,
+        )
+
+        on_death_snippet.assert_called_once()
+        emitted = on_death_snippet.call_args[0][0]
+        assert emitted['type'] == 'death_snippet'
+        assert emitted['target'] == 'Woo Wildrock'
+
 
 class TestErrorHandling:
     """Test suite for error handling."""

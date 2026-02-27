@@ -46,6 +46,7 @@ class QueueProcessor:
         on_target_selected: Callable[[str], None],
         on_immunity_changed: Callable[[str], None],
         on_damage_dealt: Callable[[str], None] = None,
+        on_death_snippet: Callable[[Dict[str, Any]], None] = None,
         debug_enabled: bool = False,
     ) -> None:
         """Process all events in queue and invoke callbacks for UI updates.
@@ -67,6 +68,7 @@ class QueueProcessor:
         targets_to_refresh: set = set()
         immunity_targets: set = set()
         damage_targets: set = set()
+        death_events: List[Dict[str, Any]] = []
         events_processed = 0
 
         try:
@@ -90,6 +92,8 @@ class QueueProcessor:
                         immunity_targets.add(result['immunity_target'])
                     if result.get('damage_target'):
                         damage_targets.add(result['damage_target'])
+                    if result.get('death_event'):
+                        death_events.append(result['death_event'])
 
         except queue.Empty:
             pass
@@ -108,6 +112,10 @@ class QueueProcessor:
         if on_damage_dealt:
             for target in damage_targets:
                 on_damage_dealt(target)
+
+        if on_death_snippet:
+            for death_event in death_events:
+                on_death_snippet(death_event)
 
         # Periodic cleanup of stale immunity entries (every 100 events)
         self.parsed_event_count += events_processed
@@ -148,6 +156,8 @@ class QueueProcessor:
             'critical_hit',
         ):
             result = self._handle_attack_batched(data, on_log_message, debug_enabled)
+        elif event_type == 'death_snippet':
+            result['death_event'] = data
         elif event_type == 'save':
             # Save events are parsed but not processed further (used for save bonus tracking in parser)
             if debug_enabled:
