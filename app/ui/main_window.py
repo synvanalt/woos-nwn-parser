@@ -18,6 +18,7 @@ from ..monitor import LogDirectoryMonitor
 from ..utils import parse_and_import_file
 from ..services import QueueProcessor, DPSCalculationService
 from .formatters import get_default_log_directory
+from .window_style import apply_dark_title_bar
 from .widgets import DPSPanel, TargetStatsPanel, ImmunityPanel, DebugConsolePanel
 
 
@@ -67,6 +68,9 @@ class WoosNwnParserApp:
         self.monitoring_was_active_before_import = False
         self._import_status_lock = threading.Lock()
         self._import_status: Dict[str, Any] = {}
+        self._last_modal_file: str = ""
+        self._last_modal_files_completed: int = -1
+        self.window_icon_path: Optional[str] = None
 
         # Get the font object defined by the Sun Valley theme to use inside tk non-themed widgets (e.g., tk.Text)
         self.theme_font = font.nametofont("SunValleyBodyFont")
@@ -223,12 +227,12 @@ class WoosNwnParserApp:
             'total_files': len(selected_files),
             'files_completed': 0,
             'current_file': '',
-            'lines_processed': 0,
-            'file_lines_processed': 0,
             'errors': [],
             'aborted': False,
             'success': False,
         }
+        self._last_modal_file = ""
+        self._last_modal_files_completed = -1
 
         self._set_import_ui_busy(True)
         self._show_import_modal()
@@ -250,10 +254,15 @@ class WoosNwnParserApp:
     def _show_import_modal(self) -> None:
         """Show a modal with import progress and abort button."""
         self.import_modal = tk.Toplevel(self.root)
-        self.import_modal.title("Loading Logs")
-        self.import_modal.geometry("480x180")
+        self.import_modal.title("Parsing Logs")
         self.import_modal.resizable(False, False)
         self.import_modal.transient(self.root)
+        self._center_window_on_parent(self.import_modal, 480, 180)
+        self._apply_modal_icon(self.import_modal)
+        try:
+            apply_dark_title_bar(self.import_modal)
+        except Exception:
+            pass
         self.import_modal.grab_set()
         self.import_modal.protocol("WM_DELETE_WINDOW", self.abort_load_parse)
 
@@ -284,7 +293,6 @@ class WoosNwnParserApp:
 
     def _run_import_worker(self, selected_files: List[Path]) -> None:
         """Parse selected files and update shared status."""
-        total_lines = 0
         file_errors: List[str] = []
 
         for index, log_file in enumerate(selected_files, start=1):
@@ -297,18 +305,12 @@ class WoosNwnParserApp:
             with self._import_status_lock:
                 self._import_status['current_file'] = log_file.name
                 self._import_status['files_completed'] = index - 1
-                self._import_status['file_lines_processed'] = 0
-
-            def _on_file_progress(lines_processed: int) -> None:
-                with self._import_status_lock:
-                    self._import_status['file_lines_processed'] = lines_processed
 
             result = parse_and_import_file(
                 str(log_file),
                 self.parser,
                 self.data_store,
                 should_abort=self.import_abort_event.is_set,
-                progress_callback=_on_file_progress,
             )
 
             if result.get('aborted'):
@@ -318,10 +320,7 @@ class WoosNwnParserApp:
                 return
 
             if result['success']:
-                lines = result['lines_processed']
-                total_lines += lines
                 with self._import_status_lock:
-                    self._import_status['lines_processed'] = total_lines
                     self._import_status['files_completed'] = index
             else:
                 error_message = f"{log_file.name}: {result['error']}"
@@ -332,7 +331,6 @@ class WoosNwnParserApp:
 
         with self._import_status_lock:
             self._import_status['success'] = True
-            self._import_status['lines_processed'] = total_lines
             self._import_status['errors'] = list(file_errors)
 
     def _poll_import_progress(self) -> None:
@@ -345,18 +343,19 @@ class WoosNwnParserApp:
 
         if self.import_status_text is not None:
             current_file = status.get('current_file') or "Preparing selected files..."
-            file_lines = status.get('file_lines_processed', 0)
-            self.import_status_text.set(
-                f"Parsing {current_file} ({file_lines} lines processed in current file)"
-            )
+            files_completed = status.get('files_completed', 0)
+            if self._last_modal_file != current_file:
+                self.import_status_text.set(f"Parsing: {current_file}")
+                self._last_modal_file = current_file
         if self.import_progress_text is not None:
-            self.import_progress_text.set(
-                f"{status.get('files_completed', 0)}/{status.get('total_files', 0)} files completed "
-                f"({status.get('lines_processed', 0)} total lines)"
-            )
+            files_completed = status.get('files_completed', 0)
+            total_files = status.get('total_files', 0)
+            if self._last_modal_files_completed != files_completed:
+                self.import_progress_text.set(f"{files_completed}/{total_files} files completed")
+                self._last_modal_files_completed = files_completed
 
         if self.import_thread and self.import_thread.is_alive():
-            self.import_poll_job = self.root.after(100, self._poll_import_progress)
+            self.import_poll_job = self.root.after(200, self._poll_import_progress)
             return
 
         self._finalize_import()
@@ -396,8 +395,7 @@ class WoosNwnParserApp:
 
         if status.get('aborted'):
             self.log_debug(
-                f"Load & Parse aborted. Imported {status.get('files_completed', 0)} files and "
-                f"{status.get('lines_processed', 0)} lines before stop.",
+                f"Load & Parse aborted. Imported {status.get('files_completed', 0)} files before stop.",
                 msg_type='warning'
             )
         elif status.get('errors'):
@@ -408,10 +406,41 @@ class WoosNwnParserApp:
             self.log_debug("Load & Parse completed with file errors.", msg_type='warning')
         else:
             self.log_debug(
-                f"Load & Parse completed: {status.get('total_files', 0)} files, "
-                f"{status.get('lines_processed', 0)} total lines.",
+                f"Load & Parse completed: {status.get('total_files', 0)} files.",
                 msg_type='info'
             )
+
+    def _center_window_on_parent(self, window: tk.Toplevel, width: int, height: int) -> None:
+        """Center a child window relative to the main application window."""
+        self.root.update_idletasks()
+        root_x = self.root.winfo_rootx()
+        root_y = self.root.winfo_rooty()
+        root_w = self.root.winfo_width()
+        root_h = self.root.winfo_height()
+
+        x = max(0, root_x + (root_w - width) // 2)
+        y = max(0, root_y + (root_h - height) // 2)
+        window.geometry(f"{width}x{height}+{x}+{y}")
+
+    def _apply_modal_icon(self, window: tk.Toplevel) -> None:
+        """Apply same icon used by the main app window to modal windows."""
+        if self.window_icon_path:
+            try:
+                window.iconbitmap(self.window_icon_path)
+                return
+            except Exception:
+                pass
+
+        try:
+            icon_ref = self.root.iconbitmap()
+            if icon_ref:
+                window.iconbitmap(icon_ref)
+        except Exception:
+            pass
+
+    def set_window_icon(self, icon_path: str) -> None:
+        """Store icon path so child dialogs can reuse the app icon."""
+        self.window_icon_path = icon_path
 
     def start_monitoring(self) -> None:
         """Start monitoring the log directory for new log files."""

@@ -21,6 +21,9 @@ def _make_app_shell() -> WoosNwnParserApp:
     app.import_abort_button = None
     app._import_status_lock = threading.Lock()
     app._import_status = {}
+    app._last_modal_file = ""
+    app._last_modal_files_completed = -1
+    app.window_icon_path = None
     app.pause_monitoring = Mock()
     app._set_import_ui_busy = Mock()
     app._show_import_modal = Mock()
@@ -89,7 +92,6 @@ class TestLoadAndParseWorkflow:
         app.import_modal = modal
         app._import_status = {
             "total_files": 2,
-            "lines_processed": 42,
             "errors": [],
             "aborted": False,
         }
