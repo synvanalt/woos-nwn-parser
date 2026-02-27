@@ -81,7 +81,12 @@ class LogParser:
                 r'\*(?P<outcome>success|failed)\*\s*:\s*'
                 r'\((?P<roll>\d+)\s*\+\s*(?P<bonus>-?\d+)\s*(?:=\s*\d+\s*)?vs\.\s*DC:\s*(?P<dc>\d+)\)',
                 re.IGNORECASE
-            )
+            ),
+            # Epic Dodge indicator line for AC confidence marking
+            'epic_dodge': re.compile(
+                r'(?P<target>.+?)\s*:\s*Epic Dodge\s*:\s*Attack evaded',
+                re.IGNORECASE
+            ),
         }
 
         self.current_target = None
@@ -252,6 +257,15 @@ class LogParser:
         if '[CHAT WINDOW TEXT]' in line:
             # Remove the [CHAT WINDOW TEXT] [timestamp] prefix
             stripped_line = re.sub(r'^\[CHAT WINDOW TEXT]\s*\[[^]]+]\s*', '', line)
+
+        # Check for Epic Dodge markers and tag the target AC estimate as uncertain.
+        epic_dodge_match = self.patterns['epic_dodge'].search(stripped_line)
+        if epic_dodge_match:
+            target = epic_dodge_match.group('target').strip()
+            if target not in self.target_ac:
+                self.target_ac[target] = EnemyAC(name=target)
+            self.target_ac[target].mark_epic_dodge()
+            return None
 
         # Check for attack rolls to estimate AC - try threat roll pattern first (handles critical hits)
         attack_match = self.patterns['attack_with_threat'].search(stripped_line)

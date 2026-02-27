@@ -2,7 +2,11 @@
 
 ## [1.3.0] - 2026-02-27
 
+### Added
+- Epic Dodge detection from combat log lines (e.g., `<target> : Epic Dodge : Attack evaded`) to flag affected targets.
+
 ### Changed
+- AC estimates now show a `~` prefix for targets detected with Epic Dodge to indicate the value may be skewed by guaranteed first-attack evasion each round.
 - Optimized AC estimation hit discarding logic by adding a short-circuit check against `min_hit`.
 
 

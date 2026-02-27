@@ -62,6 +62,7 @@ class EnemyAC:
     """
     name: str
     max_miss: Optional[int] = None
+    has_epic_dodge: bool = False
     _hits: list[int] = field(default_factory=list, repr=False)
 
     @property
@@ -105,6 +106,10 @@ class EnemyAC:
                     # (hits <= max_miss shouldn't have hit if target had true AC)
                     self._hits = [h for h in self._hits if h > self.max_miss]
 
+    def mark_epic_dodge(self) -> None:
+        """Mark this target as having Epic Dodge."""
+        self.has_epic_dodge = True
+
     def get_ac_estimate(self) -> str:
         """Return an estimated AC based on recorded hits and misses.
 
@@ -113,20 +118,24 @@ class EnemyAC:
         """
         min_hit = self.min_hit
         max_miss = self.max_miss
+        estimate = "-"
 
         if min_hit is not None and max_miss is not None:
             if max_miss + 1 == min_hit:
-                return str(min_hit)
+                estimate = str(min_hit)
             elif max_miss < min_hit:
-                return f"{max_miss + 1}-{min_hit}"
+                estimate = f"{max_miss + 1}-{min_hit}"
             else:
                 # This case should now be rare due to automatic cleanup
-                return f"~{min_hit}"
+                estimate = f"⚠{min_hit}"
         elif min_hit is not None:
-            return f"≤{min_hit}"
+            estimate = f"≤{min_hit}"
         elif max_miss is not None:
-            return f">{max_miss}"
-        return "-"
+            estimate = f">{max_miss}"
+
+        if self.has_epic_dodge and estimate != "-" and not estimate.startswith("~"):
+            return f"~{estimate}"
+        return estimate
 
 
 @dataclass
