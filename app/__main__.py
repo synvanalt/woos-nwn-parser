@@ -134,6 +134,11 @@ def main() -> None:
     """Launch Woo's NWN Parser application."""
     root = tk.Tk()
     root.withdraw()
+    root.configure(bg="#1c1c1c")
+    try:
+        root.attributes("-alpha", 0.0)
+    except tk.TclError:
+        pass
     sv_ttk.set_theme("dark")
 
     # Fix the treeview indicator to properly show expand/collapse arrows
@@ -155,13 +160,38 @@ def main() -> None:
     except Exception as e:
         print(f"Failed to apply dark title bar: {e}")
 
-    root.deiconify()
-    root.lift()
-    if icon_path.exists():
-        # Re-apply around first map; this avoids intermittent default Tk taskbar icon.
-        root.after_idle(lambda: apply_root_icon(root, icon_path))
-        root.after(50, lambda: apply_root_icon(root, icon_path))
-        root.after(250, lambda: apply_root_icon(root, icon_path))
+    def warmup_then_show(remaining_frames: int = 6) -> None:
+        # Let ttk/theme/layout settle while still hidden.
+        root.update_idletasks()
+        if remaining_frames > 0:
+            root.after(16, lambda: warmup_then_show(remaining_frames - 1))
+            return
+
+        root.deiconify()
+        root.lift()
+        root.update_idletasks()
+
+        def reveal_after_hidden_render(remaining_repaints: int = 5) -> None:
+            # Paint multiple frames while alpha=0 so users never see transitional white widgets.
+            root.update_idletasks()
+            if remaining_repaints > 0:
+                root.after(16, lambda: reveal_after_hidden_render(remaining_repaints - 1))
+                return
+
+            try:
+                root.attributes("-alpha", 1.0)
+            except tk.TclError:
+                pass
+            if icon_path.exists():
+                # Re-apply around first map; this avoids intermittent default Tk taskbar icon.
+                root.after_idle(lambda: apply_root_icon(root, icon_path))
+                root.after(50, lambda: apply_root_icon(root, icon_path))
+                root.after(250, lambda: apply_root_icon(root, icon_path))
+
+        root.after_idle(reveal_after_hidden_render)
+
+    # Reveal only after a short hidden warm-up.
+    root.after_idle(warmup_then_show)
     root.mainloop()
 
 

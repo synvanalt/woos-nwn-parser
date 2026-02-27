@@ -263,8 +263,6 @@ pip install pyinstaller
 # Build executable
 pyinstaller --clean WoosNwnParser-onefile.spec	# Single file approach
 pyinstaller --clean WoosNwnParser-onedir.spec	# Multiple files in a directory approach
-
-# Output: WoosNwnParser.exe
 ```
 
 ## Requirements
