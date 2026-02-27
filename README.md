@@ -144,12 +144,15 @@ woos-nwn-parser/
 │       ├── __init__.py
 │       ├── main_window.py         # Main application window
 │       ├── formatters.py          # Data formatting utilities
+│       ├── window_style.py        # Window styling helpers
 │       └── widgets/               # UI components
 │           ├── __init__.py
 │           ├── dps_panel.py
 │           ├── target_stats_panel.py
 │           ├── immunity_panel.py
-│           └── debug_console_panel.py
+│           ├── death_snippet_panel.py
+│           ├── debug_console_panel.py
+│           └── sorted_treeview.py
 ├── tests/                         # Test suite
 │   ├── unit/                      # Unit tests
 │   ├── integration/               # Integration tests
@@ -168,7 +171,7 @@ woos-nwn-parser/
 
 **LogParser** (`parser.py`)
 - Parses NWN combat log lines using regex patterns
-- Extracts damage, attacks, saves, and immunity events
+- Extracts damage, attacks, saves, immunity, and death snippet events
 - Supports player filtering and immunity parsing toggles
 
 **DataStore** (`storage.py`)
@@ -182,14 +185,24 @@ woos-nwn-parser/
 - Detects file truncation from game restarts
 
 **QueueProcessor** (`services/queue_processor.py`)
-- Routes parsed events to appropriate handlers
+- Routes parsed events to batched handlers and deduplicated UI refresh callbacks
 - Buffers damage for immunity matching
 - Manages cleanup of stale immunity queue entries
+- Forwards death snippet events to UI via callback
 
 **DPSCalculationService** (`services/dps_service.py`)
 - Calculates DPS with configurable time tracking modes
 - Supports target filtering
 - Provides damage type breakdowns
+
+**WoosNwnParserApp** (`ui/main_window.py`)
+- Orchestrates parser, storage, monitor, and queue processor wiring
+- Runs "Load & Parse Logs" background import workflow with modal progress + abort
+- Keeps debug console hidden by default and reveals it through the DPS-tab click gesture
+
+**DeathSnippetPanel** (`ui/widgets/death_snippet_panel.py`)
+- Displays the latest character-related lines before each detected death
+- Provides placeholder and clear-state UI for death snippet history
 
 ## Development
 
@@ -248,7 +261,8 @@ The project uses [PyInstaller](https://pyinstaller.org/) for creating standalone
 pip install pyinstaller
 
 # Build executable
-pyinstaller --clean WoosNwnParser-onefile.spec	# use WoosNwnParser-onedir.spec for one directory approach
+pyinstaller --clean WoosNwnParser-onefile.spec	# Single file approach
+pyinstaller --clean WoosNwnParser-onedir.spec	# Multiple files in a directory approach
 
 # Output: WoosNwnParser.exe
 ```

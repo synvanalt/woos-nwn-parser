@@ -3,7 +3,7 @@
 ## [1.3.0] - 2026-02-27
 
 ### Added
-- **AC Estimation** - added Epic Dodge detection from combat log lines to flag affected targets (unreliable estimation)
+- AC Estimation - added Epic Dodge detection from combat log lines to flag affected targets (unreliable estimation)
 - New `Load & Parse` workflow for importing one or more selected `.txt` log files from disk (historical session analysis)
   - Abortable import modal with progress feedback for files parsed
 - Hidden `Debug Console` unlock gesture: click the `Damage Per Second` tab title 7 times within 3 seconds to reveal
