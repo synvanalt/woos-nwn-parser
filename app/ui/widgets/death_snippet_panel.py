@@ -9,7 +9,7 @@ from typing import List
 class DeathSnippetPanel(ttk.Frame):
     """Panel for displaying death-related log snippets."""
 
-    EMPTY_PLACEHOLDER = "Hurray! You have not died (yet)."
+    EMPTY_PLACEHOLDER = "Hurray! You have not died (yet)"
 
     def __init__(self, parent: ttk.Notebook) -> None:
         super().__init__(parent, padding="10")

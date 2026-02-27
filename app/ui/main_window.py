@@ -172,9 +172,9 @@ class WoosNwnParserApp:
         self.notebook.add(self.immunity_panel, text="Target Immunities")
         self.immunity_panel.target_combo.bind("<<ComboboxSelected>>", self.on_target_selected)
 
-        # Tab 4: Death Snippet Panel
+        # Tab 4: Death Snippets Panel
         self.death_snippet_panel = DeathSnippetPanel(self.notebook)
-        self.notebook.add(self.death_snippet_panel, text="Death Snippet")
+        self.notebook.add(self.death_snippet_panel, text="Death Snippets")
 
         # Tab 5: Debug Console Panel (using DebugConsolePanel widget)
         self.debug_panel = DebugConsolePanel(self.notebook)
