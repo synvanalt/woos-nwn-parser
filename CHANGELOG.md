@@ -3,17 +3,23 @@
 ## [1.3.0] - 2026-02-27
 
 ### Added
-- Epic Dodge detection from combat log lines (e.g., `<target> : Epic Dodge : Attack evaded`) to flag affected targets.
-- New `Load & Parse` workflow for importing one or more selected `.txt` log files from disk (historical session analysis).
-- Abortable import modal with progress feedback during file import.
-- Hidden `Debug Console` unlock gesture: click the `Damage Per Second` tab title 7 times within 3 seconds.
+- Epic Dodge detection from combat log lines (e.g., `<target> : Epic Dodge : Attack evaded`) to flag affected targets
+- New `Load & Parse` workflow for importing one or more selected `.txt` log files from disk (historical session analysis)
+  - Abortable import modal with progress feedback for files parsed
+- Hidden `Debug Console` unlock gesture: click the `Damage Per Second` tab title 7 times within 3 seconds to reveal
+- New `Death Snippet` tab to capture post-death context:
+  - Triggered only by `Your God refuses to hear your prayers!`
+  - Looks back to the nearest prior `<Opponent> killed <Character>` line to identify the dead character
+  - Appends up to 100 most recent lines related to that character
+  - Works for both live monitoring and `Load & Parse` imports
+  - Multiple deaths can be recorded and will have text separators for isolation
 
 ### Changed
-- AC estimates now show a `~` prefix for targets detected with Epic Dodge to indicate the value may be skewed by guaranteed first-attack evasion each round.
-- Optimized AC estimation hit discarding logic by adding a short-circuit check against `min_hit`.
-- Replaced the separate `Start Monitoring` and `Pause Monitoring` controls with a single `ttk.Checkbutton` monitoring switch.
-- Import pipeline moved to a separate worker process to keep the UI responsive while parsing large files.
-- `Debug Console` tab is now hidden by default and only shown after the unlock gesture (session-only, non-persistent).
+- AC estimates now show a `~` prefix for targets detected with Epic Dodge to indicate the value may be skewed by guaranteed first-attack evasion each round
+- Optimized AC estimation hit discarding logic by adding a short-circuit check against `min_hit`
+- Replaced the separate `Start Monitoring` and `Pause Monitoring` controls with a single `ttk.Checkbutton` monitoring switch
+- Import pipeline moved to a separate worker process to keep the UI responsive while parsing large files
+- `Debug Console` tab is now hidden by default and only shown after the unlock gesture (session-only, non-persistent)
 
 
 ## [1.2.0] - 2026-02-02
@@ -25,10 +31,10 @@
 
 ### Changed
 - **UI Performance Optimizations** - Improved tab switching and panel refresh responsiveness
-  - **Dirty Flag Refresh**: `poll_log_file()` now only calls `refresh_targets()` when data has actually changed, using a version counter in DataStore. Eliminates redundant refreshes every 500ms when idle.
-  - **Optimized Sorting**: `SortedTreeview.apply_current_sort()` now checks if data is already in correct order before sorting, skipping O(n log n) sort operations when unnecessary.
-  - **Batch Visual Updates**: Target Stats and Immunity panels now suppress Treeview repaints during bulk insert operations using `tree.configure(show="")` pattern, reducing layout recalculations.
-  - **DataStore Version Tracking**: Added `version` property to DataStore that increments on every data modification, enabling efficient change detection.
+  - **Dirty Flag Refresh**: `poll_log_file()` now only calls `refresh_targets()` when data has actually changed, using a version counter in DataStore. Eliminates redundant refreshes every 500ms when idle
+  - **Optimized Sorting**: `SortedTreeview.apply_current_sort()` now checks if data is already in correct order before sorting, skipping O(n log n) sort operations when unnecessary
+  - **Batch Visual Updates**: Target Stats and Immunity panels now suppress Treeview repaints during bulk insert operations using `tree.configure(show="")` pattern, reducing layout recalculations
+  - **DataStore Version Tracking**: Added `version` property to DataStore that increments on every data modification, enabling efficient change detection
 
 
 ## [1.1.0] - 2026-01-20
