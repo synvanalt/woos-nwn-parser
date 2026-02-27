@@ -115,6 +115,7 @@ def fix_treeview_indicator(root: tk.Tk) -> None:
 def main() -> None:
     """Launch Woo's NWN Parser application."""
     root = tk.Tk()
+    root.withdraw()
     sv_ttk.set_theme("dark")
 
     # Fix the treeview indicator to properly show expand/collapse arrows
@@ -136,6 +137,8 @@ def main() -> None:
     except Exception as e:
         print(f"Failed to apply dark title bar: {e}")
 
+    root.deiconify()
+    root.lift()
     root.mainloop()
 
 

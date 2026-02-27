@@ -249,6 +249,7 @@ class WoosNwnParserApp:
     def _show_import_modal(self) -> None:
         """Show a modal with import progress and abort button."""
         self.import_modal = tk.Toplevel(self.root)
+        self.import_modal.withdraw()
         self.import_modal.title("Parsing Logs")
         self.import_modal.resizable(False, False)
         self.import_modal.transient(self.root)
@@ -258,6 +259,8 @@ class WoosNwnParserApp:
             apply_dark_title_bar(self.import_modal)
         except Exception:
             pass
+        self.import_modal.deiconify()
+        self.import_modal.lift()
         self.import_modal.grab_set()
         self.import_modal.protocol("WM_DELETE_WINDOW", self.abort_load_parse)
 
