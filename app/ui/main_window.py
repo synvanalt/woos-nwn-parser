@@ -184,7 +184,8 @@ class WoosNwnParserApp:
     def browse_directory(self) -> None:
         """Open directory dialog to select log directory."""
         directory = filedialog.askdirectory(
-            title="Select Log Directory (contains nwclientLog*.txt files)"
+            title="Select Log Directory (contains nwclientLog*.txt files)",
+            parent=self.root,
         )
         if directory:
             self.log_directory = directory
@@ -214,6 +215,7 @@ class WoosNwnParserApp:
         selected_paths = filedialog.askopenfilenames(
             title="Select one or more NWN log files",
             filetypes=[("Text Files", "*.txt")],
+            parent=self.root,
         )
         if not selected_paths:
             return
@@ -261,6 +263,7 @@ class WoosNwnParserApp:
         """Show a modal with import progress and abort button."""
         self.import_modal = tk.Toplevel(self.root)
         self.import_modal.withdraw()
+        self.import_modal.configure(bg="#1c1c1c")
         self.import_modal.title("Parsing Logs")
         self.import_modal.resizable(False, False)
         self.import_modal.transient(self.root)
@@ -270,10 +273,6 @@ class WoosNwnParserApp:
             apply_dark_title_bar(self.import_modal)
         except Exception:
             pass
-        self.import_modal.deiconify()
-        self.import_modal.lift()
-        self.import_modal.grab_set()
-        self.import_modal.protocol("WM_DELETE_WINDOW", self.abort_load_parse)
 
         container = ttk.Frame(self.import_modal, padding=14)
         container.pack(fill="both", expand=True)
@@ -290,6 +289,34 @@ class WoosNwnParserApp:
 
         self.import_abort_button = ttk.Button(container, text="Abort", command=self.abort_load_parse)
         self.import_abort_button.pack(anchor="se", pady=(14, 0))
+
+        self.import_modal.protocol("WM_DELETE_WINDOW", self.abort_load_parse)
+
+        try:
+            self.import_modal.attributes("-alpha", 0.0)
+        except tk.TclError:
+            pass
+
+        def _show_modal_when_ready() -> None:
+            self.import_modal.update_idletasks()
+            self.import_modal.deiconify()
+            self.import_modal.lift()
+
+            def _reveal_modal_after_hidden_render(remaining_repaints: int = 4) -> None:
+                self.import_modal.update_idletasks()
+                if remaining_repaints > 0:
+                    self.import_modal.after(16, lambda: _reveal_modal_after_hidden_render(remaining_repaints - 1))
+                    return
+                try:
+                    self.import_modal.attributes("-alpha", 1.0)
+                except tk.TclError:
+                    pass
+                self.import_modal.grab_set()
+
+            self.import_modal.after_idle(_reveal_modal_after_hidden_render)
+
+        # Reveal only after pending idle layout/styling tasks have run.
+        self.import_modal.after_idle(_show_modal_when_ready)
 
     def _start_import_worker(self, selected_files: List[Path]) -> None:
         """Start worker process for import operation."""

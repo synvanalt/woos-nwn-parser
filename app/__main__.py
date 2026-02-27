@@ -1,7 +1,6 @@
 """Main entry point for Woo's NWN Parser application."""
 
 import sys
-import ctypes
 import tkinter as tk
 from pathlib import Path
 
@@ -11,13 +10,20 @@ from app.ui import WoosNwnParserApp
 from app.ui.window_style import apply_dark_title_bar
 
 
-def set_windows_app_user_model_id(app_id: str) -> None:
-    """Set explicit AppUserModelID so taskbar icon grouping is stable on Windows."""
-    if sys.platform != "win32" or not hasattr(ctypes, "windll"):
-        return
-
+def apply_root_icon(root: tk.Tk, icon_path: Path) -> None:
+    """Apply icon reliably for both current window and Tk default class icon."""
+    icon_str = str(icon_path)
     try:
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+        root.iconbitmap(default=icon_str)
+    except Exception:
+        try:
+            root.iconbitmap(icon_str)
+        except Exception:
+            return
+
+    # Redundant immediate apply on the concrete root window for reliability.
+    try:
+        root.iconbitmap(icon_str)
     except Exception:
         pass
 
@@ -126,10 +132,13 @@ def fix_treeview_indicator(root: tk.Tk) -> None:
 
 def main() -> None:
     """Launch Woo's NWN Parser application."""
-    set_windows_app_user_model_id("com.woosnwnparser.app")
-
     root = tk.Tk()
     root.withdraw()
+    root.configure(bg="#1c1c1c")
+    try:
+        root.attributes("-alpha", 0.0)
+    except tk.TclError:
+        pass
     sv_ttk.set_theme("dark")
 
     # Fix the treeview indicator to properly show expand/collapse arrows
@@ -140,7 +149,7 @@ def main() -> None:
     # Set window icon (works in both dev and bundled exe)
     icon_path = get_resource_path("app/assets/icons/ir_fighter.ico")
     if icon_path.exists():
-        root.iconbitmap(str(icon_path))
+        apply_root_icon(root, icon_path)
         app.set_window_icon(str(icon_path))
 
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
@@ -151,11 +160,38 @@ def main() -> None:
     except Exception as e:
         print(f"Failed to apply dark title bar: {e}")
 
-    root.deiconify()
-    root.lift()
-    if icon_path.exists():
-        # Re-apply after the first show; helps Windows taskbar pick up the correct icon.
-        root.after_idle(lambda: root.iconbitmap(str(icon_path)))
+    def warmup_then_show(remaining_frames: int = 6) -> None:
+        # Let ttk/theme/layout settle while still hidden.
+        root.update_idletasks()
+        if remaining_frames > 0:
+            root.after(16, lambda: warmup_then_show(remaining_frames - 1))
+            return
+
+        root.deiconify()
+        root.lift()
+        root.update_idletasks()
+
+        def reveal_after_hidden_render(remaining_repaints: int = 5) -> None:
+            # Paint multiple frames while alpha=0 so users never see transitional white widgets.
+            root.update_idletasks()
+            if remaining_repaints > 0:
+                root.after(16, lambda: reveal_after_hidden_render(remaining_repaints - 1))
+                return
+
+            try:
+                root.attributes("-alpha", 1.0)
+            except tk.TclError:
+                pass
+            if icon_path.exists():
+                # Re-apply around first map; this avoids intermittent default Tk taskbar icon.
+                root.after_idle(lambda: apply_root_icon(root, icon_path))
+                root.after(50, lambda: apply_root_icon(root, icon_path))
+                root.after(250, lambda: apply_root_icon(root, icon_path))
+
+        root.after_idle(reveal_after_hidden_render)
+
+    # Reveal only after a short hidden warm-up.
+    root.after_idle(warmup_then_show)
     root.mainloop()
 
 
