@@ -7,22 +7,24 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 <!-- TODO: Add screenshots -->
 **Main Window - DPS Tracking:**
 
-<img src="docs/screenshots/main-window.png" alt="Main Window" width="500">
+<img src="docs/screenshots/main-window.png" alt="Main Window" width="540">
 
 **Target Statistics Panel:**
 
-<img src="docs/screenshots/target-stats.png" alt="Target Stats" width="500">
+<img src="docs/screenshots/target-stats.png" alt="Target Stats" width="540">
 
 **Immunity Analysis:**
 
-<img src="docs/screenshots/immunity-panel.png" alt="Immunity Panel" width="500">
+<img src="docs/screenshots/immunity-panel.png" alt="Immunity Panel" width="540">
 
 ## Features
 
 ### Core Functionality
 - **Real-time DPS Tracking** - Monitor damage output per second for all characters
-- **Target Statistics** - Track AC (Armor Class), AB (Attack Bonus), and saves for enemies
+- **Target Statistics** - Track enemies AB (Attack Bonus), AC (Armor Class), and saves
 - **Immunity Detection** - Automatically detect and calculate damage immunities
+- **Death Snippets** - View last events leading to your character's death
+- **Historic Log Analysis** - Analyze past combat logs for performance insights
 
 ### Advanced Features
 - **Multi-Character Support** - Track all party members simultaneously
@@ -80,7 +82,7 @@ The parser works out-of-the-box with default NWN installations. If needed:
 **Per Character Mode** (Default)
 - Each character's DPS is calculated from their first damage event to the last damage event by any character
 - Best for compensating for variance in start time across party members
-- Shows "character time" for each participant
+- Shows different "character time" for each member
 
 **Global Mode**
 - All characters' DPS is calculated from the earliest damage event (by any character) to the last damage event (by any character)
@@ -95,10 +97,11 @@ Both modes use the same last timestamp (the most recent damage dealt by any char
 - Shows estimated AC based on attack rolls
 - Format: `AC: 45` (exact) or `AC: 45-48` (range)
 - Natural 1 misses and natural 20 hits are excluded from calculations
+- Limitation: Inaccurate estimation for targets with `Epic Dodge` feat (`~` symbol is added to indicate such cases)
 
 **AB (Attack Bonus)**
 - Shows most common attack bonus (filters out temporary buffs)
-- Format: `AB: 25` or `AB: Unknown`
+- Format: `AB: 25` or `AB: -` (unknown)
 - Uses mode (most frequent value) to represent typical AB
 
 **Saves**
@@ -111,6 +114,7 @@ Both modes use the same last timestamp (the most recent damage dealt by any char
 - Automatically calculated from damage and absorption
 - Shows as `Fire: 50%`, `Cold: 75%`, etc.
 - Uses reverse calculation of NWN damage reduction formula
+- Limitation: Target with additional damage resistance may show inaccurate immunity percentage since resistance is unaccounted for
 
 **Max Values**
 - `Max Dmg`: Highest damage of this type dealt to target
