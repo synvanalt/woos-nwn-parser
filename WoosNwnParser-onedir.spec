@@ -59,7 +59,7 @@ a = Analysis(
     pathex=[str(root_dir)],
     binaries=[],
     datas=[
-        ('app/assets/icons/ir_attack.ico', 'app/assets/icons'),  # Include the icon file
+        ('app/assets/icons/ir_fighter.ico', 'app/assets/icons'),  # Include the icon file
     ],
     hiddenimports=[
         'sv_ttk',  # Sun Valley ttk theme
@@ -113,7 +113,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='app/assets/icons/ir_attack.ico',  # Application icon
+    icon='app/assets/icons/ir_fighter.ico',  # Application icon
     version=version_info,  # Windows file properties/metadata
 )
 
