@@ -670,3 +670,61 @@ class TestEdgeCases:
         # Should handle gracefully, returning what it can parse
         assert isinstance(result, dict)
 
+
+class TestDeathSnippetParsing:
+    """Test suite for death snippet extraction behavior."""
+
+    def test_prayer_line_triggers_death_snippet_event(self, parser: LogParser) -> None:
+        parser.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:34] HYDROXYS THE TRAVELER OF PLANES attacks Woo Wildrock: *hit*: (10 + 60 = 70)"
+        )
+        parser.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:35] woo wildrock attacks HYDROXYS THE TRAVELER OF PLANES: *miss*: (1 + 40 = 41)"
+        )
+        parser.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] HYDROXYS THE TRAVELER OF PLANES killed Woo Wildrock"
+        )
+
+        result = parser.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] Your God refuses to hear your prayers!"
+        )
+
+        assert result is not None
+        assert result['type'] == 'death_snippet'
+        assert result['target'] == 'Woo Wildrock'
+        assert result['killer'] == 'HYDROXYS THE TRAVELER OF PLANES'
+        assert result['lines'][-1].endswith("Your God refuses to hear your prayers!")
+
+        snippet_joined = "\n".join(result['lines'])
+        assert "HYDROXYS THE TRAVELER OF PLANES attacks Woo Wildrock" in snippet_joined
+        # Case-sensitive matching: lower-case name line should not be included.
+        assert "woo wildrock attacks" not in snippet_joined
+
+    def test_prayer_line_without_recent_kill_within_cap_returns_none(self, parser: LogParser) -> None:
+        parser.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:30] Monster killed Hero"
+        )
+        for i in range(501):
+            parser.parse_line(
+                f"[CHAT WINDOW TEXT] [Tue Jan 13 19:59:31] Filler line {i}"
+            )
+
+        result = parser.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] Your God refuses to hear your prayers!"
+        )
+        assert result is None
+
+    def test_death_snippet_uses_exact_token_boundaries_case_sensitive(self, parser: LogParser) -> None:
+        parser.parse_line("[CHAT WINDOW TEXT] [Tue Jan 13 19:59:30] Orc attacks Ann: *hit*: (10 + 10 = 20)")
+        parser.parse_line("[CHAT WINDOW TEXT] [Tue Jan 13 19:59:31] Orc attacks Anna: *hit*: (10 + 10 = 20)")
+        parser.parse_line("[CHAT WINDOW TEXT] [Tue Jan 13 19:59:32] Orc killed Ann")
+
+        result = parser.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:33] Your God refuses to hear your prayers!"
+        )
+
+        assert result is not None
+        snippet_joined = "\n".join(result['lines'])
+        assert "Orc attacks Ann" in snippet_joined
+        assert "Orc attacks Anna" not in snippet_joined
+

@@ -179,3 +179,16 @@ class TestLoadAndParseWorkflow:
         assert app.parser.target_saves["Goblin"].fortitude == 4
         assert app.parser.target_saves["Goblin"].reflex == 1
         assert "Orc" in app.parser.target_attack_bonus
+
+    def test_on_death_snippet_appends_lines_to_panel(self) -> None:
+        app = _make_app_shell()
+        app.death_snippet_panel = Mock()
+        event = {
+            "type": "death_snippet",
+            "target": "Woo Wildrock",
+            "lines": ["line-1", "line-2"],
+        }
+
+        app._on_death_snippet(event)
+
+        app.death_snippet_panel.append_snippet.assert_called_once_with(["line-1", "line-2"])

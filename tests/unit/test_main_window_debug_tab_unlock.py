@@ -62,6 +62,7 @@ class TestDebugTabUnlock:
             assert "Damage Per Second" in tab_titles
             assert "Target Stats" in tab_titles
             assert "Target Immunities" in tab_titles
+            assert "Death Snippets" in tab_titles
             assert app._debug_tab_visible is False
         finally:
             root.destroy()

@@ -22,7 +22,7 @@ from ..utils import import_worker_process
 from ..services import QueueProcessor, DPSCalculationService
 from .formatters import get_default_log_directory
 from .window_style import apply_dark_title_bar
-from .widgets import DPSPanel, TargetStatsPanel, ImmunityPanel, DebugConsolePanel
+from .widgets import DPSPanel, TargetStatsPanel, ImmunityPanel, DeathSnippetPanel, DebugConsolePanel
 
 
 class WoosNwnParserApp:
@@ -172,7 +172,11 @@ class WoosNwnParserApp:
         self.notebook.add(self.immunity_panel, text="Target Immunities")
         self.immunity_panel.target_combo.bind("<<ComboboxSelected>>", self.on_target_selected)
 
-        # Tab 4: Debug Console Panel (using DebugConsolePanel widget)
+        # Tab 4: Death Snippets Panel
+        self.death_snippet_panel = DeathSnippetPanel(self.notebook)
+        self.notebook.add(self.death_snippet_panel, text="Death Snippets")
+
+        # Tab 5: Debug Console Panel (using DebugConsolePanel widget)
         self.debug_panel = DebugConsolePanel(self.notebook)
         self.debug_panel.debug_mode_var.trace("w", self._on_debug_toggle)
         self.notebook.bind("<Button-1>", self._on_notebook_click, add=True)
@@ -260,7 +264,7 @@ class WoosNwnParserApp:
         self.import_modal.title("Parsing Logs")
         self.import_modal.resizable(False, False)
         self.import_modal.transient(self.root)
-        self._center_window_on_parent(self.import_modal, 480, 150)
+        self._center_window_on_parent(self.import_modal, 480, 140)
         self._apply_modal_icon(self.import_modal)
         try:
             apply_dark_title_bar(self.import_modal)
@@ -285,7 +289,7 @@ class WoosNwnParserApp:
         self.import_modal._progressbar = progress
 
         self.import_abort_button = ttk.Button(container, text="Abort", command=self.abort_load_parse)
-        self.import_abort_button.pack(anchor="e", pady=(14, 0))
+        self.import_abort_button.pack(anchor="se", pady=(14, 0))
 
     def _start_import_worker(self, selected_files: List[Path]) -> None:
         """Start worker process for import operation."""
@@ -391,6 +395,18 @@ class WoosNwnParserApp:
                 if idx < len(attacks):
                     attacker, target, outcome, roll, bonus, total = attacks[idx]
                     self.data_store.insert_attack_event(attacker, target, outcome, roll, bonus, total)
+                    progress['idx'] += 1
+                    budget -= 1
+                    continue
+                progress['stage'] = 'death_snippet'
+                progress['idx'] = 0
+                continue
+
+            if stage == 'death_snippet':
+                death_snippets = ops.get('death_snippets', [])
+                if idx < len(death_snippets):
+                    event = death_snippets[idx]
+                    self.death_snippet_panel.append_snippet(event.get('lines', []))
                     progress['idx'] += 1
                     budget -= 1
                     continue
@@ -689,6 +705,7 @@ class WoosNwnParserApp:
         self.immunity_panel.tree.delete(*self.immunity_panel.tree.get_children())
         self.dps_panel.tree.delete(*self.dps_panel.tree.get_children())
         self.stats_panel.tree.delete(*self.stats_panel.tree.get_children())
+        self.death_snippet_panel.clear()
         self.immunity_panel.target_combo.set('')
 
         # Clear immunity panel cache
@@ -804,6 +821,7 @@ class WoosNwnParserApp:
             on_target_selected=self._on_target_details_needed,
             on_immunity_changed=self._on_immunity_changed,
             on_damage_dealt=self._on_damage_dealt,
+            on_death_snippet=self._on_death_snippet,
             debug_enabled=self.debug_panel.get_debug_enabled(),
         )
 
@@ -838,6 +856,11 @@ class WoosNwnParserApp:
         # to ensure all damage types are displayed
         if self.immunity_panel.target_combo.get() == target:
             self.immunity_panel.refresh_display()
+
+    def _on_death_snippet(self, event: Dict[str, Any]) -> None:
+        """Callback from queue processor when a death snippet is produced."""
+        lines = event.get('lines', [])
+        self.death_snippet_panel.append_snippet(lines)
 
     def on_closing(self) -> None:
         """Handle application closing."""

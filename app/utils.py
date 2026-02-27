@@ -291,6 +291,7 @@ def parse_file_to_ops(
         damage_events = []
         immunity_records = []
         attack_events = []
+        death_snippets = []
 
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             while True:
@@ -371,6 +372,14 @@ def parse_file_to_ops(
                             parsed_data.get('bonus'),
                             parsed_data.get('total'),
                         ))
+                    elif parsed_data['type'] == 'death_snippet':
+                        death_snippets.append({
+                            'target': parsed_data.get('target', ''),
+                            'killer': parsed_data.get('killer', ''),
+                            'lines': parsed_data.get('lines', []),
+                            'timestamp': parsed_data.get('timestamp'),
+                            'type': 'death_snippet',
+                        })
 
         return {
             'success': True,
@@ -382,6 +391,7 @@ def parse_file_to_ops(
                 'damage_events': damage_events,
                 'immunity_records': immunity_records,
                 'attack_events': attack_events,
+                'death_snippets': death_snippets,
             },
             'parser_state': {
                 'target_ac': parser.target_ac,

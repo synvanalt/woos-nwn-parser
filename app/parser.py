@@ -5,8 +5,9 @@ extracting damage, attack, immunity, and save information.
 """
 
 import re
+from collections import deque
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Any, Deque, Dict, Optional, Pattern
 
 from .models import EnemyAC, EnemySaves, TargetAttackBonus
 
@@ -87,6 +88,13 @@ class LogParser:
                 r'(?P<target>.+?)\s*:\s*Epic Dodge\s*:\s*Attack evaded',
                 re.IGNORECASE
             ),
+            # Player death markers (Death Snippet feature)
+            'killed': re.compile(
+                r'\[CHAT WINDOW TEXT]\s*\[.*?]\s*(?P<killer>.+?)\s+killed\s+(?P<target>.+?)\s*$'
+            ),
+            'god_refusal': re.compile(
+                r'\[CHAT WINDOW TEXT]\s*\[.*?]\s*Your God refuses to hear your prayers!\s*$'
+            ),
         }
 
         self.current_target = None
@@ -99,6 +107,76 @@ class LogParser:
         self.target_ac: Dict[str, EnemyAC] = {}
         self.target_saves: Dict[str, EnemySaves] = {}
         self.target_attack_bonus: Dict[str, TargetAttackBonus] = {}
+
+        # Death snippet extraction state (bounded ring buffer for low-memory, low-overhead scanning)
+        self.death_lookup_killed_lookback_lines = 500
+        self.death_snippet_max_lines = 100
+        self.recent_log_lines: Deque[str] = deque(maxlen=20000)
+        self._name_token_pattern_cache: Dict[str, Pattern[str]] = {}
+
+    def _get_name_token_pattern(self, character_name: str) -> Pattern[str]:
+        """Get cached exact-token, case-sensitive regex for a character name."""
+        cached = self._name_token_pattern_cache.get(character_name)
+        if cached is not None:
+            return cached
+
+        # Exact token boundaries with case-sensitive matching.
+        pattern = re.compile(rf'(?<!\w){re.escape(character_name)}(?!\w)')
+        self._name_token_pattern_cache[character_name] = pattern
+        return pattern
+
+    def _build_death_snippet_event(
+        self,
+        prayer_line: str,
+        timestamp: datetime,
+    ) -> Optional[Dict[str, Any]]:
+        """Build a death snippet event by scanning backward from the prayer line."""
+        if len(self.recent_log_lines) < 2:
+            return None
+
+        # Exclude current prayer line; scan recent history backward for nearest kill line.
+        history = list(self.recent_log_lines)[:-1]
+        killed_match = None
+        scanned = 0
+        for candidate in reversed(history):
+            if scanned >= self.death_lookup_killed_lookback_lines:
+                break
+            scanned += 1
+            m = self.patterns['killed'].search(candidate)
+            if m:
+                killed_match = m
+                break
+
+        if not killed_match:
+            return None
+
+        dead_target = killed_match.group('target').strip()
+        killer = killed_match.group('killer').strip()
+        if not dead_target:
+            return None
+
+        name_pattern = self._get_name_token_pattern(dead_target)
+        snippet_reversed = []
+        for candidate in reversed(history):
+            if name_pattern.search(candidate):
+                snippet_reversed.append(candidate)
+                if len(snippet_reversed) >= self.death_snippet_max_lines:
+                    break
+
+        if not snippet_reversed:
+            return None
+
+        snippet_lines = list(reversed(snippet_reversed))
+        # Ensure the trigger line is always the final line in the snippet block.
+        snippet_lines.append(prayer_line)
+
+        return {
+            'type': 'death_snippet',
+            'target': dead_target,
+            'killer': killer,
+            'lines': snippet_lines,
+            'timestamp': timestamp,
+        }
 
     def extract_timestamp_from_line(self, line: str) -> Optional[datetime]:
         """Extract timestamp from a log line.
@@ -186,10 +264,19 @@ class LogParser:
         if not line.strip():
             return None
 
+        raw_line = line.rstrip('\r\n')
+        self.recent_log_lines.append(raw_line)
+
         # Extract timestamp from the log line
         timestamp = self.extract_timestamp_from_line(line)
         if not timestamp:
             timestamp = datetime.now()
+
+        # Death Snippet: trigger only on the unique prayer line and then scan backward.
+        if self.patterns['god_refusal'].search(raw_line):
+            death_event = self._build_death_snippet_event(raw_line, timestamp)
+            if death_event:
+                return death_event
 
         # Check for damage dealt (this sets the context for subsequent resist lines)
         damage_match = self.patterns['damage_dealt'].search(line)
