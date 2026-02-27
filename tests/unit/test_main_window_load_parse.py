@@ -14,6 +14,9 @@ def _make_app_shell() -> WoosNwnParserApp:
     app.monitoring_was_active_before_import = False
     app.import_abort_event = threading.Event()
     app.import_thread = None
+    app.import_process = None
+    app.import_abort_flag = None
+    app.import_result_queue = None
     app.import_poll_job = None
     app.import_modal = None
     app.import_status_text = None
@@ -21,6 +24,8 @@ def _make_app_shell() -> WoosNwnParserApp:
     app.import_abort_button = None
     app._import_status_lock = threading.Lock()
     app._import_status = {}
+    app._pending_file_payloads = []
+    app._is_applying_payload = False
     app._last_modal_file = ""
     app._last_modal_files_completed = -1
     app.window_icon_path = None

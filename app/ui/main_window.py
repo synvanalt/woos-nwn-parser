@@ -6,6 +6,8 @@ application window, UI components, and event processing.
 
 import queue
 import threading
+import multiprocessing as mp
+from collections import deque
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
@@ -15,7 +17,7 @@ from tkinter import ttk, filedialog, messagebox, font
 from ..parser import LogParser
 from ..storage import DataStore
 from ..monitor import LogDirectoryMonitor
-from ..utils import parse_and_import_file
+from ..utils import import_worker_process
 from ..services import QueueProcessor, DPSCalculationService
 from .formatters import get_default_log_directory
 from .window_style import apply_dark_title_bar
@@ -60,6 +62,9 @@ class WoosNwnParserApp:
         self.is_importing = False
         self.import_abort_event = threading.Event()
         self.import_thread: Optional[threading.Thread] = None
+        self.import_process = None
+        self.import_abort_flag = None
+        self.import_result_queue = None
         self.import_poll_job = None
         self.import_modal: Optional[tk.Toplevel] = None
         self.import_status_text: Optional[tk.StringVar] = None
@@ -68,6 +73,8 @@ class WoosNwnParserApp:
         self.monitoring_was_active_before_import = False
         self._import_status_lock = threading.Lock()
         self._import_status: Dict[str, Any] = {}
+        self._pending_file_payloads = deque()
+        self._is_applying_payload = False
         self._last_modal_file: str = ""
         self._last_modal_files_completed: int = -1
         self.window_icon_path: Optional[str] = None
@@ -219,9 +226,12 @@ class WoosNwnParserApp:
             'errors': [],
             'aborted': False,
             'success': False,
+            'worker_done': False,
         }
         self._last_modal_file = ""
         self._last_modal_files_completed = -1
+        self._pending_file_payloads.clear()
+        self._is_applying_payload = False
 
         self._set_import_ui_busy(True)
         self._show_import_modal()
@@ -268,60 +278,171 @@ class WoosNwnParserApp:
         self.import_abort_button.pack(anchor="e", pady=(14, 0))
 
     def _start_import_worker(self, selected_files: List[Path]) -> None:
-        """Start worker thread for import operation."""
-        self.import_thread = threading.Thread(
-            target=self._run_import_worker,
-            args=(selected_files,),
+        """Start worker process for import operation."""
+        file_paths = [str(path) for path in selected_files]
+        ctx = mp.get_context("spawn")
+        self.import_abort_flag = ctx.Event()
+        self.import_result_queue = ctx.Queue()
+        self.import_process = ctx.Process(
+            target=import_worker_process,
+            args=(file_paths, bool(self.parser.parse_immunity), self.import_abort_flag, self.import_result_queue),
             daemon=True,
         )
-        self.import_thread.start()
+        self.import_process.start()
 
-    def _run_import_worker(self, selected_files: List[Path]) -> None:
-        """Parse selected files and update shared status."""
-        file_errors: List[str] = []
+    def _drain_import_events(self) -> None:
+        """Drain events from the import worker process queue."""
+        if self.import_result_queue is None:
+            return
+        while True:
+            try:
+                event = self.import_result_queue.get_nowait()
+            except queue.Empty:
+                break
 
-        for index, log_file in enumerate(selected_files, start=1):
-            if self.import_abort_event.is_set():
+            event_type = event.get('event')
+            if event_type == 'file_started':
+                with self._import_status_lock:
+                    self._import_status['current_file'] = event.get('file_name', '')
+            elif event_type == 'file_completed':
+                self._pending_file_payloads.append({
+                    'ops': event['ops'],
+                    'parser_state': event['parser_state'],
+                    'index': event.get('index', 0),
+                    'progress': {'stage': 'dps', 'idx': 0},
+                    'state_merged': False,
+                })
+                if not self._is_applying_payload:
+                    self._is_applying_payload = True
+                    self.root.after(1, self._apply_pending_payloads_incremental)
+            elif event_type == 'file_error':
+                with self._import_status_lock:
+                    errors = self._import_status.setdefault('errors', [])
+                    errors.append(f"{event.get('file_name')}: {event.get('error')}")
+            elif event_type == 'aborted':
                 with self._import_status_lock:
                     self._import_status['aborted'] = True
-                    self._import_status['files_completed'] = index - 1
-                return
-
-            with self._import_status_lock:
-                self._import_status['current_file'] = log_file.name
-                self._import_status['files_completed'] = index - 1
-
-            result = parse_and_import_file(
-                str(log_file),
-                self.parser,
-                self.data_store,
-                should_abort=self.import_abort_event.is_set,
-            )
-
-            if result.get('aborted'):
+                    self._import_status['worker_done'] = True
+            elif event_type == 'done':
                 with self._import_status_lock:
-                    self._import_status['aborted'] = True
-                    self._import_status['files_completed'] = index - 1
-                return
+                    self._import_status['worker_done'] = True
 
-            if result['success']:
-                with self._import_status_lock:
-                    self._import_status['files_completed'] = index
-            else:
-                error_message = f"{log_file.name}: {result['error']}"
-                file_errors.append(error_message)
-                with self._import_status_lock:
-                    self._import_status['errors'] = list(file_errors)
-                    self._import_status['files_completed'] = index
+    def _apply_pending_payloads_incremental(self) -> None:
+        """Apply completed-file payloads in small slices on the Tk thread."""
+        budget = 500
+        while budget > 0 and self._pending_file_payloads:
+            item = self._pending_file_payloads[0]
+            ops = item['ops']
+            progress = item['progress']
+            stage = progress['stage']
+            idx = progress['idx']
 
-        with self._import_status_lock:
-            self._import_status['success'] = True
-            self._import_status['errors'] = list(file_errors)
+            if stage == 'dps':
+                dps = ops.get('dps_updates', [])
+                if idx < len(dps):
+                    attacker, total_damage, timestamp, damage_types = dps[idx]
+                    self.data_store.update_dps_data(attacker, total_damage, timestamp, damage_types)
+                    progress['idx'] += 1
+                    budget -= 1
+                    continue
+                progress['stage'] = 'damage'
+                progress['idx'] = 0
+                continue
+
+            if stage == 'damage':
+                damage_events = ops.get('damage_events', [])
+                if idx < len(damage_events):
+                    target, damage_type, immunity, total_damage, attacker, timestamp = damage_events[idx]
+                    self.data_store.insert_damage_event(target, damage_type, immunity, total_damage, attacker, timestamp)
+                    progress['idx'] += 1
+                    budget -= 1
+                    continue
+                progress['stage'] = 'immunity'
+                progress['idx'] = 0
+                continue
+
+            if stage == 'immunity':
+                immunities = ops.get('immunity_records', [])
+                if idx < len(immunities):
+                    target, damage_type, immunity_points, damage_amount = immunities[idx]
+                    self.data_store.record_immunity(target, damage_type, immunity_points, damage_amount)
+                    progress['idx'] += 1
+                    budget -= 1
+                    continue
+                progress['stage'] = 'attack'
+                progress['idx'] = 0
+                continue
+
+            if stage == 'attack':
+                attacks = ops.get('attack_events', [])
+                if idx < len(attacks):
+                    attacker, target, outcome, roll, bonus, total = attacks[idx]
+                    self.data_store.insert_attack_event(attacker, target, outcome, roll, bonus, total)
+                    progress['idx'] += 1
+                    budget -= 1
+                    continue
+                progress['stage'] = 'merge_state'
+                progress['idx'] = 0
+                continue
+
+            if stage == 'merge_state' and not item['state_merged']:
+                self._merge_parser_state(item['parser_state'])
+                item['state_merged'] = True
+                with self._import_status_lock:
+                    self._import_status['files_completed'] = item['index']
+                self._pending_file_payloads.popleft()
+                budget -= 1
+
+        if self._pending_file_payloads:
+            self.root.after(1, self._apply_pending_payloads_incremental)
+            return
+
+        self._is_applying_payload = False
+
+    def _merge_parser_state(self, parser_state: Dict[str, Any]) -> None:
+        """Merge parser AC/save/AB state from worker into the main parser."""
+        worker_target_ac = parser_state.get('target_ac', {})
+        for target, src in worker_target_ac.items():
+            dst = self.parser.target_ac.get(target)
+            if dst is None:
+                self.parser.target_ac[target] = src
+                continue
+            if src.max_miss is not None:
+                dst.record_miss(src.max_miss, was_nat1=False)
+            for hit_total in getattr(src, '_hits', []):
+                dst.record_hit(hit_total, was_nat20=False)
+            if src.has_epic_dodge:
+                dst.mark_epic_dodge()
+
+        worker_saves = parser_state.get('target_saves', {})
+        for target, src in worker_saves.items():
+            dst = self.parser.target_saves.get(target)
+            if dst is None:
+                self.parser.target_saves[target] = src
+                continue
+            if src.fortitude is not None:
+                dst.update_save('fort', src.fortitude)
+            if src.reflex is not None:
+                dst.update_save('ref', src.reflex)
+            if src.will is not None:
+                dst.update_save('will', src.will)
+
+        worker_ab = parser_state.get('target_attack_bonus', {})
+        for target, src in worker_ab.items():
+            dst = self.parser.target_attack_bonus.get(target)
+            if dst is None:
+                self.parser.target_attack_bonus[target] = src
+                continue
+            for bonus, count in getattr(src, '_bonus_counts', {}).items():
+                for _ in range(count):
+                    dst.record_bonus(bonus)
 
     def _poll_import_progress(self) -> None:
         """Update modal with latest import status."""
         if not self.is_importing:
             return
+
+        self._drain_import_events()
 
         with self._import_status_lock:
             status = dict(self._import_status)
@@ -339,7 +460,9 @@ class WoosNwnParserApp:
                 self.import_progress_text.set(f"{files_completed}/{total_files} files completed")
                 self._last_modal_files_completed = files_completed
 
-        if self.import_thread and self.import_thread.is_alive():
+        worker_done = bool(status.get('worker_done'))
+        has_pending = bool(self._pending_file_payloads) or self._is_applying_payload
+        if not worker_done or has_pending:
             self.import_poll_job = self.root.after(200, self._poll_import_progress)
             return
 
@@ -350,6 +473,8 @@ class WoosNwnParserApp:
         if not self.is_importing:
             return
         self.import_abort_event.set()
+        if self.import_abort_flag is not None:
+            self.import_abort_flag.set()
         if self.import_abort_button is not None:
             self.import_abort_button.config(state=tk.DISABLED)
         if self.import_status_text is not None:
@@ -363,6 +488,17 @@ class WoosNwnParserApp:
 
         self.is_importing = False
         self._set_import_ui_busy(False)
+        self._is_applying_payload = False
+        self._pending_file_payloads.clear()
+
+        if self.import_process is not None:
+            if self.import_process.is_alive():
+                self.import_process.join(timeout=0.2)
+                if self.import_process.is_alive():
+                    self.import_process.terminate()
+            self.import_process = None
+        self.import_result_queue = None
+        self.import_abort_flag = None
 
         if self.import_modal is not None:
             progress = getattr(self.import_modal, "_progressbar", None)
@@ -404,7 +540,7 @@ class WoosNwnParserApp:
         root_h = self.root.winfo_height()
 
         x = max(0, root_x + (root_w - width) // 2)
-        y = max(0, root_y + (root_h - height) // 4)
+        y = max(0, root_y + (root_h - height) // 2)
         window.geometry(f"{width}x{height}+{x}+{y}")
 
     def _apply_modal_icon(self, window: tk.Toplevel) -> None:
@@ -696,6 +832,10 @@ class WoosNwnParserApp:
         """Handle application closing."""
         if self.is_importing:
             self.import_abort_event.set()
+            if self.import_abort_flag is not None:
+                self.import_abort_flag.set()
+            if self.import_process is not None and self.import_process.is_alive():
+                self.import_process.terminate()
         self.pause_monitoring()
         self.data_store.close()
         self.root.destroy()

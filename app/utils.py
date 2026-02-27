@@ -7,6 +7,8 @@ that are independent of the UI.
 import math
 from typing import Dict, List, Optional, Callable
 
+from .parser import LogParser
+
 
 # Forward damage logic (AUTHORITATIVE)
 def compute_dmg_reduced(dmg_before_immunity: int, immunity: float) -> int:
@@ -271,3 +273,179 @@ def parse_and_import_file(
             'error': str(e),
             'aborted': False
         }
+
+
+def parse_file_to_ops(
+    file_path: str,
+    *,
+    parse_immunity: bool = False,
+    should_abort: Optional[Callable[[], bool]] = None,
+) -> Dict:
+    """Parse a log file and return operation payloads (no datastore mutation)."""
+    try:
+        parser = LogParser(parse_immunity=parse_immunity)
+        lines_processed = 0
+        last_damage_dealt = {}
+
+        dps_updates = []
+        damage_events = []
+        immunity_records = []
+        attack_events = []
+
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            while True:
+                if should_abort and should_abort():
+                    return {
+                        'success': True,
+                        'aborted': True,
+                        'lines_processed': lines_processed,
+                        'error': None,
+                    }
+                lines = f.readlines(10000)
+                if not lines:
+                    break
+
+                for line in lines:
+                    if should_abort and should_abort():
+                        return {
+                            'success': True,
+                            'aborted': True,
+                            'lines_processed': lines_processed,
+                            'error': None,
+                        }
+
+                    lines_processed += 1
+                    parsed_data = parser.parse_line(line)
+                    if not parsed_data:
+                        continue
+
+                    if parsed_data['type'] == 'damage_dealt':
+                        target = parsed_data['target']
+                        attacker = parsed_data['attacker']
+                        timestamp = parsed_data['timestamp']
+                        total_damage = parsed_data['total_damage']
+                        damage_types = parsed_data.get('damage_types', {})
+
+                        dps_updates.append((attacker, total_damage, timestamp, damage_types))
+                        for dt, amount in damage_types.items():
+                            damage_events.append((target, dt, 0, int(amount or 0), attacker, timestamp))
+
+                        last_damage_dealt[target] = {
+                            'damage_types': damage_types,
+                        }
+
+                    elif parsed_data['type'] == 'immunity':
+                        target = parsed_data['target']
+                        damage_type = parsed_data['damage_type']
+                        immunity_points = parsed_data['immunity_points']
+                        if target in last_damage_dealt:
+                            damage_types = last_damage_dealt[target]['damage_types']
+                            if damage_type in damage_types:
+                                damage_amount = int(damage_types[damage_type] or 0)
+                                immunity_records.append((target, damage_type, immunity_points, damage_amount))
+
+                    elif parsed_data['type'] == 'attack_hit':
+                        attack_events.append((
+                            parsed_data['attacker'],
+                            parsed_data['target'],
+                            'hit',
+                            parsed_data.get('roll'),
+                            parsed_data.get('bonus'),
+                            parsed_data.get('total'),
+                        ))
+                    elif parsed_data['type'] == 'attack_hit_critical':
+                        attack_events.append((
+                            parsed_data['attacker'],
+                            parsed_data['target'],
+                            'critical_hit',
+                            parsed_data.get('roll'),
+                            parsed_data.get('bonus'),
+                            parsed_data.get('total'),
+                        ))
+                    elif parsed_data['type'] == 'attack_miss':
+                        attack_events.append((
+                            parsed_data['attacker'],
+                            parsed_data['target'],
+                            'miss',
+                            parsed_data.get('roll'),
+                            parsed_data.get('bonus'),
+                            parsed_data.get('total'),
+                        ))
+
+        return {
+            'success': True,
+            'aborted': False,
+            'lines_processed': lines_processed,
+            'error': None,
+            'ops': {
+                'dps_updates': dps_updates,
+                'damage_events': damage_events,
+                'immunity_records': immunity_records,
+                'attack_events': attack_events,
+            },
+            'parser_state': {
+                'target_ac': parser.target_ac,
+                'target_saves': parser.target_saves,
+                'target_attack_bonus': parser.target_attack_bonus,
+            },
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'aborted': False,
+            'lines_processed': 0,
+            'error': str(e),
+        }
+
+
+def import_worker_process(
+    file_paths: List[str],
+    parse_immunity: bool,
+    abort_event,
+    result_queue,
+) -> None:
+    """Process target for multiprocessing import pipeline."""
+    total_files = len(file_paths)
+    for index, file_path in enumerate(file_paths, start=1):
+        if abort_event.is_set():
+            result_queue.put({'event': 'aborted'})
+            return
+
+        file_name = file_path.replace("\\", "/").split("/")[-1]
+        result_queue.put({
+            'event': 'file_started',
+            'index': index,
+            'total_files': total_files,
+            'file_name': file_name,
+        })
+
+        result = parse_file_to_ops(
+            file_path,
+            parse_immunity=parse_immunity,
+            should_abort=abort_event.is_set,
+        )
+
+        if result.get('aborted'):
+            result_queue.put({'event': 'aborted'})
+            return
+
+        if not result.get('success'):
+            result_queue.put({
+                'event': 'file_error',
+                'index': index,
+                'total_files': total_files,
+                'file_name': file_name,
+                'error': result.get('error', 'Unknown error'),
+            })
+            continue
+
+        result_queue.put({
+            'event': 'file_completed',
+            'index': index,
+            'total_files': total_files,
+            'file_name': file_name,
+            'ops': result['ops'],
+            'parser_state': result['parser_state'],
+        })
+
+    result_queue.put({'event': 'done'})
