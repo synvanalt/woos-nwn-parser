@@ -305,6 +305,9 @@ class WoosNwnParserApp:
                 with self._import_status_lock:
                     self._import_status['current_file'] = event.get('file_name', '')
             elif event_type == 'file_completed':
+                with self._import_status_lock:
+                    # UX: advance file counter immediately when parsing of a file finishes.
+                    self._import_status['files_completed'] = event.get('index', 0)
                 self._pending_file_payloads.append({
                     'ops': event['ops'],
                     'parser_state': event['parser_state'],
@@ -388,8 +391,6 @@ class WoosNwnParserApp:
             if stage == 'merge_state' and not item['state_merged']:
                 self._merge_parser_state(item['parser_state'])
                 item['state_merged'] = True
-                with self._import_status_lock:
-                    self._import_status['files_completed'] = item['index']
                 self._pending_file_payloads.popleft()
                 budget -= 1
 
