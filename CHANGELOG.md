@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.0] - 2026-02-27
+
+### Changed
+- Optimized AC estimation hit discarding logic by adding a short-circuit check against `min_hit`.
+
+
 ## [1.2.0] - 2026-02-02
 
 ### Added

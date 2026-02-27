@@ -98,11 +98,11 @@ class EnemyAC:
                 self.max_miss = attack_total
 
                 # Optimization: Only rebuild the list if the new max_miss
-                # actually overlaps with our lowest recorded hit.
+                # actually overlaps with our lowest recorded hit
                 min_hit = self.min_hit
                 if min_hit is not None and self.max_miss >= min_hit:
                     # Remove all hits that are now invalidated by this miss
-                    # (hits <= max_miss shouldn't have hit if target had true AC).
+                    # (hits <= max_miss shouldn't have hit if target had true AC)
                     self._hits = [h for h in self._hits if h > self.max_miss]
 
     def get_ac_estimate(self) -> str:
