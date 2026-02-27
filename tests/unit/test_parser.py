@@ -420,6 +420,47 @@ class TestAttackParsing:
         assert estimate == "56"
 
 
+class TestEpicDodgeParsing:
+    """Test suite for parsing Epic Dodge indicator lines."""
+
+    def test_parse_epic_dodge_marks_target(self, parser: LogParser) -> None:
+        """Test parsing Epic Dodge line marks target AC state."""
+        line = "[CHAT WINDOW TEXT] [Fri Feb 13 11:34:03] Epic Undead Monk : Epic Dodge : Attack evaded"
+        result = parser.parse_line(line)
+
+        assert result is None
+        assert 'Epic Undead Monk' in parser.target_ac
+        assert parser.target_ac['Epic Undead Monk'].has_epic_dodge is True
+
+    def test_parse_epic_dodge_does_not_emit_event(self, parser: LogParser) -> None:
+        """Test Epic Dodge line is state-only and does not emit queue events."""
+        line = "Epic Undead Monk : Epic Dodge : Attack evaded"
+        result = parser.parse_line(line)
+        assert result is None
+
+    def test_parse_epic_dodge_preserves_target_name(self, parser: LogParser) -> None:
+        """Test Epic Dodge parsing preserves complex target names."""
+        line = "[CHAT WINDOW TEXT] [Fri Feb 13 11:34:03] 10 AC DUMMY - Chaotic Evil - Boss Damage Reduction : Epic Dodge : Attack evaded"
+        parser.parse_line(line)
+
+        target = "10 AC DUMMY - Chaotic Evil - Boss Damage Reduction"
+        assert target in parser.target_ac
+        assert parser.target_ac[target].has_epic_dodge is True
+
+    def test_parse_epic_dodge_prefixes_ac_estimate(self, parser: LogParser) -> None:
+        """Test AC estimate gets Epic Dodge marker after normal attack data."""
+        parser.parse_line("Warrior attacks Epic Undead Monk: *miss*: (10 + 20 = 30)")
+        parser.parse_line("Warrior attacks Epic Undead Monk: *hit*: (11 + 20 = 31)")
+        parser.parse_line("Epic Undead Monk : Epic Dodge : Attack evaded")
+
+        assert parser.target_ac['Epic Undead Monk'].get_ac_estimate() == "~31"
+
+    def test_parse_epic_dodge_only_keeps_dash(self, parser: LogParser) -> None:
+        """Test Epic Dodge-only target keeps '-' estimate until attack data exists."""
+        parser.parse_line("Epic Undead Monk : Epic Dodge : Attack evaded")
+        assert parser.target_ac['Epic Undead Monk'].get_ac_estimate() == "-"
+
+
 class TestAttackPrefixCombinations:
     """Test suite for parsing attack lines with various prefix combinations.
 

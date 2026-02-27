@@ -62,6 +62,7 @@ class EnemyAC:
     """
     name: str
     max_miss: Optional[int] = None
+    has_epic_dodge: bool = False
     _hits: list[int] = field(default_factory=list, repr=False)
 
     @property
@@ -82,7 +83,7 @@ class EnemyAC:
             if self.max_miss is None or total > self.max_miss:
                 self._hits.append(total)
 
-    def record_miss(self, total: int, was_nat1: bool = False) -> None:
+    def record_miss(self, attack_total: int, was_nat1: bool = False) -> None:
         """Record a failed attack roll total, excluding natural 1s.
 
         When a new max_miss is recorded that exceeds existing hit totals,
@@ -90,15 +91,24 @@ class EnemyAC:
         had temporarily reduced AC (flat-footed, blinded, etc.).
 
         Args:
-            total: The attack roll total
+            attack_total: The attack roll total
             was_nat1: Whether this was a natural 1 (excluded from AC estimation)
         """
         if not was_nat1:
-            if self.max_miss is None or total > self.max_miss:
-                self.max_miss = total
-                # Remove all hits that are now invalidated by this miss
-                # (hits <= max_miss shouldn't have hit if target had true AC)
-                self._hits = [h for h in self._hits if h > self.max_miss]
+            if self.max_miss is None or attack_total > self.max_miss:
+                self.max_miss = attack_total
+
+                # Optimization: Only rebuild the list if the new max_miss
+                # actually overlaps with our lowest recorded hit
+                min_hit = self.min_hit
+                if min_hit is not None and self.max_miss >= min_hit:
+                    # Remove all hits that are now invalidated by this miss
+                    # (hits <= max_miss shouldn't have hit if target had true AC)
+                    self._hits = [h for h in self._hits if h > self.max_miss]
+
+    def mark_epic_dodge(self) -> None:
+        """Mark this target as having Epic Dodge."""
+        self.has_epic_dodge = True
 
     def get_ac_estimate(self) -> str:
         """Return an estimated AC based on recorded hits and misses.
@@ -107,20 +117,25 @@ class EnemyAC:
             String representation of estimated AC, e.g. "18", "15-16", "≤14"
         """
         min_hit = self.min_hit
+        max_miss = self.max_miss
+        estimate = "-"
 
-        if min_hit is not None and self.max_miss is not None:
-            if self.max_miss + 1 == min_hit:
-                return str(min_hit)
-            elif self.max_miss < min_hit:
-                return f"{self.max_miss + 1}-{min_hit}"
+        if min_hit is not None and max_miss is not None:
+            if max_miss + 1 == min_hit:
+                estimate = str(min_hit)
+            elif max_miss < min_hit:
+                estimate = f"{max_miss + 1}-{min_hit}"
             else:
                 # This case should now be rare due to automatic cleanup
-                return f"~{min_hit}"
+                estimate = f"⚠{min_hit}"
         elif min_hit is not None:
-            return f"≤{min_hit}"
-        elif self.max_miss is not None:
-            return f">{self.max_miss}"
-        return "-"
+            estimate = f"≤{min_hit}"
+        elif max_miss is not None:
+            estimate = f">{max_miss}"
+
+        if self.has_epic_dodge and estimate != "-" and not estimate.startswith("~"):
+            return f"~{estimate}"
+        return estimate
 
 
 @dataclass

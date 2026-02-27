@@ -235,6 +235,28 @@ class TestParserStorageIntegration:
         assert goblin_summary['ac'] == '16-21'  # AC estimate
         assert goblin_summary['fortitude'] == '5'
 
+    def test_target_summary_epic_dodge_marks_ac(self, temp_log_dir: Path) -> None:
+        """Test target summary prefixes AC estimate for Epic Dodge targets."""
+        log_file = temp_log_dir / "test.txt"
+        content = """[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Warrior attacks Epic Undead Monk: *miss*: (10 + 20 = 30)
+[CHAT WINDOW TEXT] [Thu Jan 09 14:30:01] Warrior attacks Epic Undead Monk: *hit*: (11 + 20 = 31)
+[CHAT WINDOW TEXT] [Thu Jan 09 14:30:02] Epic Undead Monk : Epic Dodge : Attack evaded
+[CHAT WINDOW TEXT] [Thu Jan 09 14:30:03] Warrior damages Epic Undead Monk: 10 (10 Physical)
+"""
+        log_file.write_text(content)
+
+        parser = LogParser()
+        database = DataStore()
+
+        result = parse_and_import_file(str(log_file), parser, database)
+
+        assert result['success'] is True
+        summary = database.get_all_targets_summary(parser)
+        monk_summary = next((s for s in summary if s['target'] == 'Epic Undead Monk'), None)
+
+        assert monk_summary is not None
+        assert monk_summary['ac'] == "~31"
+
 
 class TestErrorHandling:
     """Test suite for error handling in integration."""

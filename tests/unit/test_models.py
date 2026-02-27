@@ -169,6 +169,42 @@ class TestEnemyAC:
         estimate = ac.get_ac_estimate()
         assert estimate == "-"
 
+    def test_get_ac_estimate_epic_dodge_exact(self) -> None:
+        """Test Epic Dodge marker is prefixed for exact AC estimate."""
+        ac = EnemyAC(name="TestEnemy")
+        ac.record_hit(16)
+        ac.record_miss(15)
+        ac.mark_epic_dodge()
+        assert ac.get_ac_estimate() == "~16"
+
+    def test_get_ac_estimate_epic_dodge_range(self) -> None:
+        """Test Epic Dodge marker is prefixed for range AC estimate."""
+        ac = EnemyAC(name="TestEnemy")
+        ac.record_hit(18)
+        ac.record_miss(14)
+        ac.mark_epic_dodge()
+        assert ac.get_ac_estimate() == "~15-18"
+
+    def test_get_ac_estimate_epic_dodge_only_hits(self) -> None:
+        """Test Epic Dodge marker is prefixed for hit-only AC estimate."""
+        ac = EnemyAC(name="TestEnemy")
+        ac.record_hit(20)
+        ac.mark_epic_dodge()
+        assert ac.get_ac_estimate() == "~≤20"
+
+    def test_get_ac_estimate_epic_dodge_only_misses(self) -> None:
+        """Test Epic Dodge marker is prefixed for miss-only AC estimate."""
+        ac = EnemyAC(name="TestEnemy")
+        ac.record_miss(15)
+        ac.mark_epic_dodge()
+        assert ac.get_ac_estimate() == "~>15"
+
+    def test_get_ac_estimate_epic_dodge_no_data_stays_dash(self) -> None:
+        """Test no-data AC estimate remains '-' even if Epic Dodge is detected."""
+        ac = EnemyAC(name="TestEnemy")
+        ac.mark_epic_dodge()
+        assert ac.get_ac_estimate() == "-"
+
     def test_get_ac_estimate_conflicting_data_auto_cleanup(self) -> None:
         """Test that hits are auto-discarded when a higher miss is recorded.
 
