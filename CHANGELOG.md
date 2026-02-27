@@ -8,6 +8,7 @@
 ### Changed
 - AC estimates now show a `~` prefix for targets detected with Epic Dodge to indicate the value may be skewed by guaranteed first-attack evasion each round.
 - Optimized AC estimation hit discarding logic by adding a short-circuit check against `min_hit`.
+- Replaced the separate `Start Monitoring` and `Pause Monitoring` controls with a single `ttk.Checkbutton` monitoring switch.
 
 
 ## [1.2.0] - 2026-02-02

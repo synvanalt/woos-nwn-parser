@@ -62,13 +62,18 @@ class WoosNwnParserApp:
         self.setup_ui()
         self.process_queue()
 
-        # Auto-start monitoring if log directory is available
-        if self.log_directory:
+        # Auto-start monitoring if default log directory is valid.
+        # Keep initial switch state ON and only switch OFF when invalid.
+        if self.log_directory and Path(self.log_directory).is_dir():
             self.root.after(100, self.start_monitoring)
+        else:
+            self._set_monitoring_switch_ui(False)
 
 
     def setup_ui(self) -> None:
         """Set up the user interface."""
+        self._configure_monitoring_switch_style()
+
         # Control Panel
         control_frame = ttk.Frame(self.root, padding="10")
         control_frame.pack(fill="x")
@@ -93,18 +98,21 @@ class WoosNwnParserApp:
         buttons_frame = ttk.Frame(control_frame)
         buttons_frame.pack(fill="x", pady=(5, 0))
 
-        self.start_btn = ttk.Button(buttons_frame, text="Start Monitoring", command=self.start_monitoring)
-        self.start_btn.pack(side="left", padx=5)
-
-        self.pause_btn = ttk.Button(buttons_frame, text="Pause Monitoring", command=self.pause_monitoring, state=tk.DISABLED)
-        self.pause_btn.pack(side="left", padx=5)
+        self.monitoring_var = tk.BooleanVar(value=True)
+        self.monitoring_text = tk.StringVar(value="Monitoring")
+        self.monitoring_switch = ttk.Checkbutton(
+            buttons_frame,
+            variable=self.monitoring_var,
+            textvariable=self.monitoring_text,
+            command=self._on_monitoring_switch_toggle,
+            style="Monitoring.Switch.TCheckbutton",
+            width=len("Monitoring"),
+        )
+        self.monitoring_switch.pack(side="left", padx=5)
 
         ttk.Button(buttons_frame, text="Reset Data", command=self.reset_data).pack(side="left", padx=5)
         # ttk.Button(buttons_frame, text="Load & Parse Logs", command=self.load_and_parse_directory).pack(side="left", padx=5)
 
-        # Status indicator
-        self.status_label = ttk.Label(buttons_frame, text="● Paused", foreground="red")
-        self.status_label.pack(side="right", padx=5)
 
         # Initialize directory label with default if available
         if self.log_directory:
@@ -169,9 +177,8 @@ class WoosNwnParserApp:
             else:
                 self.log_debug(f"Found {len(log_files)} log file(s) in directory")
 
-            # Enable start button only if not currently monitoring
-            if not self.is_monitoring:
-                self.start_btn.config(state=tk.NORMAL)
+            # Keep switch text/state synchronized with actual monitoring status
+            self._set_monitoring_switch_ui(self.is_monitoring)
 
     def load_and_parse_directory(self) -> None:
         """Load and parse all log files in the directory."""
@@ -185,9 +192,8 @@ class WoosNwnParserApp:
 
         self.log_debug(f"Loading and parsing all files from: {self.log_directory}")
 
-        # Disable UI controls during load
-        self.start_btn.config(state=tk.DISABLED)
-        self.pause_btn.config(state=tk.DISABLED)
+        # Disable monitoring control during load
+        self.monitoring_switch.config(state=tk.DISABLED)
 
         try:
             # Clear all existing data once before processing files
@@ -219,9 +225,8 @@ class WoosNwnParserApp:
             # Restore debug mode
             self.debug_mode = was_debug_enabled
 
-            # Re-enable UI controls
-            self.start_btn.config(state=tk.NORMAL)
-            self.pause_btn.config(state=tk.DISABLED)
+            # Re-enable monitoring control
+            self.monitoring_switch.config(state=tk.NORMAL)
 
             # Refresh all UI elements
             self.refresh_targets()
@@ -233,13 +238,12 @@ class WoosNwnParserApp:
         """Start monitoring the log directory for new log files."""
         if not self.log_directory:
             messagebox.showwarning("No Directory", "Please select a log directory first.")
+            self._set_monitoring_switch_ui(False)
             return
 
         self.is_monitoring = True
-        self.start_btn.config(state=tk.DISABLED)
-        self.pause_btn.config(state=tk.NORMAL)
+        self._set_monitoring_switch_ui(True)
         self.dps_panel.refresh()
-        self.status_label.config(text="● Monitoring", foreground="green")
 
         self.log_debug(f"Starting monitoring of directory: {self.log_directory}")
 
@@ -256,9 +260,7 @@ class WoosNwnParserApp:
     def pause_monitoring(self) -> None:
         """Pause monitoring the log directory."""
         self.is_monitoring = False
-        self.start_btn.config(state=tk.NORMAL)
-        self.pause_btn.config(state=tk.DISABLED)
-        self.status_label.config(text="● Paused", foreground="red")
+        self._set_monitoring_switch_ui(False)
 
         # Cancel polling if active
         if self.polling_job:
@@ -272,6 +274,36 @@ class WoosNwnParserApp:
 
 
         self.log_debug("Monitoring paused")
+
+    def _set_monitoring_switch_ui(self, is_on: bool) -> None:
+        """Synchronize monitoring switch state and label with monitoring status."""
+        self.monitoring_var.set(is_on)
+        self.monitoring_text.set("Monitoring" if is_on else "Paused")
+
+    def _on_monitoring_switch_toggle(self) -> None:
+        """Handle monitoring switch state changes."""
+        if self.monitoring_var.get():
+            self.start_monitoring()
+        else:
+            self.pause_monitoring()
+
+    def _configure_monitoring_switch_style(self) -> None:
+        """Add monitoring label colors on top of the existing Switch style."""
+        style = ttk.Style(self.root)
+        # Reuse Switch layout/elements and only customize the text color mapping.
+        try:
+            style.layout("Monitoring.Switch.TCheckbutton", style.layout("Switch.TCheckbutton"))
+        except tk.TclError:
+            # If already defined, keep existing layout.
+            pass
+        style.map(
+            "Monitoring.Switch.TCheckbutton",
+            foreground=[
+                ("selected", "#56C9FF"),
+                ("!selected", "#FF99A4"),
+                ("disabled", "#808A93"),
+            ],
+        )
 
     def poll_log_file(self) -> None:
         """Manually poll the log directory for changes."""

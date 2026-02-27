@@ -2,7 +2,7 @@
 
 This test proves that the fix works for the exact use case described:
 1. Open game
-2. Open app and click Start Monitoring
+2. Open app and turn Monitoring switch ON
 3. Start hitting target
 4. Quit game (app still monitoring)
 5. Open game again, start hitting target again
@@ -35,8 +35,8 @@ def test_exact_user_scenario():
             pass  # Empty file initially
         print("   ✓ Game started, log file created")
 
-        # Step 2: I open app and click Start Monitoring
-        print("\n2. I open app and click Start Monitoring")
+        # Step 2: I open app and turn Monitoring switch ON
+        print("\n2. I open app and turn Monitoring switch ON")
         monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
         parser = LogParser(parse_immunity=False)
@@ -92,7 +92,7 @@ def test_exact_user_scenario():
 
         # Step 6: Expected behavior - App keeps tracking immediately
         print("\n6. Expected Behavior: App keeps tracking immediately!")
-        print("   (Without needing to click Pause/Start Monitoring)")
+        print("   (Without needing to toggle Monitoring OFF/ON)")
 
         # Next automatic poll (happens every 500ms)
         time.sleep(0.1)
@@ -130,7 +130,7 @@ def test_exact_user_scenario():
         assert len(orc_content) >= 2, f"Expected at least 2 lines with 'Orc', got {len(orc_content)}"
 
         print("✅ SUCCESS! The app tracked new damage immediately after game restart!")
-        print("   The user did NOT need to click Pause/Start Monitoring!")
+        print("   The user did NOT need to toggle Monitoring OFF/ON!")
         print("=" * 70)
 
 
