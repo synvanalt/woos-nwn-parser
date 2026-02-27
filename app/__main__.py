@@ -1,5 +1,6 @@
 """Main entry point for Woo's NWN Parser application."""
 
+import multiprocessing as mp
 import sys
 import tkinter as tk
 from pathlib import Path
@@ -196,5 +197,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    mp.freeze_support()
     main()
 

@@ -215,7 +215,7 @@ class WoosNwnParserApp:
         selected_paths = filedialog.askopenfilenames(
             title="Select one or more NWN log files",
             filetypes=[("Text Files", "*.txt")],
-            parent=self.root,
+            parent=getattr(self, "root", None),
         )
         if not selected_paths:
             return
