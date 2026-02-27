@@ -127,10 +127,11 @@ class WoosNwnParserApp:
         )
         self.monitoring_switch.pack(side="left", padx=5)
 
-        self.load_parse_button = ttk.Button(buttons_frame, text="Load & Parse", command=self.load_and_parse_selected_files)
-        self.load_parse_button.pack(side="left", padx=5)
         self.reset_button = ttk.Button(buttons_frame, text="Reset Data", command=self.reset_data)
-        self.reset_button.pack(side="left", padx=5)
+        self.reset_button.pack(side="right", padx=5)
+
+        self.load_parse_button = ttk.Button(buttons_frame, text="Load & Parse Logs", command=self.load_and_parse_selected_files)
+        self.load_parse_button.pack(side="right", padx=5)
 
 
         # Initialize directory label with default if available
@@ -241,7 +242,7 @@ class WoosNwnParserApp:
         self.import_modal.title("Parsing Logs")
         self.import_modal.resizable(False, False)
         self.import_modal.transient(self.root)
-        self._center_window_on_parent(self.import_modal, 480, 180)
+        self._center_window_on_parent(self.import_modal, 480, 150)
         self._apply_modal_icon(self.import_modal)
         try:
             apply_dark_title_bar(self.import_modal)
@@ -403,7 +404,7 @@ class WoosNwnParserApp:
         root_h = self.root.winfo_height()
 
         x = max(0, root_x + (root_w - width) // 2)
-        y = max(0, root_y + (root_h - height) // 2)
+        y = max(0, root_y + (root_h - height) // 4)
         window.geometry(f"{width}x{height}+{x}+{y}")
 
     def _apply_modal_icon(self, window: tk.Toplevel) -> None:
