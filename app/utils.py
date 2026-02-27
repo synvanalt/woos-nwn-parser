@@ -5,7 +5,7 @@ that are independent of the UI.
 """
 
 import math
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable
 
 
 # Forward damage logic (AUTHORITATIVE)
@@ -132,7 +132,14 @@ def calculate_immunity_percentage(max_damage: int, max_absorbed: int) -> Optiona
     return pick_immunity(matches)
 
 
-def parse_and_import_file(file_path: str, parser, database) -> Dict:
+def parse_and_import_file(
+    file_path: str,
+    parser,
+    database,
+    *,
+    should_abort: Optional[Callable[[], bool]] = None,
+    progress_callback: Optional[Callable[[int], None]] = None,
+) -> Dict:
     """Parse a log file and import data into database.
 
     Does not depend on GUI components, making it testable without Tkinter.
@@ -147,7 +154,11 @@ def parse_and_import_file(file_path: str, parser, database) -> Dict:
         database: DataStore instance
 
     Returns:
-        dict with keys: 'success' (bool), 'lines_processed' (int), 'error' (str or None)
+        dict with keys:
+        - 'success' (bool)
+        - 'lines_processed' (int)
+        - 'error' (str or None)
+        - 'aborted' (bool)
     """
     try:
 
@@ -157,10 +168,25 @@ def parse_and_import_file(file_path: str, parser, database) -> Dict:
 
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             while True:
+                if should_abort and should_abort():
+                    return {
+                        'success': True,
+                        'lines_processed': lines_processed,
+                        'error': None,
+                        'aborted': True
+                    }
                 lines = f.readlines(10000)  # Read in chunks
                 if not lines:
                     break
                 for line in lines:
+                    # Keep cancellation responsive during large file imports.
+                    if should_abort and should_abort():
+                        return {
+                            'success': True,
+                            'lines_processed': lines_processed,
+                            'error': None,
+                            'aborted': True
+                        }
                     lines_processed += 1
                     parsed_data = parser.parse_line(line)
                     if parsed_data:
@@ -229,15 +255,19 @@ def parse_and_import_file(file_path: str, parser, database) -> Dict:
                                 parsed_data.get('bonus'),
                                 parsed_data.get('total')
                             )
+                if progress_callback:
+                    progress_callback(lines_processed)
 
         return {
             'success': True,
             'lines_processed': lines_processed,
-            'error': None
+            'error': None,
+            'aborted': False
         }
     except Exception as e:
         return {
             'success': False,
             'lines_processed': 0,
-            'error': str(e)
+            'error': str(e),
+            'aborted': False
         }

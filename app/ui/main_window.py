@@ -5,8 +5,9 @@ application window, UI components, and event processing.
 """
 
 import queue
+import threading
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any, List
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, font
@@ -55,6 +56,17 @@ class WoosNwnParserApp:
 
         # Debug mode
         self.debug_mode = False
+        self.is_importing = False
+        self.import_abort_event = threading.Event()
+        self.import_thread: Optional[threading.Thread] = None
+        self.import_poll_job = None
+        self.import_modal: Optional[tk.Toplevel] = None
+        self.import_status_text: Optional[tk.StringVar] = None
+        self.import_progress_text: Optional[tk.StringVar] = None
+        self.import_abort_button: Optional[ttk.Button] = None
+        self.monitoring_was_active_before_import = False
+        self._import_status_lock = threading.Lock()
+        self._import_status: Dict[str, Any] = {}
 
         # Get the font object defined by the Sun Valley theme to use inside tk non-themed widgets (e.g., tk.Text)
         self.theme_font = font.nametofont("SunValleyBodyFont")
@@ -92,7 +104,8 @@ class WoosNwnParserApp:
         self.active_file_label = ttk.Entry(file_frame, state="readonly", textvariable=self.active_file_text, foreground="gray", width=15)
         self.active_file_label.pack(side="left", padx=5)
 
-        ttk.Button(file_frame, text="Browse...", command=self.browse_directory).pack(side="left", padx=5)
+        self.browse_button = ttk.Button(file_frame, text="Browse...", command=self.browse_directory)
+        self.browse_button.pack(side="left", padx=5)
 
         # Control buttons
         buttons_frame = ttk.Frame(control_frame)
@@ -110,8 +123,10 @@ class WoosNwnParserApp:
         )
         self.monitoring_switch.pack(side="left", padx=5)
 
-        ttk.Button(buttons_frame, text="Reset Data", command=self.reset_data).pack(side="left", padx=5)
-        # ttk.Button(buttons_frame, text="Load & Parse Logs", command=self.load_and_parse_directory).pack(side="left", padx=5)
+        self.load_parse_button = ttk.Button(buttons_frame, text="Load & Parse", command=self.load_and_parse_selected_files)
+        self.load_parse_button.pack(side="left", padx=5)
+        self.reset_button = ttk.Button(buttons_frame, text="Reset Data", command=self.reset_data)
+        self.reset_button.pack(side="left", padx=5)
 
 
         # Initialize directory label with default if available
@@ -180,59 +195,223 @@ class WoosNwnParserApp:
             # Keep switch text/state synchronized with actual monitoring status
             self._set_monitoring_switch_ui(self.is_monitoring)
 
-    def load_and_parse_directory(self) -> None:
-        """Load and parse all log files in the directory."""
-        if not self.log_directory:
-            messagebox.showwarning("No Directory", "Please select a log directory first.")
+    def load_and_parse_selected_files(self) -> None:
+        """Open file picker and parse selected .txt logs in a background worker."""
+        if self.is_importing:
             return
 
-        # Enable debug mode temporarily to show progress
-        was_debug_enabled = self.debug_mode
-        self.debug_mode = True
+        selected_paths = filedialog.askopenfilenames(
+            title="Select one or more NWN log files",
+            filetypes=[("Text Files", "*.txt")],
+        )
+        if not selected_paths:
+            return
 
-        self.log_debug(f"Loading and parsing all files from: {self.log_directory}")
+        selected_files = sorted(
+            [Path(path) for path in selected_paths],
+            key=lambda p: (p.name.lower(), str(p).lower()),
+        )
 
-        # Disable monitoring control during load
-        self.monitoring_switch.config(state=tk.DISABLED)
+        self.monitoring_was_active_before_import = self.is_monitoring
+        if self.monitoring_was_active_before_import:
+            self.pause_monitoring()
 
-        try:
-            # Clear all existing data once before processing files
-            self.data_store.clear_all_data()
-            self.parser.target_ac.clear()
-            self.parser.target_saves.clear()
-            self.parser.target_attack_bonus.clear()
+        self.import_abort_event = threading.Event()
+        self.is_importing = True
+        self._import_status = {
+            'files': selected_files,
+            'total_files': len(selected_files),
+            'files_completed': 0,
+            'current_file': '',
+            'lines_processed': 0,
+            'file_lines_processed': 0,
+            'errors': [],
+            'aborted': False,
+            'success': False,
+        }
 
-            # Parse all log files in the directory (in order: log1, log2, log3, log4)
-            log_dir = Path(self.log_directory)
-            log_files = sorted(log_dir.glob('nwclientLog[1-4].txt'))
+        self._set_import_ui_busy(True)
+        self._show_import_modal()
+        self._start_import_worker(selected_files)
+        self._poll_import_progress()
 
-            if not log_files:
-                self.log_debug("No log files found in directory")
+    def load_and_parse_directory(self) -> None:
+        """Backwards-compatible wrapper for selected-file import."""
+        self.load_and_parse_selected_files()
+
+    def _set_import_ui_busy(self, is_busy: bool) -> None:
+        """Disable/enable controls while import is running."""
+        state = tk.DISABLED if is_busy else tk.NORMAL
+        self.monitoring_switch.config(state=state)
+        self.browse_button.config(state=state)
+        self.load_parse_button.config(state=state)
+        self.reset_button.config(state=state)
+
+    def _show_import_modal(self) -> None:
+        """Show a modal with import progress and abort button."""
+        self.import_modal = tk.Toplevel(self.root)
+        self.import_modal.title("Loading Logs")
+        self.import_modal.geometry("480x180")
+        self.import_modal.resizable(False, False)
+        self.import_modal.transient(self.root)
+        self.import_modal.grab_set()
+        self.import_modal.protocol("WM_DELETE_WINDOW", self.abort_load_parse)
+
+        container = ttk.Frame(self.import_modal, padding=14)
+        container.pack(fill="both", expand=True)
+
+        self.import_status_text = tk.StringVar(value="Preparing selected files...")
+        self.import_progress_text = tk.StringVar(value="0 files completed")
+        ttk.Label(container, textvariable=self.import_status_text).pack(anchor="w")
+        ttk.Label(container, textvariable=self.import_progress_text).pack(anchor="w", pady=(8, 8))
+
+        progress = ttk.Progressbar(container, mode="indeterminate")
+        progress.pack(fill="x")
+        progress.start(8)
+        self.import_modal._progressbar = progress
+
+        self.import_abort_button = ttk.Button(container, text="Abort", command=self.abort_load_parse)
+        self.import_abort_button.pack(anchor="e", pady=(14, 0))
+
+    def _start_import_worker(self, selected_files: List[Path]) -> None:
+        """Start worker thread for import operation."""
+        self.import_thread = threading.Thread(
+            target=self._run_import_worker,
+            args=(selected_files,),
+            daemon=True,
+        )
+        self.import_thread.start()
+
+    def _run_import_worker(self, selected_files: List[Path]) -> None:
+        """Parse selected files and update shared status."""
+        total_lines = 0
+        file_errors: List[str] = []
+
+        for index, log_file in enumerate(selected_files, start=1):
+            if self.import_abort_event.is_set():
+                with self._import_status_lock:
+                    self._import_status['aborted'] = True
+                    self._import_status['files_completed'] = index - 1
+                return
+
+            with self._import_status_lock:
+                self._import_status['current_file'] = log_file.name
+                self._import_status['files_completed'] = index - 1
+                self._import_status['file_lines_processed'] = 0
+
+            def _on_file_progress(lines_processed: int) -> None:
+                with self._import_status_lock:
+                    self._import_status['file_lines_processed'] = lines_processed
+
+            result = parse_and_import_file(
+                str(log_file),
+                self.parser,
+                self.data_store,
+                should_abort=self.import_abort_event.is_set,
+                progress_callback=_on_file_progress,
+            )
+
+            if result.get('aborted'):
+                with self._import_status_lock:
+                    self._import_status['aborted'] = True
+                    self._import_status['files_completed'] = index - 1
+                return
+
+            if result['success']:
+                lines = result['lines_processed']
+                total_lines += lines
+                with self._import_status_lock:
+                    self._import_status['lines_processed'] = total_lines
+                    self._import_status['files_completed'] = index
             else:
-                total_lines = 0
-                for log_file in log_files:
-                    self.log_debug(f"Parsing: {log_file.name}")
-                    result = parse_and_import_file(str(log_file), self.parser, self.data_store)
-                    if result['success']:
-                        lines = result['lines_processed']
-                        total_lines += lines
-                        self.log_debug(f"  → {log_file.name}: {lines} lines")
-                    else:
-                        self.log_debug(f"  → Error: {result['error']}", msg_type='error')
+                error_message = f"{log_file.name}: {result['error']}"
+                file_errors.append(error_message)
+                with self._import_status_lock:
+                    self._import_status['errors'] = list(file_errors)
+                    self._import_status['files_completed'] = index
 
-                self.log_debug(f"All files loaded and parsed successfully ({total_lines} total lines)")
-        finally:
-            # Restore debug mode
-            self.debug_mode = was_debug_enabled
+        with self._import_status_lock:
+            self._import_status['success'] = True
+            self._import_status['lines_processed'] = total_lines
+            self._import_status['errors'] = list(file_errors)
 
-            # Re-enable monitoring control
-            self.monitoring_switch.config(state=tk.NORMAL)
+    def _poll_import_progress(self) -> None:
+        """Update modal with latest import status."""
+        if not self.is_importing:
+            return
 
-            # Refresh all UI elements
-            self.refresh_targets()
+        with self._import_status_lock:
+            status = dict(self._import_status)
 
-            # Refresh DPS display with loaded data
-            self.dps_panel.refresh()
+        if self.import_status_text is not None:
+            current_file = status.get('current_file') or "Preparing selected files..."
+            file_lines = status.get('file_lines_processed', 0)
+            self.import_status_text.set(
+                f"Parsing {current_file} ({file_lines} lines processed in current file)"
+            )
+        if self.import_progress_text is not None:
+            self.import_progress_text.set(
+                f"{status.get('files_completed', 0)}/{status.get('total_files', 0)} files completed "
+                f"({status.get('lines_processed', 0)} total lines)"
+            )
+
+        if self.import_thread and self.import_thread.is_alive():
+            self.import_poll_job = self.root.after(100, self._poll_import_progress)
+            return
+
+        self._finalize_import()
+
+    def abort_load_parse(self) -> None:
+        """Request abort for ongoing import."""
+        if not self.is_importing:
+            return
+        self.import_abort_event.set()
+        if self.import_abort_button is not None:
+            self.import_abort_button.config(state=tk.DISABLED)
+        if self.import_status_text is not None:
+            self.import_status_text.set("Aborting...")
+
+    def _finalize_import(self) -> None:
+        """Finalize import and refresh UI."""
+        if self.import_poll_job is not None:
+            self.root.after_cancel(self.import_poll_job)
+            self.import_poll_job = None
+
+        self.is_importing = False
+        self._set_import_ui_busy(False)
+
+        if self.import_modal is not None:
+            progress = getattr(self.import_modal, "_progressbar", None)
+            if progress is not None:
+                progress.stop()
+            self.import_modal.grab_release()
+            self.import_modal.destroy()
+            self.import_modal = None
+
+        with self._import_status_lock:
+            status = dict(self._import_status)
+
+        self.refresh_targets()
+        self.dps_panel.refresh()
+
+        if status.get('aborted'):
+            self.log_debug(
+                f"Load & Parse aborted. Imported {status.get('files_completed', 0)} files and "
+                f"{status.get('lines_processed', 0)} lines before stop.",
+                msg_type='warning'
+            )
+        elif status.get('errors'):
+            messagebox.showwarning(
+                "Load & Parse Completed with Errors",
+                "\n".join(status['errors'])
+            )
+            self.log_debug("Load & Parse completed with file errors.", msg_type='warning')
+        else:
+            self.log_debug(
+                f"Load & Parse completed: {status.get('total_files', 0)} files, "
+                f"{status.get('lines_processed', 0)} total lines.",
+                msg_type='info'
+            )
 
     def start_monitoring(self) -> None:
         """Start monitoring the log directory for new log files."""
@@ -501,6 +680,8 @@ class WoosNwnParserApp:
 
     def on_closing(self) -> None:
         """Handle application closing."""
+        if self.is_importing:
+            self.import_abort_event.set()
         self.pause_monitoring()
         self.data_store.close()
         self.root.destroy()

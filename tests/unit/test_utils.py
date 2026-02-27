@@ -258,6 +258,48 @@ class TestParseAndImportFile:
         assert result['success'] is True
         assert result['lines_processed'] == 15000
 
+    def test_parse_can_abort_mid_file(self, real_combat_log: Path) -> None:
+        """Test parsing aborts and returns partial progress."""
+        parser = LogParser()
+        database = DataStore()
+        checks = {'count': 0}
+
+        def should_abort() -> bool:
+            checks['count'] += 1
+            return checks['count'] > 800
+
+        result = parse_and_import_file(
+            str(real_combat_log),
+            parser,
+            database,
+            should_abort=should_abort,
+        )
+
+        assert result['success'] is True
+        assert result['aborted'] is True
+        assert 0 <= result['lines_processed'] < 4129
+
+    def test_parse_reports_progress_callback(self) -> None:
+        """Test parser reports cumulative progress after chunks."""
+        log_file = Path(__file__).resolve().parents[1] / "fixtures" / "nwclientLog4.txt"
+
+        parser = LogParser()
+        database = DataStore()
+        progress_updates = []
+
+        result = parse_and_import_file(
+            str(log_file),
+            parser,
+            database,
+            progress_callback=progress_updates.append,
+        )
+
+        assert result['success'] is True
+        assert result['aborted'] is False
+        assert progress_updates
+        assert progress_updates[-1] == result['lines_processed']
+        assert len(progress_updates) >= 2
+
 
 class TestUtilityEdgeCases:
     """Test suite for edge cases and error handling."""
