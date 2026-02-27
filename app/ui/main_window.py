@@ -162,18 +162,6 @@ class WoosNwnParserApp:
         notebook.add(self.debug_panel, text="Debug Console")
         self.debug_panel.debug_mode_var.trace("w", self._on_debug_toggle)
 
-        # Store references for backward compatibility
-        self.dps_tree = self.dps_panel.tree
-        self.target_summary_tree = self.stats_panel.tree
-        self.resist_tree = self.immunity_panel.tree
-        self.target_combo = self.immunity_panel.target_combo
-        self.parse_immunity_var = self.immunity_panel.parse_immunity_var
-        self.debug_mode_var = self.debug_panel.debug_mode_var
-        self.debug_text = self.debug_panel.text
-        self.time_tracking_var = self.dps_panel.time_tracking_var
-        self.target_filter_var = self.dps_panel.target_filter_var
-
-    # ...existing code...
     def browse_directory(self) -> None:
         """Open directory dialog to select log directory."""
         directory = filedialog.askdirectory(
@@ -238,10 +226,6 @@ class WoosNwnParserApp:
         self._show_import_modal()
         self._start_import_worker(selected_files)
         self._poll_import_progress()
-
-    def load_and_parse_directory(self) -> None:
-        """Backwards-compatible wrapper for selected-file import."""
-        self.load_and_parse_selected_files()
 
     def _set_import_ui_busy(self, is_busy: bool) -> None:
         """Disable/enable controls while import is running."""
@@ -554,10 +538,10 @@ class WoosNwnParserApp:
         self.parser.target_attack_bonus.clear()
 
         # Clear all UI trees
-        self.resist_tree.delete(*self.resist_tree.get_children())
-        self.dps_tree.delete(*self.dps_tree.get_children())
-        self.target_summary_tree.delete(*self.target_summary_tree.get_children())
-        self.target_combo.set('')
+        self.immunity_panel.tree.delete(*self.immunity_panel.tree.get_children())
+        self.dps_panel.tree.delete(*self.dps_panel.tree.get_children())
+        self.stats_panel.tree.delete(*self.stats_panel.tree.get_children())
+        self.immunity_panel.target_combo.set('')
 
         # Clear immunity panel cache
         self.immunity_panel.clear_cache()
@@ -579,10 +563,10 @@ class WoosNwnParserApp:
         self.update_target_filter_list()
         self.stats_panel.refresh()
         # Only auto-select if nothing is currently selected
-        if not self.target_combo.get():
+        if not self.immunity_panel.target_combo.get():
             targets = self.data_store.get_all_targets()
             if targets:
-                self.target_combo.current(0)
+                self.immunity_panel.target_combo.current(0)
                 self.on_target_selected(None)
 
     def update_target_selector_list(self) -> None:
@@ -605,7 +589,7 @@ class WoosNwnParserApp:
         """Handle target selection from combobox."""
         if event:
             event.widget.selection_clear()  # Clear the UI selection highlight
-        target = self.target_combo.get()
+        target = self.immunity_panel.target_combo.get()
         if target:
             self.immunity_panel.refresh_target_details(target)
 
@@ -619,7 +603,7 @@ class WoosNwnParserApp:
             event: Tkinter event from combobox selection
         """
         event.widget.selection_clear()
-        new_mode_display = self.time_tracking_var.get()
+        new_mode_display = self.dps_panel.time_tracking_var.get()
         new_mode = new_mode_display.lower().replace(" ", "_")
 
         if new_mode == self.dps_service.time_tracking_mode:
@@ -644,7 +628,7 @@ class WoosNwnParserApp:
             event: Tkinter event from combobox selection
         """
         event.widget.selection_clear()  # Clear the UI selection highlight
-        self.log_debug(f"Target filter changed to: {self.target_filter_var.get()}")
+        self.log_debug(f"Target filter changed to: {self.dps_panel.target_filter_var.get()}")
 
         # Refresh DPS display with new target filter
         self.dps_panel.refresh()
@@ -684,7 +668,7 @@ class WoosNwnParserApp:
         Args:
             target: Name of target to refresh
         """
-        if self.target_combo.get() == target:
+        if self.immunity_panel.target_combo.get() == target:
             self.immunity_panel.refresh_target_details(target)
 
     def _on_immunity_changed(self, target: str) -> None:
@@ -693,7 +677,7 @@ class WoosNwnParserApp:
         Args:
             target: Name of target with immunity changes
         """
-        if self.target_combo.get() == target:
+        if self.immunity_panel.target_combo.get() == target:
             self.immunity_panel.refresh_display()
 
     def _on_damage_dealt(self, target: str) -> None:
@@ -704,7 +688,7 @@ class WoosNwnParserApp:
         """
         # Refresh immunity panel if this is the currently selected target
         # to ensure all damage types are displayed
-        if self.target_combo.get() == target:
+        if self.immunity_panel.target_combo.get() == target:
             self.immunity_panel.refresh_display()
 
     def on_closing(self) -> None:
@@ -732,5 +716,5 @@ class WoosNwnParserApp:
 
     def _on_debug_toggle(self, *args) -> None:
         """Handle debug mode toggle from the debug panel."""
-        self.debug_mode = bool(self.debug_mode_var.get())
+        self.debug_mode = bool(self.debug_panel.debug_mode_var.get())
         self.log_debug(f"Debug output {'enabled' if self.debug_mode else 'disabled'}")
