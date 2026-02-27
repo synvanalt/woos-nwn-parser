@@ -1,6 +1,7 @@
 """Main entry point for Woo's NWN Parser application."""
 
 import sys
+import ctypes
 import tkinter as tk
 from pathlib import Path
 
@@ -8,6 +9,17 @@ import sv_ttk
 
 from app.ui import WoosNwnParserApp
 from app.ui.window_style import apply_dark_title_bar
+
+
+def set_windows_app_user_model_id(app_id: str) -> None:
+    """Set explicit AppUserModelID so taskbar icon grouping is stable on Windows."""
+    if sys.platform != "win32" or not hasattr(ctypes, "windll"):
+        return
+
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+    except Exception:
+        pass
 
 
 def get_resource_path(relative_path: str) -> Path:
@@ -114,6 +126,8 @@ def fix_treeview_indicator(root: tk.Tk) -> None:
 
 def main() -> None:
     """Launch Woo's NWN Parser application."""
+    set_windows_app_user_model_id("com.woosnwnparser.app")
+
     root = tk.Tk()
     root.withdraw()
     sv_ttk.set_theme("dark")
@@ -139,6 +153,9 @@ def main() -> None:
 
     root.deiconify()
     root.lift()
+    if icon_path.exists():
+        # Re-apply after the first show; helps Windows taskbar pick up the correct icon.
+        root.after_idle(lambda: root.iconbitmap(str(icon_path)))
     root.mainloop()
 
 
