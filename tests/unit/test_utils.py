@@ -14,6 +14,7 @@ from app.utils import (
     pick_immunity,
     calculate_immunity_percentage,
     parse_and_import_file,
+    import_worker_process,
 )
 from app.parser import LogParser
 from app.storage import DataStore
@@ -320,4 +321,59 @@ class TestUtilityEdgeCases:
         result = calculate_immunity_percentage(max_damage=50, max_absorbed=50)
         assert result is not None
         assert result <= 100
+
+
+class _FakeAbortEvent:
+    def __init__(self, is_set: bool = False) -> None:
+        self._is_set = is_set
+
+    def is_set(self) -> bool:
+        return self._is_set
+
+
+class _CaptureQueue:
+    def __init__(self) -> None:
+        self.items = []
+
+    def put(self, item) -> None:
+        self.items.append(item)
+
+
+class TestImportWorkerProcess:
+    """Test suite for multiprocessing worker event semantics."""
+
+    def test_worker_emits_started_completed_done_in_order(self, real_combat_log: Path) -> None:
+        events = _CaptureQueue()
+        abort_event = _FakeAbortEvent(False)
+
+        import_worker_process(
+            [str(real_combat_log), str(real_combat_log)],
+            parse_immunity=False,
+            abort_event=abort_event,
+            result_queue=events,
+        )
+
+        types = [e.get("event") for e in events.items]
+        assert types[0] == "file_started"
+        assert "file_completed" in types
+        assert types[-1] == "done"
+
+        started_count = sum(1 for e in events.items if e.get("event") == "file_started")
+        completed_count = sum(1 for e in events.items if e.get("event") == "file_completed")
+        assert started_count == 2
+        assert completed_count == 2
+
+    def test_worker_emits_aborted_when_abort_flag_set(self, real_combat_log: Path) -> None:
+        events = _CaptureQueue()
+        abort_event = _FakeAbortEvent(True)
+
+        import_worker_process(
+            [str(real_combat_log)],
+            parse_immunity=False,
+            abort_event=abort_event,
+            result_queue=events,
+        )
+
+        assert len(events.items) == 1
+        assert events.items[0].get("event") == "aborted"
 
