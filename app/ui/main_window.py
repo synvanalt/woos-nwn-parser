@@ -62,9 +62,12 @@ class WoosNwnParserApp:
         self.setup_ui()
         self.process_queue()
 
-        # Auto-start monitoring if log directory is available
-        if self.log_directory:
+        # Auto-start monitoring if default log directory is valid.
+        # Keep initial switch state ON and only switch OFF when invalid.
+        if self.log_directory and Path(self.log_directory).is_dir():
             self.root.after(100, self.start_monitoring)
+        else:
+            self._set_monitoring_switch_ui(False)
 
 
     def setup_ui(self) -> None:
@@ -95,8 +98,8 @@ class WoosNwnParserApp:
         buttons_frame = ttk.Frame(control_frame)
         buttons_frame.pack(fill="x", pady=(5, 0))
 
-        self.monitoring_var = tk.BooleanVar(value=False)
-        self.monitoring_text = tk.StringVar(value="Paused")
+        self.monitoring_var = tk.BooleanVar(value=True)
+        self.monitoring_text = tk.StringVar(value="Monitoring")
         self.monitoring_switch = ttk.Checkbutton(
             buttons_frame,
             variable=self.monitoring_var,
@@ -296,8 +299,8 @@ class WoosNwnParserApp:
         style.map(
             "Monitoring.Switch.TCheckbutton",
             foreground=[
-                ("selected", "#56C9FF"), # 56C9FF # 7FAED8
-                ("!selected", "#FF99A4"), # FF5E3F # D08A8A # FF99A4
+                ("selected", "#56C9FF"),
+                ("!selected", "#FF99A4"),
                 ("disabled", "#808A93"),
             ],
         )
