@@ -123,6 +123,9 @@ class LogParser:
         self._name_token_pattern_cache: Dict[str, Pattern[str]] = {}
         self._damage_immunity_marker = "Damage Immunity absorbs"
         self._attack_marker = " attacks "
+        self._threat_roll_marker = "Threat Roll:"
+        self._attacker_miss_chance_marker = "attacker miss chance:"
+        self._target_concealed_marker = "target concealed:"
         self._save_marker = " Save"
         self._epic_dodge_marker = "Epic Dodge"
 
@@ -366,12 +369,17 @@ class LogParser:
                 self.target_ac[target].mark_epic_dodge()
                 return None
 
-        # Check for attack rolls to estimate AC - try threat roll pattern first (handles critical hits)
+        # Check for attack rolls to estimate AC. Most lines are plain hit/miss entries,
+        # so route to the narrowest plausible regex first.
         if self._attack_marker in stripped_line:
-            attack_match = self.patterns['attack_with_threat'].search(stripped_line)
-            if not attack_match:
+            if self._target_concealed_marker in stripped_line:
                 attack_match = self.patterns['attack_conceal'].search(stripped_line)
-            if not attack_match:
+            elif (
+                self._threat_roll_marker in stripped_line or
+                self._attacker_miss_chance_marker in stripped_line
+            ):
+                attack_match = self.patterns['attack_with_threat'].search(stripped_line)
+            else:
                 attack_match = self.patterns['attack'].search(stripped_line)
         else:
             attack_match = None
