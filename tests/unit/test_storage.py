@@ -285,6 +285,23 @@ class TestTargetFiltering:
         total_goblin_damage = sum(d["total_damage"] for d in dps_list)
         assert total_goblin_damage == 80  # 50 + 30
 
+    def test_get_dps_breakdown_by_type_for_target_uses_cached_summary(self, data_store: DataStore) -> None:
+        """Test target-filtered breakdown uses aggregated attacker-target data."""
+        ts = datetime.now()
+
+        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo", ts)
+        data_store.insert_damage_event("Goblin", "Physical", 0, 30, "Woo", ts)
+        data_store.insert_damage_event("Orc", "Cold", 0, 40, "Woo", ts)
+
+        breakdown = data_store.get_dps_breakdown_by_type_for_target(
+            "Woo", "Goblin", time_tracking_mode="per_character"
+        )
+
+        assert breakdown == [
+            {'damage_type': 'Fire', 'total_damage': 50, 'dps': 50.0},
+            {'damage_type': 'Physical', 'total_damage': 30, 'dps': 30.0},
+        ]
+
 
 class TestAttackStats:
     """Test suite for attack statistics methods."""

@@ -81,6 +81,13 @@ def run_panel_benchmarks(fixture: Path, parse_immunity: bool, iterations: int, w
     ]
     if targets:
         selected_target = targets[0]
+        cases.append((
+            "dps_refresh_target",
+            lambda: (
+                dps_panel.target_filter_var.set(selected_target),
+                dps_panel.refresh(),
+            )[-1],
+        ))
         cases.append(
             ("immunity_refresh", lambda: immunity_panel.refresh_target_details(selected_target))
         )

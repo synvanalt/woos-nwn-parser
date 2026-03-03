@@ -261,6 +261,44 @@ class TestCacheOptimizations:
         assert store._attack_stats_by_attacker["Woo"]["crits"] == 1
         assert store._attack_stats_by_attacker["Woo"]["misses"] == 1
 
+    def test_attack_stats_by_attacker_target_cache_populated_on_insert(self) -> None:
+        """Test that per-attacker target attack aggregates are updated on insert."""
+        store = DataStore()
+
+        store.insert_attack_event("Woo", "Goblin", "hit")
+        store.insert_attack_event("Woo", "Goblin", "critical_hit")
+        store.insert_attack_event("Woo", "Goblin", "miss")
+
+        key = ("Woo", "Goblin")
+        assert store._attack_stats_by_attacker_target[key]["hits"] == 1
+        assert store._attack_stats_by_attacker_target[key]["crits"] == 1
+        assert store._attack_stats_by_attacker_target[key]["misses"] == 1
+
+    def test_target_filtered_dps_summary_cache_populated_on_insert(self) -> None:
+        """Test that attacker-target DPS summary is updated on damage insert."""
+        store = DataStore()
+        now = datetime.now()
+
+        store.insert_damage_event("Goblin", "Physical", 0, 50, "Woo", now)
+        store.insert_damage_event("Goblin", "Fire", 0, 20, "Woo", now + timedelta(seconds=2))
+
+        summary = store._dps_by_attacker_target[("Woo", "Goblin")]
+        assert summary["total_damage"] == 70
+        assert summary["first_timestamp"] == now
+        assert summary["last_timestamp"] == now + timedelta(seconds=2)
+        assert summary["damage_by_type"] == {"Physical": 50, "Fire": 20}
+
+    def test_damage_dealers_by_target_cache_populated_on_insert(self) -> None:
+        """Test that per-target damage dealer cache is updated only for positive damage."""
+        store = DataStore()
+        now = datetime.now()
+
+        store.insert_damage_event("Goblin", "Physical", 0, 0, "Woo", now)
+        assert "Goblin" not in store._damage_dealers_by_target
+
+        store.insert_damage_event("Goblin", "Physical", 0, 25, "Woo", now)
+        assert store._damage_dealers_by_target["Goblin"] == {"Woo"}
+
 
 class TestIndexPerformance:
     """Test suite for performance characteristics of indices."""
