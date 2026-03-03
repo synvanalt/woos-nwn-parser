@@ -36,7 +36,7 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 ### Technical Features
 - **Automatic Truncation Detection** - Handles game restarts and log file resets
 - **Immunity Queuing** - Intelligent matching of damage and immunity events
-- **Thread-Safe Storage** - Concurrent data access without conflicts
+- **Thread-Safe In-Memory Storage** - Concurrent data access without conflicts
 
 ## Quick Start
 
@@ -175,7 +175,7 @@ woos-nwn-parser/
 - Supports player filtering and immunity parsing toggles
 
 **DataStore** (`storage.py`)
-- Thread-safe SQLite-based storage
+- Thread-safe in-memory session storage
 - Tracks damage events, attacks, DPS data, and immunities
 - Provides query methods for UI components
 
