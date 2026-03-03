@@ -249,6 +249,18 @@ class TestCacheOptimizations:
         assert hit_rates["Woo"] == 50.0  # 1 hit, 1 miss
         assert hit_rates["Ally"] == 100.0  # 1 hit, 0 misses
 
+    def test_attack_stats_cache_populated_on_insert(self) -> None:
+        """Test that per-attacker aggregate attack stats are updated on insert."""
+        store = DataStore()
+
+        store.insert_attack_event("Woo", "Goblin", "hit")
+        store.insert_attack_event("Woo", "Goblin", "critical_hit")
+        store.insert_attack_event("Woo", "Goblin", "miss")
+
+        assert store._attack_stats_by_attacker["Woo"]["hits"] == 1
+        assert store._attack_stats_by_attacker["Woo"]["crits"] == 1
+        assert store._attack_stats_by_attacker["Woo"]["misses"] == 1
+
 
 class TestIndexPerformance:
     """Test suite for performance characteristics of indices."""
