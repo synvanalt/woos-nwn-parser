@@ -150,6 +150,8 @@ def run_case(
         "min_s": min(times),
         "median_s": median_seconds,
         "mean_s": mean(times),
+        "max_s": max(times),
+        "spread_pct": ((max(times) - min(times)) / median_seconds * 100.0) if median_seconds else 0.0,
         "lines_per_s": format_throughput(fixture.line_count, median_seconds),
         "mb_per_s": format_throughput(mb_size, median_seconds),
         "parsed_events": latest.parsed_events,
@@ -183,6 +185,18 @@ def parse_args() -> argparse.Namespace:
         default=[str(path) for path in DEFAULT_FIXTURES],
         help="Fixture files to benchmark.",
     )
+    parser.add_argument(
+        "--large-fixture-line-threshold",
+        type=int,
+        default=10000,
+        help="Line count at or above which large-fixture iterations are used.",
+    )
+    parser.add_argument(
+        "--large-fixture-iterations",
+        type=int,
+        default=9,
+        help="Measured runs for large fixtures; use 0 to disable adaptive scaling.",
+    )
     return parser.parse_args()
 
 
@@ -193,6 +207,12 @@ def main() -> None:
 
     rows: list[dict[str, object]] = []
     for fixture in fixture_infos:
+        iterations = args.iterations
+        if (
+            args.large_fixture_iterations > 0
+            and fixture.line_count >= args.large_fixture_line_threshold
+        ):
+            iterations = args.large_fixture_iterations
         for parse_immunity in (False, True):
             rows.append(
                 run_case(
@@ -200,7 +220,7 @@ def main() -> None:
                     "parser_only",
                     benchmark_parser_only,
                     parse_immunity,
-                    args.iterations,
+                    iterations,
                     args.warmups,
                 )
             )
@@ -210,7 +230,7 @@ def main() -> None:
                     "full_import",
                     benchmark_full_import,
                     parse_immunity,
-                    args.iterations,
+                    iterations,
                     args.warmups,
                 )
             )
@@ -219,7 +239,10 @@ def main() -> None:
         "file",
         "mode",
         "layer",
+        "min_s",
         "median_s",
+        "max_s",
+        "spread_pct",
         "lines_per_s",
         "mb_per_s",
         "parsed_events",
@@ -235,7 +258,10 @@ def main() -> None:
             "file": str(row["file"]),
             "mode": str(row["mode"]),
             "layer": str(row["layer"]),
+            "min_s": f"{row['min_s']:.4f}",
             "median_s": f"{row['median_s']:.4f}",
+            "max_s": f"{row['max_s']:.4f}",
+            "spread_pct": f"{row['spread_pct']:.1f}%",
             "lines_per_s": f"{row['lines_per_s']:.0f}",
             "mb_per_s": f"{row['mb_per_s']:.2f}",
             "parsed_events": str(row["parsed_events"]),
@@ -249,7 +275,12 @@ def main() -> None:
             widths[header] = max(widths[header], len(value))
 
     print("Benchmark baseline")
-    print(f"Iterations: {args.iterations} measured, {args.warmups} warmup")
+    print(
+        "Iterations: "
+        f"{args.iterations} measured, {args.warmups} warmup"
+        f" ({args.large_fixture_iterations} measured for fixtures with "
+        f"{args.large_fixture_line_threshold}+ lines)"
+    )
     print()
     print(" ".join(header.ljust(widths[header]) for header in headers))
     print(" ".join("-" * widths[header] for header in headers))

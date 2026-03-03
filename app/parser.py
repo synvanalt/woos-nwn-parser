@@ -12,6 +12,12 @@ from typing import Any, Deque, Dict, Optional, Pattern
 from .models import EnemyAC, EnemySaves, TargetAttackBonus
 
 
+MONTHS = {
+    'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+    'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+}
+
+
 class LogParser:
     """Handles parsing of game log files to extract damage resist data."""
 
@@ -26,6 +32,7 @@ class LogParser:
         # Whether to attempt to parse damage immunity lines. Can be toggled at runtime
         # to reduce runtime work. Default is False (OFF) as requested.
         self.parse_immunity = bool(parse_immunity)
+        self._current_year = datetime.now().year
 
         # Pre-compile timestamp pattern for better performance
         self.timestamp_pattern = re.compile(r'\[CHAT WINDOW TEXT] \[([^]]+)]')
@@ -201,29 +208,23 @@ class LogParser:
                 timestamp_str = match.group(1)
                 # Expected format: "Wed Dec 31 21:07:37" (Day Mon DD HH:MM:SS)
                 # Manual parsing for performance while preserving date for midnight crossing accuracy
+                parts = timestamp_str.split(maxsplit=3)
+                if len(parts) == 4:
+                    month = MONTHS.get(parts[1])
+                    if month is None:
+                        return None
 
-                # Split the timestamp: ['Wed', 'Dec', '31', '21:07:37']
-                parts = timestamp_str.split()
-                if len(parts) >= 4:
-                    # Month name mapping
-                    months = {
-                        'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
-                        'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
-                    }
+                    time_part = parts[3]
+                    if len(time_part) != 8 or time_part[2] != ':' or time_part[5] != ':':
+                        return None
 
-                    month_str = parts[1]
                     day = int(parts[2])
-                    time_parts = parts[3].split(':')
+                    hour = int(time_part[0:2])
+                    minute = int(time_part[3:5])
+                    second = int(time_part[6:8])
 
-                    if len(time_parts) == 3 and month_str in months:
-                        hour = int(time_parts[0])
-                        minute = int(time_parts[1])
-                        second = int(time_parts[2])
-                        month = months[month_str]
-                        current_year = datetime.now().year
-
-                        # Create datetime with full date to handle midnight crossings correctly
-                        return datetime(current_year, month, day, hour, minute, second)
+                    # Create datetime with full date to handle midnight crossings correctly
+                    return datetime(self._current_year, month, day, hour, minute, second)
         except Exception:
             pass
         return None
