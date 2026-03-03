@@ -36,6 +36,7 @@ class DataStore:
         self._targets_cache: set = set()
         # Cached set of damage dealers for fast lookup
         self._damage_dealers_cache: set = set()
+        self._damage_taken_by_target: Dict[str, int] = {}
         # Attack indices for O(1) lookups
         self._attacks_by_attacker: Dict[str, List[AttackEvent]] = {}
         self._attacks_by_target: Dict[str, List[AttackEvent]] = {}
@@ -120,6 +121,9 @@ class DataStore:
             self.events.append(event)
             # Update targets cache (O(1) set add)
             self._targets_cache.add(target)
+            self._damage_taken_by_target[target] = (
+                self._damage_taken_by_target.get(target, 0) + total_damage
+            )
             # Update damage dealers cache if damage was dealt
             if total_damage > 0 and attacker:
                 self._damage_dealers_cache.add(attacker)
@@ -784,6 +788,7 @@ class DataStore:
             # Clear caches
             self._targets_cache.clear()
             self._damage_dealers_cache.clear()
+            self._damage_taken_by_target.clear()
             # Clear indices
             self._attacks_by_attacker.clear()
             self._attacks_by_target.clear()
@@ -874,7 +879,7 @@ class DataStore:
             Sorted alphabetically by target name
         """
         with self.lock:
-            targets = sorted(set(e.target for e in self.events))
+            targets = sorted(self._targets_cache)
             summary = []
 
             for target in targets:
@@ -899,9 +904,7 @@ class DataStore:
                     will_display = str(saves.will) if saves.will is not None else "-"
 
                 # Calculate total damage taken by this target
-                damage_taken = sum(
-                    e.total_damage_dealt for e in self._events_by_target.get(target, [])
-                )
+                damage_taken = self._damage_taken_by_target.get(target, 0)
 
                 summary.append({
                     'target': target,

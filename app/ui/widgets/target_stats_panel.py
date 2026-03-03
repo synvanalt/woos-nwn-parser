@@ -37,6 +37,8 @@ class TargetStatsPanel(ttk.Frame):
         super().__init__(parent, padding="10")
         self.data_store = data_store
         self.parser = parser
+        self._cached_rows: dict = {}
+        self._item_ids: dict = {}
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -71,6 +73,41 @@ class TargetStatsPanel(ttk.Frame):
 
     def refresh(self) -> None:
         """Refresh the target stats display with current data."""
+        summary_data = self.data_store.get_all_targets_summary(self.parser)
+        new_rows = {
+            item["target"]: (
+                item["target"],
+                item["ab"],
+                item["ac"],
+                item["fortitude"],
+                item["reflex"],
+                item["will"],
+                item["damage_taken"],
+            )
+            for item in summary_data
+        }
+
+        current_targets = set(self._cached_rows.keys())
+        new_targets = set(new_rows.keys())
+
+        needs_full_refresh = (
+            not self._item_ids or
+            current_targets != new_targets
+        )
+
+        if not needs_full_refresh and self.tree.get_children():
+            if self.tree._last_sorted_col == "Target" and not self.tree._sort_reverse:
+                tree_order = [self.tree.item(item, "values")[0] for item in self.tree.get_children()]
+                summary_order = [item["target"] for item in summary_data]
+                needs_full_refresh = tree_order != summary_order
+
+        if needs_full_refresh:
+            self._full_refresh(summary_data)
+        else:
+            self._incremental_refresh(new_rows)
+
+    def _full_refresh(self, summary_data: list[dict]) -> None:
+        """Rebuild the tree when targets are added, removed, or reordered."""
         # Save the currently selected target names
         selected_targets = set()
         for item in self.tree.selection():
@@ -85,28 +122,28 @@ class TargetStatsPanel(ttk.Frame):
         try:
             # Clear existing data
             self.tree.delete(*self.tree.get_children())
-
-            # Get summary data for all targets
-            summary_data = self.data_store.get_all_targets_summary(self.parser)
+            self._item_ids.clear()
 
             # Track items to restore selection
             items_to_select = []
 
             # Populate treeview with target data
             for item in summary_data:
+                row_values = (
+                    item["target"],
+                    item["ab"],
+                    item["ac"],
+                    item["fortitude"],
+                    item["reflex"],
+                    item["will"],
+                    item["damage_taken"],
+                )
                 item_id = self.tree.insert(
                     "",
                     "end",
-                    values=(
-                        item["target"],
-                        item["ab"],
-                        item["ac"],
-                        item["fortitude"],
-                        item["reflex"],
-                        item["will"],
-                        item["damage_taken"],
-                    ),
+                    values=row_values,
                 )
+                self._item_ids[item["target"]] = item_id
 
                 # Check if this target should be selected
                 if item["target"] in selected_targets:
@@ -126,3 +163,33 @@ class TargetStatsPanel(ttk.Frame):
         # Restore selection (after show is restored)
         if items_to_select:
             self.tree.selection_set(items_to_select)
+
+        self._cached_rows = {
+            item["target"]: (
+                item["target"],
+                item["ab"],
+                item["ac"],
+                item["fortitude"],
+                item["reflex"],
+                item["will"],
+                item["damage_taken"],
+            )
+            for item in summary_data
+        }
+
+    def _incremental_refresh(self, new_rows: dict) -> None:
+        """Update existing rows without rebuilding the whole tree."""
+        for target, row_values in new_rows.items():
+            if row_values == self._cached_rows.get(target):
+                continue
+
+            item_id = self._item_ids.get(target)
+            if item_id:
+                self.tree.item(item_id, values=row_values)
+
+        self._cached_rows = new_rows
+
+        if self.tree._last_sorted_col and self.tree._last_sorted_col != "Target":
+            self.tree.apply_current_sort()
+        elif self.tree._last_sorted_col == "Target" and self.tree._sort_reverse:
+            self.tree.apply_current_sort()
