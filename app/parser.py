@@ -275,15 +275,19 @@ class LogParser:
 
         raw_line = line.rstrip('\r\n')
         self.recent_log_lines.append(raw_line)
+        timestamp: Optional[datetime] = None
 
-        # Extract timestamp from the log line
-        timestamp = self.extract_timestamp_from_line(line)
-        if not timestamp:
-            timestamp = datetime.now()
+        def get_timestamp() -> datetime:
+            nonlocal timestamp
+            if timestamp is None:
+                timestamp = self.extract_timestamp_from_line(line)
+                if not timestamp:
+                    timestamp = datetime.now()
+            return timestamp
 
         # Death Snippet: trigger only on the unique prayer line and then scan backward.
         if self.patterns['god_refusal'].search(raw_line):
-            death_event = self._build_death_snippet_event(raw_line, timestamp)
+            death_event = self._build_death_snippet_event(raw_line, get_timestamp())
             if death_event:
                 return death_event
 
@@ -311,7 +315,7 @@ class LogParser:
                 'target': target,
                 'total_damage': total_damage,
                 'damage_types': self.current_damage_types,
-                'timestamp': timestamp,
+                'timestamp': get_timestamp(),
                 'filtered_for_player': self.player_name and attacker != self.player_name
             }
 
@@ -350,7 +354,7 @@ class LogParser:
                 'damage_type': damage_type,
                 'immunity_points': immunity_points,
                 'dmg_reduced': immunity_points,
-                'timestamp': timestamp
+                'timestamp': get_timestamp()
             }
 
         # Strip [CHAT WINDOW TEXT] prefix for attack and save patterns.
@@ -436,7 +440,7 @@ class LogParser:
                         'roll': roll,
                         'bonus': bonus_str,
                         'total': total,
-                        'timestamp': timestamp
+                        'timestamp': get_timestamp()
                     }
                 elif is_miss:
                     return {
@@ -447,7 +451,7 @@ class LogParser:
                         'bonus': attack_match.group('bonus'),
                         'total': total,
                         'was_nat1': was_nat1,
-                        'timestamp': timestamp
+                        'timestamp': get_timestamp()
                     }
 
         # Check for save rolls to estimate saves
@@ -481,7 +485,7 @@ class LogParser:
                     'target': target,
                     'save_type': save_key,
                     'bonus': bonus,
-                    'timestamp': timestamp
+                    'timestamp': get_timestamp()
                 }
 
         return None
