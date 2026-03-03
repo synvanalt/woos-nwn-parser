@@ -134,40 +134,20 @@ class ImmunityPanel(ttk.Frame):
             if target not in self.immunity_pct_cache:
                 self.immunity_pct_cache[target] = {}
 
-            # Get resist data (damage types with immunity records)
-            # Returns: (damage_type, max_damage, immunity_absorbed, sample_count)
-            # where max_damage and immunity_absorbed are from the same hit
-            resists = self.data_store.get_target_resists(target)
-            resist_dict = {
-                damage_type: (max_damage, immunity_absorbed, sample_count)
-                for damage_type, max_damage, immunity_absorbed, sample_count in resists
-            }
-
-            # Get all damage types for this target from events (whether or not they have immunity)
-            all_damage_types_for_target = set()
-            for event in self.data_store.events:
-                if event.target == target:
-                    all_damage_types_for_target.add(event.damage_type)
-
-            # Combine: use all damage types found, filling in immunity data where available
-            all_damage_types = sorted(all_damage_types_for_target)
+            summaries = self.data_store.get_target_damage_type_summary(target)
 
             # Track items to restore selection
             items_to_select = []
 
-            for damage_type in all_damage_types:
+            for summary in summaries:
+                damage_type = str(summary["damage_type"])
                 tag_name = f"dt_{re.sub(r'[^0-9a-zA-Z]+', '_', damage_type.lower())}"
                 color = damage_type_to_color(damage_type)
                 apply_tag_to_tree(self.tree, tag_name, color)
 
-                # Get immunity data if available, otherwise use defaults
-                # resist_dict values are: (max_damage, immunity_absorbed, sample_count) - all coupled from same hit
-                if damage_type in resist_dict:
-                    max_damage_from_immunity, immunity_absorbed, sample_count = resist_dict[damage_type]
-                else:
-                    max_damage_from_immunity = 0
-                    immunity_absorbed = 0
-                    sample_count = 0
+                max_damage_from_immunity = int(summary["max_immunity_damage"])
+                immunity_absorbed = int(summary["immunity_absorbed"])
+                sample_count = int(summary["sample_count"])
 
                 # For immunity percentage calculation, we MUST use the coupled data from immunity_data
                 # (max_damage_from_immunity and immunity_absorbed are from the same hit)
@@ -178,10 +158,7 @@ class ImmunityPanel(ttk.Frame):
                 if self.parser.parse_immunity and max_damage_from_immunity > 0:
                     max_damage = max_damage_from_immunity
                 else:
-                    # Fall back to max damage from events for display when immunity parsing disabled
-                    max_damage = self.data_store.get_max_damage_from_events_for_target_and_type(
-                        target, damage_type
-                    )
+                    max_damage = int(summary["max_event_damage"])
 
                 # Format the display strings
                 max_damage_display = str(max_damage) if max_damage > 0 else "-"

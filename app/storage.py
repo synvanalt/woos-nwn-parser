@@ -43,6 +43,7 @@ class DataStore:
         # Damage event indices for O(1) lookups
         self._events_by_target: Dict[str, List[DamageEvent]] = {}
         self._events_by_attacker_target: Dict[Tuple[str, str], List[DamageEvent]] = {}
+        self._damage_summary_by_target: Dict[str, Dict[str, Dict[str, int]]] = {}
 
     @property
     def version(self) -> int:
@@ -132,6 +133,16 @@ class DataStore:
                 if key not in self._events_by_attacker_target:
                     self._events_by_attacker_target[key] = []
                 self._events_by_attacker_target[key].append(event)
+
+            if target not in self._damage_summary_by_target:
+                self._damage_summary_by_target[target] = {}
+
+            if damage_type not in self._damage_summary_by_target[target]:
+                self._damage_summary_by_target[target][damage_type] = {'max_damage': 0}
+
+            damage_summary = self._damage_summary_by_target[target][damage_type]
+            if total_damage > damage_summary['max_damage']:
+                damage_summary['max_damage'] = total_damage
 
     def update_dps_data(self, character: str, damage_amount: int, timestamp: datetime, damage_types: Optional[Dict[str, int]] = None) -> None:
         """Update DPS data for a character.
@@ -755,6 +766,7 @@ class DataStore:
             self._attacks_by_attacker_target.clear()
             self._events_by_target.clear()
             self._events_by_attacker_target.clear()
+            self._damage_summary_by_target.clear()
 
     def close(self) -> None:
         """Close the data store (no-op for in-memory store)."""
@@ -799,13 +811,33 @@ class DataStore:
             Maximum damage amount recorded for this combination, or 0 if no events
         """
         with self.lock:
-            matching_events = [
-                e for e in self.events
-                if e.target == target and e.damage_type == damage_type
-            ]
-            if not matching_events:
+            damage_summary = self._damage_summary_by_target.get(target, {}).get(damage_type)
+            if damage_summary is None:
                 return 0
-            return max(e.total_damage_dealt for e in matching_events)
+            return damage_summary['max_damage']
+
+    def get_target_damage_type_summary(self, target: str) -> List[Dict[str, int | str]]:
+        """Get one summary row per damage type seen for a target."""
+        with self.lock:
+            damage_summary = self._damage_summary_by_target.get(target, {})
+            immunity_summary = self.immunity_data.get(target, {})
+
+            if not damage_summary and not immunity_summary:
+                return []
+
+            result: List[Dict[str, int | str]] = []
+            for damage_type in sorted(set(damage_summary) | set(immunity_summary)):
+                damage_info = damage_summary.get(damage_type, {})
+                immunity_info = immunity_summary.get(damage_type, {})
+                result.append({
+                    'damage_type': damage_type,
+                    'max_event_damage': int(damage_info.get('max_damage', 0)),
+                    'max_immunity_damage': int(immunity_info.get('max_damage', 0)),
+                    'immunity_absorbed': int(immunity_info.get('max_immunity', 0)),
+                    'sample_count': int(immunity_info.get('sample_count', 0)),
+                })
+
+            return result
 
     def get_all_targets_summary(self, parser: "LogParser") -> List[Dict]:  # type: ignore
         """Get summary data for all targets with attack bonus, AC, and saves.

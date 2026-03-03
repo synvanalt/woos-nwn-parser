@@ -246,6 +246,29 @@ class TestTargetFiltering:
         stats = data_store.get_target_stats("NonExistent")
         assert stats is None
 
+    def test_get_target_damage_type_summary_uses_indexed_values(self, data_store: DataStore) -> None:
+        """Test combined target damage-type summaries from indexed store data."""
+        data_store.insert_damage_event("Goblin", "Fire", 0, 20, "Woo")
+        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
+        data_store.insert_damage_event("Goblin", "Cold", 0, 15, "Woo")
+        data_store.record_immunity("Goblin", "Fire", 10, 50)
+
+        summary = data_store.get_target_damage_type_summary("Goblin")
+
+        assert len(summary) == 2
+        fire = next(item for item in summary if item["damage_type"] == "Fire")
+        cold = next(item for item in summary if item["damage_type"] == "Cold")
+
+        assert fire["max_event_damage"] == 50
+        assert fire["max_immunity_damage"] == 50
+        assert fire["immunity_absorbed"] == 10
+        assert fire["sample_count"] == 1
+
+        assert cold["max_event_damage"] == 15
+        assert cold["max_immunity_damage"] == 0
+        assert cold["immunity_absorbed"] == 0
+        assert cold["sample_count"] == 0
+
     def test_get_dps_data_for_target(self, data_store: DataStore) -> None:
         """Test getting DPS data filtered by target."""
         ts = datetime.now()
@@ -525,6 +548,7 @@ class TestClearData:
         assert len(data_store.attacks) == 0
         assert len(data_store.dps_data) == 0
         assert len(data_store.immunity_data) == 0
+        assert data_store.get_target_damage_type_summary("Goblin") == []
         assert data_store.last_damage_timestamp is None
 
 
