@@ -29,6 +29,7 @@ class LogParser:
 
         # Pre-compile timestamp pattern for better performance
         self.timestamp_pattern = re.compile(r'\[CHAT WINDOW TEXT] \[([^]]+)]')
+        self.chat_prefix_pattern = re.compile(r'^\[CHAT WINDOW TEXT]\s*\[[^]]+]\s*')
 
         # Pre-compile damage breakdown pattern for better performance
         self.damage_breakdown_pattern = re.compile(r"(\d+)\s+(\D+?)(?=\s+\d+|$)")
@@ -113,6 +114,10 @@ class LogParser:
         self.death_snippet_max_lines = 100
         self.recent_log_lines: Deque[str] = deque(maxlen=20000)
         self._name_token_pattern_cache: Dict[str, Pattern[str]] = {}
+        self._damage_immunity_marker = "Damage Immunity absorbs"
+        self._attack_marker = " attacks "
+        self._save_marker = " Save"
+        self._epic_dodge_marker = "Epic Dodge"
 
     def _get_name_token_pattern(self, character_name: str) -> Pattern[str]:
         """Get cached exact-token, case-sensitive regex for a character name."""
@@ -306,12 +311,17 @@ class LogParser:
                 'filtered_for_player': self.player_name and attacker != self.player_name
             }
 
-        # Check for damage immunity
-        # Skip attempting to parse immunity lines if the parser is configured to not do so
-        immunity_match = None
-        if self.parse_immunity:
+        # Damage immunity lines are common enough to warrant a fast substring gate.
+        # When immunity parsing is disabled, exit early instead of paying for the
+        # attack/save path on lines we already know we will ignore.
+        if self._damage_immunity_marker in raw_line:
+            if not self.parse_immunity:
+                return None
+
             immunity_match = self.patterns['damage_immunity'].search(line)
-        if immunity_match:
+            if not immunity_match:
+                return None
+
             target = immunity_match.group(1).strip()
             immunity_points = int(immunity_match.group(2))
             damage_type = immunity_match.group(3).strip()
@@ -339,27 +349,31 @@ class LogParser:
                 'timestamp': timestamp
             }
 
-        # Strip [CHAT WINDOW TEXT] prefix for attack and save patterns
-        stripped_line = line
-        if '[CHAT WINDOW TEXT]' in line:
-            # Remove the [CHAT WINDOW TEXT] [timestamp] prefix
-            stripped_line = re.sub(r'^\[CHAT WINDOW TEXT]\s*\[[^]]+]\s*', '', line)
+        # Strip [CHAT WINDOW TEXT] prefix for attack and save patterns.
+        stripped_line = raw_line
+        prefix_match = self.chat_prefix_pattern.match(raw_line)
+        if prefix_match:
+            stripped_line = raw_line[prefix_match.end():]
 
         # Check for Epic Dodge markers and tag the target AC estimate as uncertain.
-        epic_dodge_match = self.patterns['epic_dodge'].search(stripped_line)
-        if epic_dodge_match:
-            target = epic_dodge_match.group('target').strip()
-            if target not in self.target_ac:
-                self.target_ac[target] = EnemyAC(name=target)
-            self.target_ac[target].mark_epic_dodge()
-            return None
+        if self._epic_dodge_marker in stripped_line:
+            epic_dodge_match = self.patterns['epic_dodge'].search(stripped_line)
+            if epic_dodge_match:
+                target = epic_dodge_match.group('target').strip()
+                if target not in self.target_ac:
+                    self.target_ac[target] = EnemyAC(name=target)
+                self.target_ac[target].mark_epic_dodge()
+                return None
 
         # Check for attack rolls to estimate AC - try threat roll pattern first (handles critical hits)
-        attack_match = self.patterns['attack_with_threat'].search(stripped_line)
-        if not attack_match:
-            attack_match = self.patterns['attack_conceal'].search(stripped_line)
-        if not attack_match:
-            attack_match = self.patterns['attack'].search(stripped_line)
+        if self._attack_marker in stripped_line:
+            attack_match = self.patterns['attack_with_threat'].search(stripped_line)
+            if not attack_match:
+                attack_match = self.patterns['attack_conceal'].search(stripped_line)
+            if not attack_match:
+                attack_match = self.patterns['attack'].search(stripped_line)
+        else:
+            attack_match = None
 
         if attack_match:
             attacker = attack_match.group('attacker').strip()
@@ -428,7 +442,9 @@ class LogParser:
                     }
 
         # Check for save rolls to estimate saves
-        save_match = self.patterns['save'].search(stripped_line)
+        save_match = None
+        if self._save_marker in stripped_line:
+            save_match = self.patterns['save'].search(stripped_line)
         if save_match:
             target = save_match.group('target').strip()
             save_type = save_match.group('save_type').lower()
