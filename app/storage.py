@@ -247,7 +247,8 @@ class DataStore:
                         'character': character,
                         'total_damage': total_damage,
                         'time_seconds': time_delta,
-                        'dps': dps
+                        'dps': dps,
+                        'breakdown_token': tuple(sorted(data.get('damage_by_type', {}).items())),
                     })
             else:
                 # Per-character mode (default): use each character's own first timestamp (last timestamp is global)
@@ -271,7 +272,8 @@ class DataStore:
                         'character': character,
                         'total_damage': total_damage,
                         'time_seconds': time_delta,
-                        'dps': dps
+                        'dps': dps,
+                        'breakdown_token': tuple(sorted(data.get('damage_by_type', {}).items())),
                     })
 
             # Sort by DPS descending
@@ -696,7 +698,18 @@ class DataStore:
                         'character': character,
                         'total_damage': char_damage_on_target,
                         'time_seconds': time_delta,
-                        'dps': dps
+                        'dps': dps,
+                        'breakdown_token': tuple(sorted(
+                            (
+                                damage_type,
+                                sum(
+                                    e.total_damage_dealt
+                                    for e in char_events
+                                    if e.damage_type == damage_type
+                                ),
+                            )
+                            for damage_type in {e.damage_type for e in char_events}
+                        )),
                     })
             else:
                 # Per-character mode: use each character's first and last damage on this target
@@ -724,7 +737,18 @@ class DataStore:
                         'character': character,
                         'total_damage': char_damage_on_target,
                         'time_seconds': time_delta,
-                        'dps': dps
+                        'dps': dps,
+                        'breakdown_token': tuple(sorted(
+                            (
+                                damage_type,
+                                sum(
+                                    e.total_damage_dealt
+                                    for e in char_damage_events
+                                    if e.damage_type == damage_type
+                                ),
+                            )
+                            for damage_type in {e.damage_type for e in char_damage_events}
+                        )),
                     })
 
             # Sort by DPS descending

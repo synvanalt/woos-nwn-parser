@@ -45,6 +45,7 @@ class DPSPanel(ttk.Frame):
         self._cached_breakdown: dict = {}  # character -> [(damage_type, total_damage, dps), ...]
         self._item_ids: dict = {}  # character -> tree item id
         self._child_ids: dict = {}  # character -> {damage_type -> tree item id}
+        self._cached_view_key = None
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -132,11 +133,15 @@ class DPSPanel(ttk.Frame):
         Only updates rows that have changed, avoiding full tree rebuild.
         """
         selected_target = self.target_filter_var.get()
+        view_key = (
+            selected_target,
+            self.dps_service.time_tracking_mode,
+            self.dps_service.global_start_time,
+        )
         dps_list = self.dps_service.get_dps_display_data(target_filter=selected_target)
 
         # Build new data map
         new_data = {}
-        new_breakdown = {}
         for dps_info in dps_list:
             character = dps_info["character"]
             new_data[character] = {
@@ -144,19 +149,24 @@ class DPSPanel(ttk.Frame):
                 'total_damage': dps_info["total_damage"],
                 'hit_rate': dps_info["hit_rate"],
                 'time_seconds': dps_info["time_seconds"],
+                'breakdown_token': dps_info.get("breakdown_token", ()),
             }
-            # Get breakdown for this character
-            breakdown = self.dps_service.get_damage_type_breakdown(character, selected_target)
-            new_breakdown[character] = [(d["damage_type"], d["total_damage"], d["dps"]) for d in breakdown]
 
         # Check if we need a full rebuild
         current_characters = set(self._cached_data.keys())
         new_characters = set(new_data.keys())
 
         needs_full_refresh = (
+            self._cached_view_key != view_key or  # Target filter / time mode changed
             current_characters != new_characters or  # Characters added/removed
             not self._item_ids  # First refresh
         )
+
+        changed_characters = {
+            character
+            for character, data in new_data.items()
+            if data != self._cached_data.get(character)
+        }
 
         # If user is using the default sort (DPS descending), check if order changed
         if not needs_full_refresh and self.tree.get_children():
@@ -168,20 +178,35 @@ class DPSPanel(ttk.Frame):
                 needs_full_refresh = tree_order != dps_list_order
 
         if needs_full_refresh:
+            new_breakdown = self._build_breakdown_cache(new_data.keys(), selected_target)
             # Full rebuild needed
-            self._full_refresh(dps_list, new_data, new_breakdown, selected_target)
+            self._full_refresh(dps_list, new_data, new_breakdown)
         else:
+            new_breakdown = dict(self._cached_breakdown)
+            new_breakdown.update(self._build_breakdown_cache(changed_characters, selected_target))
             # Incremental update - only update changed values
-            self._incremental_refresh(new_data, new_breakdown, selected_target)
+            self._incremental_refresh(new_data, new_breakdown)
 
-    def _full_refresh(self, dps_list: list, new_data: dict, new_breakdown: dict, selected_target: str) -> None:
+        self._cached_view_key = view_key
+
+    def _build_breakdown_cache(self, characters, selected_target: str) -> dict:
+        """Build breakdown cache entries only for the requested characters."""
+        breakdown_cache = {}
+        for character in characters:
+            breakdown = self.dps_service.get_damage_type_breakdown(character, selected_target)
+            breakdown_cache[character] = [
+                (d["damage_type"], d["total_damage"], d["dps"])
+                for d in breakdown
+            ]
+        return breakdown_cache
+
+    def _full_refresh(self, dps_list: list, new_data: dict, new_breakdown: dict) -> None:
         """Perform a full tree rebuild when structure changes.
 
         Args:
             dps_list: List of DPS data dicts
             new_data: New data cache
             new_breakdown: New breakdown cache
-            selected_target: Currently selected target filter
         """
         # Save the expanded state of all nodes
         expanded_nodes = set()
@@ -232,14 +257,8 @@ class DPSPanel(ttk.Frame):
             if character in selected_characters:
                 items_to_select.append(parent_id)
 
-            # Get damage type breakdown for this character
-            breakdown = self.dps_service.get_damage_type_breakdown(character, selected_target)
-
             # Insert child rows for each damage type
-            for damage_data in breakdown:
-                damage_type = damage_data["damage_type"]
-                type_damage = damage_data["total_damage"]
-                type_dps = damage_data["dps"]
+            for damage_type, type_damage, type_dps in new_breakdown.get(character, []):
 
                 color = damage_type_to_color(damage_type)
                 tag = f"damage_type_{damage_type.replace(' ', '_').lower()}"
@@ -273,13 +292,12 @@ class DPSPanel(ttk.Frame):
         if hasattr(self.tree, "_update_indicators"):
             self.tree._update_indicators()
 
-    def _incremental_refresh(self, new_data: dict, new_breakdown: dict, selected_target: str) -> None:
+    def _incremental_refresh(self, new_data: dict, new_breakdown: dict) -> None:
         """Update only changed values without rebuilding the tree.
 
         Args:
             new_data: New data for all characters
             new_breakdown: New breakdown data for all characters
-            selected_target: Currently selected target filter
         """
         for character, data in new_data.items():
             cached = self._cached_data.get(character, {})
@@ -396,6 +414,7 @@ class DPSPanel(ttk.Frame):
         self._cached_breakdown.clear()
         self._item_ids.clear()
         self._child_ids.clear()
+        self._cached_view_key = None
 
     def reset_target_filter(self) -> None:
         """Reset the target filter selection to default 'All'."""
