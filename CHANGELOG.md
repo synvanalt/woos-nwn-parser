@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.3.1] - 2026-03-04
 
 ### Changed
 - Faster log parsing, especially on large combat logs and during file imports
