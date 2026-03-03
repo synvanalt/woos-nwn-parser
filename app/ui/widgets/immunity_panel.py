@@ -45,6 +45,9 @@ class ImmunityPanel(ttk.Frame):
         self.data_store = data_store
         self.parser = parser
         self.immunity_pct_cache: Dict[str, Dict[str, Optional[int]]] = {}
+        self._cached_target: str = ""
+        self._cached_rows: Dict[str, tuple] = {}
+        self._item_ids: Dict[str, str] = {}
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -115,6 +118,68 @@ class ImmunityPanel(ttk.Frame):
         Args:
             target: Name of the target to display details for
         """
+        # Initialize cache for this target if needed
+        if target not in self.immunity_pct_cache:
+            self.immunity_pct_cache[target] = {}
+
+        summaries = self.data_store.get_target_damage_type_summary(target)
+        new_rows = {}
+        for summary in summaries:
+            damage_type = str(summary["damage_type"])
+            max_damage_from_immunity = int(summary["max_immunity_damage"])
+            immunity_absorbed = int(summary["immunity_absorbed"])
+            sample_count = int(summary["sample_count"])
+
+            if self.parser.parse_immunity and max_damage_from_immunity > 0:
+                max_damage = max_damage_from_immunity
+            else:
+                max_damage = int(summary["max_event_damage"])
+
+            max_damage_display = str(max_damage) if max_damage > 0 else "-"
+            absorbed_display = str(immunity_absorbed) if immunity_absorbed > 0 else "-"
+            samples_display = str(sample_count) if sample_count > 0 else "-"
+
+            immunity_pct_display = "-"
+            if damage_type in self.immunity_pct_cache[target]:
+                cached_pct = self.immunity_pct_cache[target][damage_type]
+                if cached_pct is not None:
+                    immunity_pct_display = f"{cached_pct}%"
+
+            if self.parser.parse_immunity and max_damage > 0 and immunity_absorbed > 0:
+                immunity_pct = calculate_immunity_percentage(max_damage, immunity_absorbed)
+                if immunity_pct is not None:
+                    immunity_pct_display = f"{immunity_pct}%"
+                    self.immunity_pct_cache[target][damage_type] = immunity_pct
+                else:
+                    self.immunity_pct_cache[target][damage_type] = None
+
+            new_rows[damage_type] = (
+                damage_type,
+                max_damage_display,
+                absorbed_display,
+                immunity_pct_display,
+                samples_display,
+            )
+
+        needs_full_refresh = (
+            self._cached_target != target or
+            not self._item_ids or
+            set(self._cached_rows.keys()) != set(new_rows.keys())
+        )
+
+        if not needs_full_refresh and self.tree.get_children():
+            if self.tree._last_sorted_col == "Damage Type" and not self.tree._sort_reverse:
+                tree_order = [self.tree.item(item, "values")[0] for item in self.tree.get_children()]
+                summary_order = [str(summary["damage_type"]) for summary in summaries]
+                needs_full_refresh = tree_order != summary_order
+
+        if needs_full_refresh:
+            self._full_refresh(target, new_rows)
+        else:
+            self._incremental_refresh(target, new_rows)
+
+    def _full_refresh(self, target: str, new_rows: Dict[str, tuple]) -> None:
+        """Rebuild the tree when target or damage-type structure changes."""
         # Save the currently selected damage types
         selected_damage_types = set()
         for item in self.tree.selection():
@@ -129,67 +194,24 @@ class ImmunityPanel(ttk.Frame):
         try:
             # Clear existing data
             self.tree.delete(*self.tree.get_children())
-
-            # Initialize cache for this target if needed
-            if target not in self.immunity_pct_cache:
-                self.immunity_pct_cache[target] = {}
-
-            summaries = self.data_store.get_target_damage_type_summary(target)
+            self._item_ids.clear()
 
             # Track items to restore selection
             items_to_select = []
 
-            for summary in summaries:
-                damage_type = str(summary["damage_type"])
+            for damage_type, row_values in new_rows.items():
                 tag_name = f"dt_{re.sub(r'[^0-9a-zA-Z]+', '_', damage_type.lower())}"
                 color = damage_type_to_color(damage_type)
                 apply_tag_to_tree(self.tree, tag_name, color)
-
-                max_damage_from_immunity = int(summary["max_immunity_damage"])
-                immunity_absorbed = int(summary["immunity_absorbed"])
-                sample_count = int(summary["sample_count"])
-
-                # For immunity percentage calculation, we MUST use the coupled data from immunity_data
-                # (max_damage_from_immunity and immunity_absorbed are from the same hit)
-                #
-                # For display purposes:
-                # - When Parse Immunities is enabled: show the coupled max_damage from immunity tracking
-                # - When disabled: fall back to showing max damage from all events
-                if self.parser.parse_immunity and max_damage_from_immunity > 0:
-                    max_damage = max_damage_from_immunity
-                else:
-                    max_damage = int(summary["max_event_damage"])
-
-                # Format the display strings
-                max_damage_display = str(max_damage) if max_damage > 0 else "-"
-                absorbed_display = str(immunity_absorbed) if immunity_absorbed > 0 else "-"
-                samples_display = str(sample_count) if sample_count > 0 else "-"
-
-                # Calculate and cache immunity percentage
-                immunity_pct_display = "-"
-
-                # Check if we have a cached value for this damage type
-                if damage_type in self.immunity_pct_cache[target]:
-                    cached_pct = self.immunity_pct_cache[target][damage_type]
-                    if cached_pct is not None:
-                        immunity_pct_display = f"{cached_pct}%"
-
-                # Update cache if Parse Immunities is enabled
-                if self.parser.parse_immunity and max_damage > 0 and immunity_absorbed > 0:
-                    immunity_pct = calculate_immunity_percentage(max_damage, immunity_absorbed)
-                    if immunity_pct is not None:
-                        immunity_pct_display = f"{immunity_pct}%"
-                        self.immunity_pct_cache[target][damage_type] = immunity_pct
-                    else:
-                        self.immunity_pct_cache[target][damage_type] = None
 
                 # Display in simplified column format
                 item_id = self.tree.insert(
                     "",
                     "end",
-                    values=(damage_type, max_damage_display, absorbed_display, immunity_pct_display, samples_display),
+                    values=row_values,
                     tags=(tag_name,),
                 )
+                self._item_ids[damage_type] = item_id
 
                 # Check if this damage type should be selected
                 if damage_type in selected_damage_types:
@@ -209,6 +231,27 @@ class ImmunityPanel(ttk.Frame):
         # Restore selection (after show is restored)
         if items_to_select:
             self.tree.selection_set(items_to_select)
+
+        self._cached_target = target
+        self._cached_rows = new_rows
+
+    def _incremental_refresh(self, target: str, new_rows: Dict[str, tuple]) -> None:
+        """Update existing immunity rows without rebuilding the tree."""
+        for damage_type, row_values in new_rows.items():
+            if row_values == self._cached_rows.get(damage_type):
+                continue
+
+            item_id = self._item_ids.get(damage_type)
+            if item_id:
+                self.tree.item(item_id, values=row_values)
+
+        self._cached_target = target
+        self._cached_rows = new_rows
+
+        if self.tree._last_sorted_col and self.tree._last_sorted_col != "Damage Type":
+            self.tree.apply_current_sort()
+        elif self.tree._last_sorted_col == "Damage Type" and self.tree._sort_reverse:
+            self.tree.apply_current_sort()
 
     def update_target_list(self, targets: list) -> None:
         """Update the target selector combobox.
@@ -245,4 +288,7 @@ class ImmunityPanel(ttk.Frame):
         Called when data is reset to ensure old cached values don't persist.
         """
         self.immunity_pct_cache.clear()
+        self._cached_target = ""
+        self._cached_rows.clear()
+        self._item_ids.clear()
 
