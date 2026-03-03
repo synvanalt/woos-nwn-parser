@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.1] - 2026-03-04
+
+### Changed
+- Faster log parsing, especially on large combat logs and during file imports
+- Smoother DPS, Target Stats, and Target Immunities panel refreshes during active sessions
+- Better responsiveness when filtering DPS by a specific target
+- Improved overall handling of large sessions to reduce slowdowns as more combat data accumulates
+
+
 ## [1.3.0] - 2026-02-27
 
 ### Added

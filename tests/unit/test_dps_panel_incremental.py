@@ -58,7 +58,8 @@ class TestIncrementalRefresh:
                 'total_damage': 500,
                 'time_seconds': 10,
                 'dps': 50.0,
-                'hit_rate': 75.0
+                'hit_rate': 75.0,
+                'breakdown_token': (('Physical', 500),),
             }
         ])
 
@@ -231,6 +232,16 @@ class TestIncrementalRefresh:
         dps_panel.refresh()
 
         # Add new damage type
+        dps_panel.dps_service.get_dps_display_data = Mock(return_value=[
+            {
+                'character': 'Woo',
+                'total_damage': 500,
+                'time_seconds': 10,
+                'dps': 50.0,
+                'hit_rate': 75.0,
+                'breakdown_token': (('Fire', 200), ('Physical', 300)),
+            }
+        ])
         dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[
             {'damage_type': 'Physical', 'total_damage': 300, 'dps': 30.0},
             {'damage_type': 'Fire', 'total_damage': 200, 'dps': 20.0}
@@ -268,7 +279,8 @@ class TestIncrementalRefresh:
             'total_damage': 500,
             'time_seconds': 10,
             'dps': 50.0,
-            'hit_rate': 75.0
+            'hit_rate': 75.0,
+            'breakdown_token': (('Physical', 500),),
         }]
 
         dps_panel.dps_service.get_dps_display_data = Mock(return_value=data)
@@ -283,6 +295,55 @@ class TestIncrementalRefresh:
 
         # Cache should be identical (data not changed)
         assert dps_panel._cached_data == cache_snapshot
+
+    def test_incremental_refresh_skips_breakdown_fetch_for_unchanged_character(self, dps_panel) -> None:
+        """Unchanged characters should reuse cached breakdowns."""
+        data = [{
+            'character': 'Woo',
+            'total_damage': 500,
+            'time_seconds': 10,
+            'dps': 50.0,
+            'hit_rate': 75.0,
+            'breakdown_token': (('Physical', 500),),
+        }]
+
+        dps_panel.dps_service.get_dps_display_data = Mock(return_value=data)
+        dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[
+            {'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}
+        ])
+
+        dps_panel.refresh()
+        assert dps_panel.dps_service.get_damage_type_breakdown.call_count == 1
+
+        dps_panel.dps_service.get_damage_type_breakdown.reset_mock()
+        dps_panel.refresh()
+
+        dps_panel.dps_service.get_damage_type_breakdown.assert_not_called()
+
+    def test_refresh_rebuilds_when_view_key_changes(self, dps_panel) -> None:
+        """Changing target filter or mode should force a safe full refresh."""
+        dps_panel.dps_service.get_dps_display_data = Mock(return_value=[
+            {
+                'character': 'Woo',
+                'total_damage': 500,
+                'time_seconds': 10,
+                'dps': 50.0,
+                'hit_rate': 75.0,
+                'breakdown_token': (('Physical', 500),),
+            }
+        ])
+        dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[
+            {'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}
+        ])
+
+        dps_panel.refresh()
+        initial_item_id = dps_panel._item_ids['Woo']
+
+        dps_panel.target_filter_var.set("Goblin")
+        dps_panel.refresh()
+
+        assert dps_panel._cached_view_key[0] == "Goblin"
+        assert dps_panel._item_ids['Woo'] != initial_item_id
 
 
 class TestRefreshSelectionPreservation:
