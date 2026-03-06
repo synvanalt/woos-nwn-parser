@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 6, 2026 (post version-bump automation tests)
+**Last Updated:** March 6, 2026 (post SortedTreeview numeric sorting updates)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -q tests -p no:cacheprovider`
-- Result: **498 tests collected**
+- Result: **501 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 33 modules, 449 tests
+- `tests/unit/`: 33 modules, 452 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 41 test modules, 498 tests
+- Total: 41 test modules, 501 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -52,7 +52,7 @@ Notes:
 - `test_main_window_orchestration.py` (9)
 - `test_monitor_edge_cases.py` (4)
 - `test_queue_processor_resilience.py` (5)
-- `test_sorted_treeview_edge_cases.py` (4)
+- `test_sorted_treeview_edge_cases.py` (7)
 - `test_storage_edge_branches.py` (8)
 - `test_utils_worker_pipeline.py` (4)
 

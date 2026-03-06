@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Treeview numeric sorting now treats `"-"` and empty values as lower than `0` in both sort directions (ascending: top, descending: bottom)
+- Target Stats sorting for `AC` now uses the numeric component for prefixed values (for example `~`, `≤`, `>`) and uses the upper bound for ranges (for example `48-65` sorts by `65`)
+- `SortedTreeview` now uses consistent numeric parsing between `sort_column()` and `_is_already_sorted()`, eliminating inconsistent reorder behavior after refreshes
+
+
 ## [1.3.1] - 2026-03-04
 
 ### Changed

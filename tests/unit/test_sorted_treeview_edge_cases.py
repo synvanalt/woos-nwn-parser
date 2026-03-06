@@ -48,7 +48,7 @@ def test_sort_column_falls_back_to_case_insensitive_string_sort(tree) -> None:
     assert ordered == ["alpha", "Bravo", "charlie"]
 
 
-def test_sort_column_descending_places_dash_and_empty_first(tree) -> None:
+def test_sort_column_descending_places_dash_and_empty_last(tree) -> None:
     tree.insert("", "end", values=("row1", "15"))
     tree.insert("", "end", values=("row2", "-"))
     tree.insert("", "end", values=("row3", ""))
@@ -56,9 +56,46 @@ def test_sort_column_descending_places_dash_and_empty_first(tree) -> None:
     tree.sort_column("Value", reverse=True)
     ordered = [tree.item(item, "values")[1] for item in tree.get_children("")]
 
+    assert ordered[0] == "15"
+    assert ordered[1] in {"-", ""}
+    assert ordered[2] in {"-", ""}
+
+
+def test_sort_column_ascending_places_dash_and_empty_first(tree) -> None:
+    tree.insert("", "end", values=("row1", "15"))
+    tree.insert("", "end", values=("row2", "-"))
+    tree.insert("", "end", values=("row3", ""))
+
+    tree.sort_column("Value", reverse=False)
+    ordered = [tree.item(item, "values")[1] for item in tree.get_children("")]
+
     assert ordered[0] in {"-", ""}
     assert ordered[1] in {"-", ""}
     assert ordered[2] == "15"
+
+
+def test_sort_column_ac_values_use_numeric_component_and_range_upper_bound(tree) -> None:
+    tree.insert("", "end", values=("row1", "~≤20"))
+    tree.insert("", "end", values=("row2", "48-65"))
+    tree.insert("", "end", values=("row3", "55-60"))
+    tree.insert("", "end", values=("row4", "~16"))
+
+    tree.sort_column("Value", reverse=True)
+    ordered = [tree.item(item, "values")[1] for item in tree.get_children("")]
+
+    # Descending by parsed numeric key: 65, 60, 20, 16
+    assert ordered == ["48-65", "55-60", "~≤20", "~16"]
+
+
+def test_is_already_sorted_uses_same_numeric_rules_for_ac(tree) -> None:
+    tree.set_default_sort("Value", reverse=True)
+    tree.insert("", "end", values=("row1", "48-65"))
+    tree.insert("", "end", values=("row2", "55-60"))
+    tree.insert("", "end", values=("row3", "~≤20"))
+    tree.insert("", "end", values=("row4", "~16"))
+    tree.insert("", "end", values=("row5", "-"))
+
+    assert tree._is_already_sorted() is True
 
 
 def test_is_already_sorted_returns_false_when_set_raises(tree, monkeypatch) -> None:
