@@ -300,5 +300,5 @@ def test_multiple_selection_preservation(shared_tk_root, notebook) -> None:
 
 if __name__ == "__main__":
     # This file should be run with pytest, not directly
-    print("Please run with: pytest tests/test_selection_preservation.py -v")
+    print("Please run with: pytest tests/unit/test_selection_preservation.py -v")
     print("These tests require pytest fixtures for proper Tkinter instance management.")

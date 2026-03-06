@@ -20,8 +20,8 @@ from app.utils import parse_and_import_file
 
 
 DEFAULT_FIXTURES = (
-    Path("tests/fixtures/nwclientLog1_for_testing.txt"),
-    Path("tests/fixtures/nwclientLog4.txt"),
+    Path("tests/fixtures/nwclientLog1.txt"),
+    Path("tests/fixtures/nwclientLog2.txt"),
 )
 
 

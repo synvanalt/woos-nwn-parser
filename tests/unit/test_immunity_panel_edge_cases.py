@@ -1,0 +1,101 @@
+"""Edge-case tests for ImmunityPanel internal refresh paths."""
+
+from unittest.mock import Mock
+
+import pytest
+from tkinter import ttk
+
+from app.parser import LogParser
+from app.storage import DataStore
+from app.ui.widgets.immunity_panel import ImmunityPanel
+
+
+@pytest.fixture
+def immunity_panel_ctx(shared_tk_root):
+    if shared_tk_root is None:
+        pytest.skip("Tkinter not available")
+
+    notebook = ttk.Notebook(shared_tk_root)
+    store = DataStore()
+    parser = LogParser(parse_immunity=False)
+    panel = ImmunityPanel(notebook, store, parser)
+    return panel, store, parser
+
+
+def test_get_selected_target_returns_combobox_value(immunity_panel_ctx) -> None:
+    panel, _store, _parser = immunity_panel_ctx
+    panel.target_combo.set("Goblin")
+    assert panel.get_selected_target() == "Goblin"
+
+
+def test_clear_cache_resets_internal_structures(immunity_panel_ctx) -> None:
+    panel, _store, _parser = immunity_panel_ctx
+    panel.immunity_pct_cache["Goblin"] = {"Fire": 50}
+    panel._cached_target = "Goblin"
+    panel._cached_rows = {"Fire": ("Fire", "10", "5", "50%", "1")}
+    panel._item_ids = {"Fire": "iid1"}
+
+    panel.clear_cache()
+
+    assert panel.immunity_pct_cache == {}
+    assert panel._cached_target == ""
+    assert panel._cached_rows == {}
+    assert panel._item_ids == {}
+
+
+def test_refresh_uses_cached_immunity_pct_when_parse_disabled(immunity_panel_ctx) -> None:
+    panel, store, parser = immunity_panel_ctx
+    target = "Goblin"
+    parser.parse_immunity = False
+    panel.immunity_pct_cache[target] = {"Fire": 60}
+    store.insert_damage_event(target, "Fire", 10, 50, "Woo")
+
+    panel.refresh_target_details(target)
+
+    row = panel.tree.item(panel._item_ids["Fire"], "values")
+    assert row[3] == "60%"
+
+
+def test_incremental_refresh_applies_sort_when_non_damage_column_sorted(immunity_panel_ctx) -> None:
+    panel, store, _parser = immunity_panel_ctx
+    store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
+    panel.refresh_target_details("Goblin")
+    panel.tree._last_sorted_col = "Absorbed"
+    panel.tree.apply_current_sort = Mock()
+
+    store.insert_damage_event("Goblin", "Fire", 10, 50, "Woo")
+    panel.refresh_target_details("Goblin")
+
+    panel.tree.apply_current_sort.assert_called_once()
+
+
+def test_incremental_refresh_applies_sort_when_damage_type_descending(immunity_panel_ctx) -> None:
+    panel, store, _parser = immunity_panel_ctx
+    store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
+    panel.refresh_target_details("Goblin")
+    panel.tree._last_sorted_col = "Damage Type"
+    panel.tree._sort_reverse = True
+    panel.tree.apply_current_sort = Mock()
+
+    store.insert_damage_event("Goblin", "Fire", 10, 50, "Woo")
+    panel.refresh_target_details("Goblin")
+
+    panel.tree.apply_current_sort.assert_called_once()
+
+
+def test_full_refresh_restores_selection_for_surviving_damage_type(immunity_panel_ctx) -> None:
+    panel, store, _parser = immunity_panel_ctx
+    target = "Goblin"
+    store.insert_damage_event(target, "Fire", 0, 50, "Woo")
+    store.insert_damage_event(target, "Cold", 0, 30, "Woo")
+    panel.refresh_target_details(target)
+
+    fire_id = panel._item_ids["Fire"]
+    panel.tree.selection_set((fire_id,))
+
+    store.insert_damage_event(target, "Acid", 0, 20, "Woo")
+    panel.refresh_target_details(target)
+
+    selected_items = panel.tree.selection()
+    selected_damage_types = {panel.tree.item(item, "values")[0] for item in selected_items}
+    assert "Fire" in selected_damage_types

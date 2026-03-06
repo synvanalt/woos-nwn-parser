@@ -3,7 +3,7 @@
 PyInstaller spec file for Woo's NWN Parser.
 
 To build the executable, run:
-    pyinstaller WoosNwnParser.spec
+    pyinstaller --clean WoosNwnParser-onedir.spec
 
 The executable will be created in the 'dist' folder.
 """

@@ -214,7 +214,22 @@ def real_combat_log() -> Path:
     - Validation of parser against actual game output
 
     Returns:
-        Path to fixtures/nwclientLog1_for_testing.txt
+        Path to fixtures/nwclientLog1.txt
     """
-    return Path(__file__).parent / "fixtures" / "nwclientLog1_for_testing.txt"
+    return Path(__file__).parent / "fixtures" / "nwclientLog1.txt"
+
+
+@pytest.fixture
+def real_combat_log2() -> Path:
+    """Path to larger NWN combat log file for integration/performance testing.
+
+    This is a real 21772-line combat log file (~2.1MB) that can be used for:
+    - Large-file import performance testing
+    - Parser regression coverage with dense immunity/resistance/reduction events
+    - Worker/queue stress testing with mixed combat and chat lines
+
+    Returns:
+        Path to fixtures/nwclientLog2.txt
+    """
+    return Path(__file__).parent / "fixtures" / "nwclientLog2.txt"
 

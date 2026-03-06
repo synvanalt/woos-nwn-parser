@@ -12,8 +12,8 @@ Main modules:
     - utils: Utility functions for file processing
 """
 
-__version__ = "1.0.0"
-__author__ = "Woo"
+__version__ = "1.3.1"
+__author__ = "Synvan"
 
 from .models import (
     DAMAGE_TYPE_PALETTE,

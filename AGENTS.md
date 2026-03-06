@@ -14,7 +14,7 @@
 
 ## Performance Rules
 - Benchmark before and after meaningful performance changes with `python scripts/benchmark_baseline.py`.
-- Use both fixture logs: `tests/fixtures/nwclientLog1_for_testing.txt` and `tests/fixtures/nwclientLog4.txt`.
+- Use both fixture logs: `tests/fixtures/nwclientLog1.txt` and `tests/fixtures/nwclientLog2.txt`.
 - Measure both parser-only and full-import paths. Improvements must report actual deltas.
 - Avoid adding full scans over `DataStore.events` or `DataStore.attacks` in hot paths.
 - Prefer store-side indexed lookups over panel-side filtering or repeated aggregation.

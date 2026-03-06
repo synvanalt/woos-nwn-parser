@@ -10,7 +10,7 @@ from pathlib import Path
 
 from app.monitor import LogDirectoryMonitor
 from app.parser import LogParser
-from conftest import LogMessageCapture
+from tests.conftest import LogMessageCapture
 
 
 class TestMonitorParserIntegration:

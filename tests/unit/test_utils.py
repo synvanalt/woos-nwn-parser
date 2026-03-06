@@ -282,7 +282,7 @@ class TestParseAndImportFile:
 
     def test_parse_reports_progress_callback(self) -> None:
         """Test parser reports cumulative progress after chunks."""
-        log_file = Path(__file__).resolve().parents[1] / "fixtures" / "nwclientLog4.txt"
+        log_file = Path(__file__).resolve().parents[1] / "fixtures" / "nwclientLog2.txt"
 
         parser = LogParser()
         database = DataStore()

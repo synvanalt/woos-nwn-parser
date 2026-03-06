@@ -1,297 +1,157 @@
-# Test Suite Documentation - Woo's NWN Parser
+# Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** January 10, 2026  
+**Last Updated:** March 6, 2026 (post version-bump automation tests)
 
 ## Overview
-Comprehensive test suite for the Woo's NWN Parser application covering unit tests, integration tests, and end-to-end tests.
+This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
-**Test Statistics:**
-- Total Tests: 225
-- Pass Rate: 100%
-- Code Coverage: 54%
-- Execution Time: ~5 seconds
+Collection baseline used for this update:
+- Command: `pytest --collect-only -q tests -p no:cacheprovider`
+- Result: **498 tests collected**
 
-## Quick Start
+## Current Test Layout
 
-```bash
-# Run all tests
-pytest tests/unit tests/integration tests/e2e
+- `tests/unit/`: 33 modules, 449 tests
+- `tests/integration/`: 7 modules, 42 tests
+- `tests/e2e/`: 1 module, 7 tests
+- Total: 41 test modules, 498 tests
 
-# Run with coverage report
-pytest tests/unit tests/integration tests/e2e --cov=app --cov-report=html
+Notes:
+- All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
+- `tests/demo_game_restart.py` remains a helper/demo script and is not collected as a test module.
 
-# Run specific test file
-pytest tests/unit/test_parser.py -v
+## Module Inventory
 
-# Run tests matching a pattern
-pytest -k "damage" -v
-```
+### Unit (`tests/unit`)
+- `test_bump_version_script.py` (6)
+- `test_models.py` (52)
+- `test_parser.py` (61)
+- `test_parser_model_formatter_p2.py` (5)
+- `test_platform_wrappers_p2.py` (8)
+- `test_storage.py` (40)
+- `test_storage_indices.py` (19)
+- `test_utils.py` (37)
+- `test_monitor.py` (19)
+- `test_monitor_debug_mode.py` (9)
+- `test_queue_processor_unit.py` (28)
+- `test_queue_processor_batched.py` (9)
+- `test_queue_processor.py` (10)
+- `test_dps_service.py` (13)
+- `test_formatters.py` (22)
+- `test_immunity_panel_additional.py` (5)
+- `test_immunity_panel_edge_cases.py` (6)
+- `test_selection_preservation.py` (4)
+- `test_dps_panel_incremental.py` (11)
+- `test_immunity_panel_incremental.py` (3)
+- `test_target_stats_panel_incremental.py` (3)
+- `test_ui_optimizations.py` (18)
+- `test_death_snippet_panel.py` (4)
+- `test_main_window_load_parse.py` (7)
+- `test_main_window_monitoring_switch.py` (5)
+- `test_main_window_debug_tab_unlock.py` (5)
+- `test_main_window_orchestration.py` (9)
+- `test_monitor_edge_cases.py` (4)
+- `test_queue_processor_resilience.py` (5)
+- `test_sorted_treeview_edge_cases.py` (4)
+- `test_storage_edge_branches.py` (8)
+- `test_utils_worker_pipeline.py` (4)
 
-## Test Structure
+### Integration (`tests/integration`)
+- `test_parser_storage_integration.py` (13)
+- `test_monitor_parser_integration.py` (10)
+- `test_dps_pipeline_integration.py` (10)
+- `test_file_truncation.py` (2)
+- `test_log_rotation.py` (5)
+- `test_integration_real_scenario.py` (1)
+- `test_final_verification.py` (1)
 
-```
-tests/
-├── conftest.py              # Shared fixtures and pytest configuration
-├── unit/                    # Unit tests (146 tests)
-│   ├── test_models.py       # Data model tests (35 tests)
-│   ├── test_parser.py       # Log parser tests (36 tests)
-│   ├── test_storage.py      # Data storage tests (44 tests)
-│   ├── test_utils.py        # Utility function tests (22 tests)
-│   ├── test_monitor.py      # File monitoring tests (20 tests)
-│   └── test_queue_processor_unit.py  # Queue processor tests (27 tests) ✨ NEW
-├── integration/             # Integration tests (67 tests)
-│   ├── test_parser_storage_integration.py      # Parser + Storage (13 tests)
-│   ├── test_monitor_parser_integration.py      # Monitor + Parser (9 tests)
-│   └── test_dps_pipeline_integration.py        # Complete DPS pipeline (11 tests)
-├── e2e/                     # End-to-end tests (7 tests)
-│   └── test_e2e_combat_session.py              # Full combat sessions (7 tests)
-└── fixtures/                # Test data and fixtures
-    └── nwclientLog1_for_testing.txt  # Real 4145-line combat log (405KB)
-```
+### End-to-End (`tests/e2e`)
+- `test_e2e_combat_session.py` (7)
 
-### Test Fixtures
+## Coverage Areas by Component
 
-**conftest.py** provides shared fixtures:
-- `parser`, `parser_with_immunity`, `parser_with_player` - LogParser instances
-- `data_store` - DataStore instance
-- `dps_service` - DPSCalculationService instance
-- `queue_processor` - QueueProcessor instance
-- `temp_log_dir` - Temporary directory for log files
-- `sample_log_lines` - Dictionary of sample log lines for various scenarios
-- `sample_combat_session` - Creates a synthetic combat session file
-- `real_combat_log` - Path to real NWN combat log for performance/integration testing
+- Parser and models:
+  - `test_parser.py`, `test_models.py`, `test_parser_storage_integration.py`
+- Storage and indexing performance behavior:
+  - `test_storage.py`, `test_storage_indices.py`
+- Queue processor logic and batching:
+  - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`
+- Release/version automation:
+  - `test_bump_version_script.py`
+- Monitor behavior (rotation/truncation/debug):
+  - `test_monitor.py`, `test_monitor_debug_mode.py`, `test_monitor_edge_cases.py`, `test_log_rotation.py`, `test_file_truncation.py`, `test_monitor_parser_integration.py`, `test_integration_real_scenario.py`, `test_final_verification.py`
+- DPS service/pipeline:
+  - `test_dps_service.py`, `test_dps_pipeline_integration.py`
+- UI widget/main-window behavior and refresh optimizations:
+  - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
+- Import/worker pipeline behavior:
+  - `test_utils.py`, `test_utils_worker_pipeline.py`
+- Full-session/e2e behavior:
+  - `test_e2e_combat_session.py`
 
-## Coverage by Module
+## Shared Fixtures (`tests/conftest.py`)
 
-| Module | Coverage | Notes |
-|--------|----------|-------|
-| `app/models.py` | 100% | ✅ Fully tested |
-| `app/parser.py` | 100% | ✅ Fully tested |
-| `app/utils.py` | 100% | ✅ Fully tested |
-| `app/services/dps_service.py` | 94% | ✅ Well tested |
-| `app/services/queue_processor.py` | 92% | ✅ Well tested ⬆️ IMPROVED from 11% |
-| `app/monitor.py` | 91% | ✅ Well tested |
-| `app/storage.py` | 83% | ✅ Good coverage |
-| `app/ui/*` | 0% | ℹ️ UI not tested (requires Tkinter mocking) |
-| `app/__main__.py` | 0% | ℹ️ Entry point not tested |
+Current shared fixtures include:
+- `cleanup_tkinter` (autouse)
+- `shared_tk_root` (session)
+- `log_capture`
+- `parser`
+- `parser_with_immunity`
+- `parser_with_player`
+- `data_store`
+- `dps_service`
+- `queue_processor`
+- `temp_log_dir`
+- `sample_log_lines`
+- `sample_combat_session`
+- `real_combat_log` -> `tests/fixtures/nwclientLog1.txt`
+- `real_combat_log2` -> `tests/fixtures/nwclientLog2.txt`
 
-## Test Categories
+## Fixture Files (`tests/fixtures`)
 
-### Unit Tests (146 tests)
+- `nwclientLog1.txt` (~405 KB, 4,145 lines)
+- `nwclientLog2.txt` (~2.1 MB, 21,772 lines)
 
-**test_models.py** - Tests for data models (35 tests)
-- EnemySaves: initialization, save updates, max tracking
-- EnemyAC: hit/miss recording, AC estimation, natural 1 handling
-- TargetAttackBonus: bonus tracking, display formatting
-- DamageEvent, AttackEvent: dataclass initialization
-- DAMAGE_TYPE_PALETTE: color validation
-
-**test_parser.py** - Tests for log parsing (36 tests)
-- Initialization and configuration
-- Damage breakdown parsing (single, multiple, multiword types)
-- Timestamp extraction
-- Damage dealt parsing with player filtering
-- Immunity parsing (various point formats)
-- Attack parsing (hit, miss, critical, natural 1)
-- Save parsing (fortitude, reflex, will)
-- Edge cases (empty lines, invalid input)
-
-**test_storage.py** - Tests for data storage (44 tests)
-- Initialization and data insertion
-- DPS tracking and calculations
-- Time tracking modes (per_character, global)
-- Target filtering and queries
-- Attack statistics and hit rates
-- Immunity tracking
-- Thread safety
-- Data clearing
-
-**test_utils.py** - Tests for utility functions (22 tests)
-- Damage reduction calculations
-- Reverse immunity calculations
-- Immunity percentage calculations
-- File parsing and import
-- Edge cases and error handling
-
-**test_monitor.py** - Tests for file monitoring (20 tests)
-- File discovery (single, multiple files)
-- Monitoring initialization
-- Incremental reading
-- File rotation detection
-- File truncation detection (game restarts)
-- Error handling
-
-**test_queue_processor_unit.py** - Tests for queue processor (27 tests) ✨ NEW
-- Event routing (damage, immunity, attacks, debug messages)
-- Damage buffering and storage
-- Immunity queuing and matching logic
-- Cleanup of stale immunity entries
-- DPS tracking integration
-- Callback invocations
-- Error handling and edge cases
-
-### Integration Tests (67 tests)
-
-**test_parser_storage_integration.py** - Parser and storage integration (13 tests)
-- Damage event parsing and storage
-- Immunity event matching
-- Attack event tracking
-- Save event tracking
-- Complete combat session parsing
-- Multi-word damage types
-- DPS breakdown calculations
-- Hit rate integration
-- Target summaries
-
-**test_monitor_parser_integration.py** - Monitor and parser integration (9 tests)
-- Basic monitoring workflow
-- File rotation scenarios (log1 → log2 → log3)
-- Truncation detection and recovery
-- Real-world scenarios (game start, play, restart)
-- Multiple polling cycles
-
-**test_dps_pipeline_integration.py** - Complete DPS pipeline (11 tests)
-- Full pipeline (log → parse → storage → DPS service → output)
-- Target filtering
-- Time tracking modes
-- Damage type breakdown
-- Hit rate integration
-- Multi-character and multi-target scenarios
-- Immunity with DPS calculations
-
-### End-to-End Tests (7 tests)
-
-**test_e2e_combat_session.py** - Complete combat sessions (7 tests)
-- Full party combat (4 characters vs 1 boss)
-  - Verifies: damage, DPS, hit rates, AC, AB, saves, immunities
-- Multi-target combat
-- Complex immunity scenarios
-- Edge cases (natural 1 misses)
-- Time tracking mode comparisons
-- Error recovery (malformed lines, empty files)
+See `tests/fixtures/README.md` for detailed fixture notes.
 
 ## Running Tests
 
-### Run all tests
+Run all tests:
+
 ```bash
-pytest tests/unit tests/integration tests/e2e -v
+pytest
 ```
 
-### Run with coverage
+Equivalent explicit command:
+
 ```bash
-pytest tests/unit tests/integration tests/e2e --cov=app --cov-report=html
+pytest tests/unit tests/integration tests/e2e
 ```
 
-### Run specific test file
+Run without coverage overhead (useful for fast iteration):
+
+```bash
+pytest --no-cov
+```
+
+Run by suite type:
+
+```bash
+pytest tests/unit
+pytest tests/integration
+pytest tests/e2e
+```
+
+Run a specific module:
+
 ```bash
 pytest tests/unit/test_parser.py -v
 ```
 
-### Run specific test
-```bash
-pytest tests/unit/test_parser.py::TestDamageBreakdownParsing::test_parse_multiword_damage_types -v
-```
+## Maintenance Guidance
 
-## Test Quality Standards
-
-All tests follow these standards:
-- ✅ Use pytest framework and fixtures
-- ✅ Include type hints for all function parameters and returns
-- ✅ Use descriptive test names that explain what is being tested
-- ✅ Test both success paths and failure modes
-- ✅ Mock external dependencies (no real file I/O in unit tests)
-- ✅ Validate both expected outputs and exception handling
-- ✅ Cover edge cases and boundary conditions
-
-## Recent Improvements (January 2026)
-
-### Completed ✅
-1. **Queue Processor Coverage** - Improved from 11% to 92%
-   - Added 27 comprehensive unit tests in `test_queue_processor_unit.py`
-   - Tested event routing, damage buffering, immunity queuing
-   - Tested cleanup mechanisms and callbacks
-   - Coverage increased by 81 percentage points
-
-2. **Removed Obsolete Tests**
-   - Deleted `old_tests_1/` directory (outdated `app_nwn_spy` imports)
-   - Deleted `olds_tests_2/` directory (outdated `nwn_target_spy` imports)
-   - Eliminated import errors and confusion
-
-3. **Test Count Growth**
-   - Increased from 198 to 225 tests (+27 tests, +14%)
-   - Overall coverage improved from 46% to 54%
-   - All tests passing (100% pass rate)
-
-## Future Improvements
-
-1. **Add UI tests** (currently 0%)
-   - Consider using `pytest-tk` or mocking `tkinter`
-   - Test widget behavior and user interactions
-   - Test main window event handling
-
-2. **Performance tests**
-   - Test with very large log files (100K+ lines)
-   - Measure parsing speed and memory usage
-   - Optimize hot paths if needed
-
-3. **Property-based tests**
-   - Use `hypothesis` for property-based testing
-   - Generate random valid log lines and verify parsing
-   - Test edge cases automatically
-
-## Common pytest Options
-
-### Useful Flags
-- `-v` or `--verbose`: Show each test name
-- `-vv`: Extra verbose with parameters
-- `-q` or `--quiet`: Minimal output
-- `-x` or `--exitfirst`: Stop on first failure
-- `--tb=short`: Short traceback format
-- `-s`: Show print statements
-- `--lf` or `--last-failed`: Run only failed tests
-- `--cov-fail-under=70`: Fail if coverage below threshold
-
-### Coverage Reports
-```bash
-# HTML report (open htmlcov/index.html)
-pytest --cov=app --cov-report=html
-
-# Terminal report with missing lines
-pytest --cov=app --cov-report=term-missing
-
-# XML report for CI
-pytest --cov=app --cov-report=xml
-```
-
-## Maintenance
-
-When adding new features:
-1. Write tests first (TDD approach)
-2. Ensure new code has ≥80% coverage
-3. Run full test suite before committing
-4. Update this summary if test structure changes
-
-### Troubleshooting
-
-**Import errors:**
-```bash
-# Ensure you're in the project root
-cd C:\gdrive_avirams91\Code\Python\woos-nwn-parser
-python -m pytest tests/unit tests/integration tests/e2e
-```
-
-**Pytest not found:**
-```bash
-pip install pytest pytest-cov
-```
-
-## Continuous Integration
-
-Recommended CI setup:
-```yaml
-- Run tests on: push, pull_request
-- Python versions: 3.12+
-- Coverage threshold: 70% (aim for 80%+)
-- Fail on: any test failure, coverage drop
-```
-
+When adding or moving tests:
+1. Keep file names as `test_*.py` to ensure pytest discovery.
+2. Place tests in `unit/`, `integration/`, or `e2e/` based on scope.
+3. Update this summary and `tests/fixtures/README.md` when fixtures or shared fixtures change.
+4. For performance-related parser/storage changes, run `python scripts/benchmark_baseline.py` with both fixture logs and report before/after medians.
