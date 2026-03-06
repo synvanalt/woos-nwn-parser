@@ -180,15 +180,47 @@ class TestLoadAndParseWorkflow:
         assert app.parser.target_saves["Goblin"].reflex == 1
         assert "Orc" in app.parser.target_attack_bonus
 
-    def test_on_death_snippet_appends_lines_to_panel(self) -> None:
+    def test_on_death_snippet_forwards_event_to_panel(self) -> None:
         app = _make_app_shell()
         app.death_snippet_panel = Mock()
         event = {
             "type": "death_snippet",
             "target": "Woo Wildrock",
+            "killer": "HYDROXIS",
             "lines": ["line-1", "line-2"],
         }
 
         app._on_death_snippet(event)
 
-        app.death_snippet_panel.append_snippet.assert_called_once_with(["line-1", "line-2"])
+        app.death_snippet_panel.add_death_event.assert_called_once_with(event)
+
+    def test_apply_pending_payloads_uses_event_api_for_death_snippets(self) -> None:
+        app = _make_app_shell()
+        app.root = Mock()
+        app.death_snippet_panel = Mock()
+        app._is_applying_payload = True
+        app._pending_file_payloads.append({
+            "ops": {
+                "death_snippets": [
+                    {
+                        "type": "death_snippet",
+                        "timestamp": None,
+                        "killer": "HYDROXIS",
+                        "target": "Woo Wildrock",
+                        "lines": ["line-1", "line-2"],
+                    }
+                ],
+            },
+            "parser_state": {
+                "target_ac": {},
+                "target_saves": {},
+                "target_attack_bonus": {},
+            },
+            "index": 1,
+            "progress": {"stage": "death_snippet", "idx": 0},
+            "state_merged": False,
+        })
+
+        app._apply_pending_payloads_incremental()
+
+        app.death_snippet_panel.add_death_event.assert_called_once()

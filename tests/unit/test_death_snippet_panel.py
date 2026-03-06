@@ -1,4 +1,6 @@
-"""Unit tests for DeathSnippetPanel formatting behavior."""
+"""Unit tests for DeathSnippetPanel behavior."""
+
+from datetime import datetime
 
 from app.ui.widgets.death_snippet_panel import DeathSnippetPanel
 
@@ -20,15 +22,60 @@ class _FakeText:
     def get(self, *_args) -> str:
         return self.content
 
-    def index(self, _idx: str) -> str:
-        return "1.0" if self.content == "" else "2.0"
-
     def see(self, *_args) -> None:
         self.seen = True
 
 
+class _FakeCombo:
+    def __init__(self) -> None:
+        self.values = ()
+        self.state = "disabled"
+        self.selected_index = -1
+        self.value = ""
+
+    def __setitem__(self, key: str, value) -> None:
+        if key == "values":
+            self.values = tuple(value)
+
+    def configure(self, **kwargs) -> None:
+        if "state" in kwargs:
+            self.state = kwargs["state"]
+
+    def set(self, value: str) -> None:
+        self.value = value
+        if value in self.values:
+            self.selected_index = self.values.index(value)
+        elif not value:
+            self.selected_index = -1
+
+    def get(self) -> str:
+        if 0 <= self.selected_index < len(self.values):
+            return self.values[self.selected_index]
+        return self.value
+
+    def current(self, index=None):
+        if index is None:
+            return self.selected_index
+        self.selected_index = int(index)
+        if 0 <= self.selected_index < len(self.values):
+            self.value = self.values[self.selected_index]
+
+    def cget(self, key: str):
+        if key == "values":
+            return self.values
+        raise KeyError(key)
+
+
 class TestDeathSnippetPanel:
     """Test suite for DeathSnippetPanel helper behavior."""
+
+    def _make_panel(self) -> DeathSnippetPanel:
+        panel = DeathSnippetPanel.__new__(DeathSnippetPanel)
+        panel.text = _FakeText(DeathSnippetPanel.EMPTY_PLACEHOLDER)
+        panel.killed_by_combo = _FakeCombo()
+        panel.death_events = []
+        panel._event_sequence = 0
+        return panel
 
     def test_sanitize_display_line_removes_chat_window_prefix(self) -> None:
         line = "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] Your God refuses to hear your prayers!"
@@ -40,20 +87,65 @@ class TestDeathSnippetPanel:
         sanitized = DeathSnippetPanel._sanitize_display_line(line)
         assert sanitized == line
 
-    def test_append_snippet_replaces_placeholder(self) -> None:
-        panel = DeathSnippetPanel.__new__(DeathSnippetPanel)
-        panel.text = _FakeText(DeathSnippetPanel.EMPTY_PLACEHOLDER)
+    def test_add_death_event_auto_selects_newest_and_preserves_killer_case(self) -> None:
+        panel = self._make_panel()
 
-        panel.append_snippet(["[CHAT WINDOW TEXT] [t] HYDROXYS killed Woo Wildrock"])
+        older = {
+            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
+            "killer": "hydroXis",
+            "lines": ["[CHAT WINDOW TEXT] [t] hydroXis killed Woo Wildrock"],
+            "target": "Woo Wildrock",
+        }
+        newer = {
+            "timestamp": datetime(2026, 1, 9, 14, 55, 23),
+            "killer": "HYDROXIS",
+            "lines": ["[CHAT WINDOW TEXT] [t] HYDROXIS killed Woo Wildrock"],
+            "target": "Woo Wildrock",
+        }
 
-        assert DeathSnippetPanel.EMPTY_PLACEHOLDER not in panel.text.content
-        assert "HYDROXYS killed Woo Wildrock" in panel.text.content
+        panel.add_death_event(older)
+        panel.add_death_event(newer)
+
+        assert panel.killed_by_combo.values == (
+            "14:55:23 HYDROXIS",
+            "14:30:00 hydroXis",
+        )
+        assert panel.killed_by_combo.current() == 0
+        assert "HYDROXIS killed Woo Wildrock" in panel.text.content
         assert panel.text.seen is True
 
-    def test_clear_restores_placeholder(self) -> None:
-        panel = DeathSnippetPanel.__new__(DeathSnippetPanel)
-        panel.text = _FakeText("some prior content")
+    def test_render_selected_event_switches_textbox_content(self) -> None:
+        panel = self._make_panel()
+        panel.add_death_event({
+            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
+            "killer": "A",
+            "lines": ["[CHAT WINDOW TEXT] [t] A killed Woo Wildrock"],
+            "target": "Woo Wildrock",
+        })
+        panel.add_death_event({
+            "timestamp": datetime(2026, 1, 9, 14, 31, 0),
+            "killer": "B",
+            "lines": ["[CHAT WINDOW TEXT] [t] B killed Woo Wildrock"],
+            "target": "Woo Wildrock",
+        })
+
+        panel.killed_by_combo.current(1)
+        panel.render_selected_event()
+
+        assert "A killed Woo Wildrock" in panel.text.content
+        assert "B killed Woo Wildrock" not in panel.text.content
+
+    def test_clear_resets_dropdown_and_placeholder(self) -> None:
+        panel = self._make_panel()
+        panel.add_death_event({
+            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
+            "killer": "HYDROXIS",
+            "lines": ["[CHAT WINDOW TEXT] [t] HYDROXIS killed Woo Wildrock"],
+            "target": "Woo Wildrock",
+        })
 
         panel.clear()
 
         assert panel.text.content == DeathSnippetPanel.EMPTY_PLACEHOLDER
+        assert panel.killed_by_combo.values == ()
+        assert panel.killed_by_combo.state == "disabled"
