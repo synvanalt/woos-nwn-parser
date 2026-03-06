@@ -33,6 +33,7 @@ class DeathSnippetPanel(ttk.Frame):
         selector_frame.pack(fill="x", padx=(10, 10), pady=(8, 10))
 
         def _on_death_selected(_event: tk.Event) -> None:
+            _event.widget.selection_clear()
             self.render_selected_event()
 
         ttk.Label(selector_frame, text="Killed by:").pack(side="left", padx=(0, 5))
