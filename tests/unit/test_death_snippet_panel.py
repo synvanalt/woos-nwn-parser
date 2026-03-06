@@ -45,7 +45,7 @@ class _FakeCombo:
         self.value = value
         if value in self.values:
             self.selected_index = self.values.index(value)
-        elif not value:
+        else:
             self.selected_index = -1
 
     def get(self) -> str:
@@ -70,9 +70,19 @@ class TestDeathSnippetPanel:
     """Test suite for DeathSnippetPanel helper behavior."""
 
     def _make_panel(self) -> DeathSnippetPanel:
+        class _FakeVar:
+            def __init__(self, combo: _FakeCombo) -> None:
+                self.value = ""
+                self.combo = combo
+
+            def set(self, value: str) -> None:
+                self.value = value
+                self.combo.value = value
+
         panel = DeathSnippetPanel.__new__(DeathSnippetPanel)
-        panel.text = _FakeText(DeathSnippetPanel.EMPTY_PLACEHOLDER)
+        panel.text = _FakeText(DeathSnippetPanel.EMPTY_TEXT_PLACEHOLDER)
         panel.killed_by_combo = _FakeCombo()
+        panel.killed_by_var = _FakeVar(panel.killed_by_combo)
         panel.death_events = []
         panel._event_sequence = 0
         return panel
@@ -146,6 +156,7 @@ class TestDeathSnippetPanel:
 
         panel.clear()
 
-        assert panel.text.content == DeathSnippetPanel.EMPTY_PLACEHOLDER
+        assert panel.text.content == DeathSnippetPanel.EMPTY_TEXT_PLACEHOLDER
         assert panel.killed_by_combo.values == ()
         assert panel.killed_by_combo.state == "disabled"
+        assert panel.killed_by_combo.get() == DeathSnippetPanel.EMPTY_DROPDOWN_PLACEHOLDER

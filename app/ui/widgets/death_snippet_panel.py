@@ -4,18 +4,20 @@ import re
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, font
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 
 class DeathSnippetPanel(ttk.Frame):
     """Panel for displaying death-related log snippets."""
 
-    EMPTY_PLACEHOLDER = "Hurray! You have not died (yet)"
+    EMPTY_DROPDOWN_PLACEHOLDER = "Hurray! You have not died (yet)"
+    EMPTY_TEXT_PLACEHOLDER = "Last 100 character-related log lines before death will appear here"
 
     def __init__(self, parent: ttk.Notebook) -> None:
         super().__init__(parent, padding="10")
-        self.death_events: List[Dict[str, Any]] = []
+        self.death_events: list[Dict[str, Any]] = []
         self._event_sequence: int = 0
+        self.killed_by_var = tk.StringVar(value=self.EMPTY_DROPDOWN_PLACEHOLDER)
 
         try:
             self.theme_font = font.nametofont("SunValleyBodyFont")
@@ -23,32 +25,25 @@ class DeathSnippetPanel(ttk.Frame):
             self.theme_font = font.Font(family="Courier", size=10)
 
         self.setup_ui()
+        self._set_combo_values()
         self._show_placeholder()
 
     def setup_ui(self) -> None:
-        controls = ttk.Frame(self)
-        controls.pack(fill="x", padx=(10, 10), pady=(8, 6))
-
-        ttk.Label(
-            controls,
-            text="Last 100 character-related lines before each death",
-        ).pack(side="left")
-        ttk.Button(
-            controls,
-            text="Clear Death Snippets",
-            command=self.clear,
-        ).pack(side="right")
-
         selector_frame = ttk.Frame(self)
-        selector_frame.pack(fill="x", padx=(10, 10), pady=(0, 10))
+        selector_frame.pack(fill="x", padx=(10, 10), pady=(8, 10))
 
         def _on_death_selected(_event: tk.Event) -> None:
             self.render_selected_event()
 
-        self.killed_by_combo = ttk.Combobox(selector_frame, state="disabled", width=40)
-        self.killed_by_combo.pack(side="right", padx=5, fill="x", expand=False)
+        ttk.Label(selector_frame, text="Killed by:").pack(side="left", padx=(0, 5))
+        self.killed_by_combo = ttk.Combobox(
+            selector_frame,
+            state="disabled",
+            width=40,
+            textvariable=self.killed_by_var,
+        )
+        self.killed_by_combo.pack(side="left", fill="x", expand=True)
         self.killed_by_combo.bind("<<ComboboxSelected>>", _on_death_selected)
-        ttk.Label(selector_frame, text="Killed by").pack(side="right", padx=5)
 
         scroll = ttk.Scrollbar(self)
         scroll.pack(side="right", fill="y")
@@ -71,7 +66,7 @@ class DeathSnippetPanel(ttk.Frame):
     def _show_placeholder(self) -> None:
         """Show default text when there are no death snippets."""
         self.text.delete("1.0", tk.END)
-        self.text.insert("1.0", self.EMPTY_PLACEHOLDER)
+        self.text.insert("1.0", self.EMPTY_TEXT_PLACEHOLDER)
 
     @staticmethod
     def _event_sort_timestamp(event: Dict[str, Any]) -> datetime:
@@ -104,8 +99,10 @@ class DeathSnippetPanel(ttk.Frame):
         if values:
             self.killed_by_combo.configure(state="readonly")
         else:
+            # Set display text before disabling to ensure it remains visible.
+            self.killed_by_combo.configure(state="normal")
+            self.killed_by_var.set(self.EMPTY_DROPDOWN_PLACEHOLDER)
             self.killed_by_combo.configure(state="disabled")
-            self.killed_by_combo.set("")
 
     def _get_selected_event(self) -> Optional[Dict[str, Any]]:
         """Return selected death event or None if no valid selection exists."""
@@ -157,10 +154,6 @@ class DeathSnippetPanel(ttk.Frame):
         if self.death_events:
             self.killed_by_combo.current(0)
             self.render_selected_event()
-
-    def append_snippet(self, lines: List[str]) -> None:
-        """Backward-compatible line-only insertion for death snippet events."""
-        self.add_death_event({"lines": lines, "killer": "", "timestamp": None, "target": ""})
 
     def clear(self) -> None:
         """Clear all recorded death snippets."""
