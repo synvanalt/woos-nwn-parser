@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 6, 2026 (post P2 test implementation)
+**Last Updated:** March 6, 2026 (post version-bump automation tests)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
-- Command: `pytest --collect-only -q tests`
-- Result: **492 tests collected**
+- Command: `pytest --collect-only -q tests -p no:cacheprovider`
+- Result: **498 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 32 modules, 443 tests
+- `tests/unit/`: 33 modules, 449 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 40 test modules, 492 tests
+- Total: 41 test modules, 498 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -23,6 +23,7 @@ Notes:
 ## Module Inventory
 
 ### Unit (`tests/unit`)
+- `test_bump_version_script.py` (6)
 - `test_models.py` (52)
 - `test_parser.py` (61)
 - `test_parser_model_formatter_p2.py` (5)
@@ -75,6 +76,8 @@ Notes:
   - `test_storage.py`, `test_storage_indices.py`
 - Queue processor logic and batching:
   - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`
+- Release/version automation:
+  - `test_bump_version_script.py`
 - Monitor behavior (rotation/truncation/debug):
   - `test_monitor.py`, `test_monitor_debug_mode.py`, `test_monitor_edge_cases.py`, `test_log_rotation.py`, `test_file_truncation.py`, `test_monitor_parser_integration.py`, `test_integration_real_scenario.py`, `test_final_verification.py`
 - DPS service/pipeline:
