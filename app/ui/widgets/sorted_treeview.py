@@ -4,6 +4,7 @@ This module provides a SortedTreeview class that extends ttk.Treeview
 with the ability to sort data by clicking on column headers.
 """
 
+import re
 from typing import Optional
 import tkinter as tk
 from tkinter import ttk
@@ -35,6 +36,44 @@ class SortedTreeview(ttk.Treeview):
         # Bind header clicks for all columns
         for col in self.column_names:
             self.heading(col, text=col, command=lambda c=col: self.sort_column(c))
+
+    _RANGE_PATTERN = re.compile(
+        r"^(?:[<>]=?|[≤≥])?\s*(-?\d+(?:\.\d+)?)\s*-\s*(?:[<>]=?|[≤≥])?\s*(-?\d+(?:\.\d+)?)$"
+    )
+    _SINGLE_PATTERN = re.compile(r"^(?:[<>]=?|[≤≥])?\s*(-?\d+(?:\.\d+)?)$")
+    _NUMBER_PATTERN = re.compile(r"-?\d+(?:\.\d+)?")
+
+    @classmethod
+    def _parse_numeric_sort_value(cls, val: object) -> float:
+        """Parse display value into a numeric key for stable numeric sorting."""
+        text = "" if val is None else str(val).strip()
+        if not text or text == "-":
+            return float("-inf")
+
+        cleaned = text.replace(",", "").replace("%", "").strip()
+        while cleaned.startswith("~"):
+            cleaned = cleaned[1:].strip()
+
+        if not cleaned or cleaned == "-":
+            return float("-inf")
+
+        range_match = cls._RANGE_PATTERN.fullmatch(cleaned)
+        if range_match:
+            first = float(range_match.group(1))
+            second = float(range_match.group(2))
+            return max(first, second)
+
+        single_match = cls._SINGLE_PATTERN.fullmatch(cleaned)
+        if single_match:
+            return float(single_match.group(1))
+
+        # Last-resort numeric extraction for values like "⚠45"
+        numbers = cls._NUMBER_PATTERN.findall(cleaned)
+        if numbers:
+            parsed = [float(num) for num in numbers]
+            return max(parsed) if len(parsed) > 1 and "-" in cleaned else parsed[0]
+
+        raise ValueError(f"Value is not numeric-sortable: {val!r}")
 
     def sort_column(self, col: str, reverse: Optional[bool] = None) -> None:
         """Sort the treeview by the specified column.
@@ -74,14 +113,7 @@ class SortedTreeview(ttk.Treeview):
             try:
                 # Try numeric sort first
                 # Remove common formatting: commas, %, and whitespace
-                def parse_numeric(val):
-                    if not val or val == '-':
-                        return float('-inf') if not reverse else float('inf')
-                    # Strip common formatting
-                    cleaned = val.replace(',', '').replace('%', '').strip()
-                    return float(cleaned)
-
-                data.sort(key=lambda t: parse_numeric(t[0]), reverse=reverse)
+                data.sort(key=lambda t: self._parse_numeric_sort_value(t[0]), reverse=reverse)
             except (ValueError, AttributeError):
                 # Fallback to string sort
                 data.sort(key=lambda t: str(t[0]).lower(), reverse=reverse)
@@ -181,16 +213,7 @@ class SortedTreeview(ttk.Treeview):
 
         # Try to parse as numeric first
         try:
-            def parse_numeric(val):
-                if not val or val == '-':
-                    # Match the behavior in sort_column: dash/empty always returns -inf
-                    # For descending, -inf values end up at the bottom (correct)
-                    # For ascending, -inf values end up at the top (correct)
-                    return float('-inf')
-                cleaned = val.replace(',', '').replace('%', '').strip()
-                return float(cleaned)
-
-            parsed = [parse_numeric(v) for v in values]
+            parsed = [self._parse_numeric_sort_value(v) for v in values]
 
             # Check if already sorted
             if reverse:
