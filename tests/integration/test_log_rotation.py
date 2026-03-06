@@ -12,10 +12,7 @@ import tempfile
 
 from app.monitor import LogDirectoryMonitor
 from app.parser import LogParser
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
-from conftest import LogMessageCapture
+from tests.conftest import LogMessageCapture
 
 
 
