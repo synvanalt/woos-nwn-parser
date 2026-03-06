@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 6, 2026
+**Last Updated:** March 6, 2026 (post P2 test implementation)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -q tests`
-- Result: **428 tests collected**
+- Result: **492 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 21 modules, 379 tests
+- `tests/unit/`: 32 modules, 443 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 29 test modules, 428 tests
+- Total: 40 test modules, 492 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -25,6 +25,8 @@ Notes:
 ### Unit (`tests/unit`)
 - `test_models.py` (52)
 - `test_parser.py` (61)
+- `test_parser_model_formatter_p2.py` (5)
+- `test_platform_wrappers_p2.py` (8)
 - `test_storage.py` (40)
 - `test_storage_indices.py` (19)
 - `test_utils.py` (37)
@@ -35,6 +37,8 @@ Notes:
 - `test_queue_processor.py` (10)
 - `test_dps_service.py` (13)
 - `test_formatters.py` (22)
+- `test_immunity_panel_additional.py` (5)
+- `test_immunity_panel_edge_cases.py` (6)
 - `test_selection_preservation.py` (4)
 - `test_dps_panel_incremental.py` (11)
 - `test_immunity_panel_incremental.py` (3)
@@ -44,6 +48,12 @@ Notes:
 - `test_main_window_load_parse.py` (7)
 - `test_main_window_monitoring_switch.py` (5)
 - `test_main_window_debug_tab_unlock.py` (5)
+- `test_main_window_orchestration.py` (9)
+- `test_monitor_edge_cases.py` (4)
+- `test_queue_processor_resilience.py` (5)
+- `test_sorted_treeview_edge_cases.py` (4)
+- `test_storage_edge_branches.py` (8)
+- `test_utils_worker_pipeline.py` (4)
 
 ### Integration (`tests/integration`)
 - `test_parser_storage_integration.py` (13)
@@ -66,11 +76,13 @@ Notes:
 - Queue processor logic and batching:
   - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`
 - Monitor behavior (rotation/truncation/debug):
-  - `test_monitor.py`, `test_monitor_debug_mode.py`, `test_log_rotation.py`, `test_file_truncation.py`, `test_monitor_parser_integration.py`, `test_integration_real_scenario.py`, `test_final_verification.py`
+  - `test_monitor.py`, `test_monitor_debug_mode.py`, `test_monitor_edge_cases.py`, `test_log_rotation.py`, `test_file_truncation.py`, `test_monitor_parser_integration.py`, `test_integration_real_scenario.py`, `test_final_verification.py`
 - DPS service/pipeline:
   - `test_dps_service.py`, `test_dps_pipeline_integration.py`
 - UI widget/main-window behavior and refresh optimizations:
-  - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
+  - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
+- Import/worker pipeline behavior:
+  - `test_utils.py`, `test_utils_worker_pipeline.py`
 - Full-session/e2e behavior:
   - `test_e2e_combat_session.py`
 
