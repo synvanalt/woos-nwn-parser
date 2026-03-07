@@ -6,11 +6,27 @@ All logic is pure Python with no Tkinter dependencies.
 """
 
 import queue
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Callable, List, Any
+from time import perf_counter
+from typing import Dict, Callable, List, Any, Set
 
 from ..storage import DataStore
 from ..parser import LogParser
+
+
+@dataclass
+class QueueDrainResult:
+    """Result of one queue-drain pass."""
+
+    events_processed: int = 0
+    dps_updated: bool = False
+    targets_to_refresh: Set[str] = field(default_factory=set)
+    immunity_targets: Set[str] = field(default_factory=set)
+    damage_targets: Set[str] = field(default_factory=set)
+    death_events: List[Dict[str, Any]] = field(default_factory=list)
+    character_identity_events: List[Dict[str, Any]] = field(default_factory=list)
+    has_backlog: bool = False
 
 
 class QueueProcessor:
@@ -42,93 +58,67 @@ class QueueProcessor:
         self,
         data_queue: queue.Queue,
         on_log_message: Callable[[str, str], None],
-        on_dps_updated: Callable[[], None],
-        on_target_selected: Callable[[str], None],
-        on_immunity_changed: Callable[[str], None],
-        on_damage_dealt: Callable[[str], None] = None,
-        on_death_snippet: Callable[[Dict[str, Any]], None] = None,
         debug_enabled: bool = False,
-        on_character_identified: Callable[[Dict[str, Any]], None] = None,
-    ) -> None:
-        """Process all events in queue and invoke callbacks for UI updates.
-
-        Uses batching to reduce callback overhead - processes all events first,
-        then triggers UI callbacks once at the end.
+        max_events: int = 2000,
+        max_time_ms: float | None = None,
+    ) -> QueueDrainResult:
+        """Process a bounded batch of queue events.
 
         Args:
             data_queue: Queue of events from LogDirectoryMonitor
             on_log_message: Callback for log messages (message, type)
-            on_dps_updated: Callback when DPS data changes
-            on_target_selected: Callback to refresh target details
-            on_immunity_changed: Callback when immunity data changes
-            on_damage_dealt: Callback when damage is dealt to a target
-            debug_enabled: Whether to emit debug messages (default False for performance)
+            debug_enabled: Whether to emit debug messages
+            max_events: Maximum events to process in this call
+            max_time_ms: Maximum wall-clock budget for this call
+
+        Returns:
+            QueueDrainResult with dirty-state information for batched UI refreshes
         """
-        # Batch tracking - collect what needs updating
-        dps_updated = False
-        targets_to_refresh: set = set()
-        immunity_targets: set = set()
-        damage_targets: set = set()
-        death_events: List[Dict[str, Any]] = []
-        character_identity_events: List[Dict[str, Any]] = []
-        events_processed = 0
+        result = QueueDrainResult()
+        started = perf_counter()
 
         try:
-            while True:
+            while result.events_processed < max_events:
+                if max_time_ms is not None:
+                    elapsed_ms = (perf_counter() - started) * 1000.0
+                    if elapsed_ms >= max_time_ms:
+                        break
+
                 data = data_queue.get_nowait()
-                events_processed += 1
+                result.events_processed += 1
 
                 # Process event and track what needs UI update
-                result = self._handle_event_batched(
+                event_result = self._handle_event_batched(
                     data,
                     on_log_message,
                     debug_enabled,
                 )
 
-                if result:
-                    if result.get('dps_updated'):
-                        dps_updated = True
-                    if result.get('target'):
-                        targets_to_refresh.add(result['target'])
-                    if result.get('immunity_target'):
-                        immunity_targets.add(result['immunity_target'])
-                    if result.get('damage_target'):
-                        damage_targets.add(result['damage_target'])
-                    if result.get('death_event'):
-                        death_events.append(result['death_event'])
-                    if result.get('character_identified'):
-                        character_identity_events.append(result['character_identified'])
+                if event_result:
+                    if event_result.get('dps_updated'):
+                        result.dps_updated = True
+                    if event_result.get('target'):
+                        result.targets_to_refresh.add(event_result['target'])
+                    if event_result.get('immunity_target'):
+                        result.immunity_targets.add(event_result['immunity_target'])
+                    if event_result.get('damage_target'):
+                        result.damage_targets.add(event_result['damage_target'])
+                    if event_result.get('death_event'):
+                        result.death_events.append(event_result['death_event'])
+                    if event_result.get('character_identified'):
+                        result.character_identity_events.append(event_result['character_identified'])
 
         except queue.Empty:
             pass
 
-        # Now trigger UI callbacks once (batched)
-        if dps_updated:
-            on_dps_updated()
-
-        # Only refresh unique targets (deduplicated)
-        for target in targets_to_refresh:
-            on_target_selected(target)
-
-        for target in immunity_targets:
-            on_immunity_changed(target)
-
-        if on_damage_dealt:
-            for target in damage_targets:
-                on_damage_dealt(target)
-
-        if on_death_snippet:
-            for death_event in death_events:
-                on_death_snippet(death_event)
-
-        if on_character_identified:
-            for identity_event in character_identity_events:
-                on_character_identified(identity_event)
+        result.has_backlog = not data_queue.empty()
 
         # Periodic cleanup of stale immunity entries (every 100 events)
-        self.parsed_event_count += events_processed
-        if self.parsed_event_count % 100 == 0:
+        self.parsed_event_count += result.events_processed
+        if result.events_processed > 0 and self.parsed_event_count % 100 == 0:
             self.cleanup_stale_immunities(max_age_seconds=5.0)
+
+        return result
 
     def _handle_event_batched(
         self,

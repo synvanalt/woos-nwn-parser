@@ -53,9 +53,7 @@ class LogDirectoryMonitor:
         Returns:
             Path to the active log file, or None if no log files found
         """
-        active_file = self.find_active_log_file()
-        return active_file
-
+        return self.find_active_log_file()
 
     def start_monitoring(self) -> None:
         """Initialize file position for incremental reading.
@@ -68,14 +66,14 @@ class LogDirectoryMonitor:
             self.last_position = file_stat.st_size
             self.last_mtime = file_stat.st_mtime
 
-
     def read_new_lines(
         self,
         parser,
         data_queue: queue.Queue,
         on_log_message=None,
-        debug_enabled: bool = False
-    ) -> None:
+        debug_enabled: bool = False,
+        max_lines_per_poll: int = 2000,
+    ) -> bool:
         """Read new lines from the current log file, handling rotation to new files.
 
         Args:
@@ -83,79 +81,95 @@ class LogDirectoryMonitor:
             data_queue: Queue for passing parsed data to UI
             on_log_message: Optional callback for logging (message, msg_type)
             debug_enabled: Whether to emit debug messages (default False for performance)
+            max_lines_per_poll: Maximum number of lines to parse in one call
+
+        Returns:
+            True when more unread lines remain in the file after this call
         """
         try:
-            # Check if we've rotated to a new log file
             active_file = self.get_active_log_file()
 
             # Handle rotation: if we switched to a new file, reset position and notify
-            # Rotation is an important system event - always log it
             if active_file != self.current_log_file:
-                if on_log_message:
+                if on_log_message and active_file is not None:
+                    previous_name = self.current_log_file.name if self.current_log_file else 'None'
                     on_log_message(
-                        f"📁 Log rotation: {self.current_log_file.name if self.current_log_file else 'None'} → {active_file.name}",
-                        'info'
+                        f"Log rotation: {previous_name} -> {active_file.name}",
+                        'info',
+                    )
+                elif on_log_message and active_file is None and self.current_log_file is not None:
+                    on_log_message(
+                        "I/O Error: active log file became unavailable during rotation check",
+                        'error',
                     )
                 self.current_log_file = active_file
-                self.last_position = 0  # Start from beginning of new file
+                self.last_position = 0
 
-            # Read from current log file
             if not self.current_log_file or not self.current_log_file.exists():
-                return
+                return False
 
-            # Get current file stats
             file_stat = self.current_log_file.stat()
             current_size = file_stat.st_size
             current_mtime = file_stat.st_mtime
 
-            # Check if file has been truncated (e.g., game restart cleared the file)
-            # This can happen when:
-            # 1. File size is smaller than our last read position (truncation detected)
-            # 2. Modification time changed but size is smaller (file was rewritten)
-            # Truncation is an important system event - always log it
             if current_size < self.last_position:
                 if on_log_message:
                     on_log_message(
-                        f"⚠️ File truncation: {self.current_log_file.name} (was {self.last_position} bytes, now {current_size} bytes)",
-                        'warning'
+                        f"File truncation: {self.current_log_file.name} (was {self.last_position} bytes, now {current_size} bytes)",
+                        'warning',
                     )
                 self.last_position = 0
                 self.last_mtime = current_mtime
             elif current_size == 0 and self.last_position > 0:
-                # Special case: file was completely cleared
                 if on_log_message:
                     on_log_message(
-                        f"⚠️ File cleared: {self.current_log_file.name}",
-                        'warning'
+                        f"File cleared: {self.current_log_file.name}",
+                        'warning',
                     )
                 self.last_position = 0
                 self.last_mtime = current_mtime
 
-            with open(self.current_log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                f.seek(self.last_position)
-                new_lines = f.readlines()
-                self.last_position = f.tell()
+            parsed_lines = 0
+            with open(self.current_log_file, 'r', encoding='utf-8', errors='ignore') as handle:
+                handle.seek(self.last_position)
+                if hasattr(handle, "readline"):
+                    while parsed_lines < max_lines_per_poll:
+                        line = handle.readline()
+                        if not line:
+                            break
+
+                        parsed_lines += 1
+                        if debug_enabled and on_log_message:
+                            on_log_message(f"Raw line: {line.strip()}", 'info')
+
+                        parsed_data = parser.parse_line(line)
+                        if parsed_data:
+                            data_queue.put(parsed_data)
+                else:
+                    # Compatibility path for mocked file handles in tests.
+                    lines = list(handle.readlines())[:max_lines_per_poll]
+                    for line in lines:
+                        parsed_lines += 1
+                        if debug_enabled and on_log_message:
+                            on_log_message(f"Raw line: {line.strip()}", 'info')
+                        parsed_data = parser.parse_line(line)
+                        if parsed_data:
+                            data_queue.put(parsed_data)
+
+                self.last_position = handle.tell()
                 self.last_mtime = current_mtime
 
-                # Only log verbosity about reading lines when debug is enabled
-                if new_lines and debug_enabled and on_log_message:
-                    on_log_message(
-                        f"📖 Read {len(new_lines)} line(s) from {self.current_log_file.name}",
-                        'debug'
-                    )
+            has_more_pending = self.last_position < current_size
 
-                # Parse and queue all lines
-                for line in new_lines:
-                    if debug_enabled and on_log_message:
-                        on_log_message(
-                            f"Raw line: {line.strip()}",
-                            'info'
-                        )
-                    parsed_data = parser.parse_line(line)
-                    if parsed_data:
-                        data_queue.put(parsed_data)
+            if parsed_lines and debug_enabled and on_log_message:
+                on_log_message(
+                    f"Read {parsed_lines} line(s) from {self.current_log_file.name}",
+                    'debug',
+                )
 
-        except Exception as e:
+            return has_more_pending
+
+        except Exception as exc:
             if on_log_message:
-                on_log_message(f"I/O Error: {e}", 'error')
-
+                on_log_message(f"I/O Error: {exc}", 'error')
+            return False

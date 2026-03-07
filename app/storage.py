@@ -49,6 +49,8 @@ class DataStore:
         self._damage_summary_by_target: Dict[str, Dict[str, Dict[str, int]]] = {}
         self._damage_dealers_by_target: Dict[str, set[str]] = {}
         self._dps_by_attacker_target: Dict[Tuple[str, str], Dict] = {}
+        self._earliest_timestamp: Optional[datetime] = None
+        self._all_damage_types_cache: set[str] = set()
 
     @property
     def version(self) -> int:
@@ -140,6 +142,7 @@ class DataStore:
                 timestamp=timestamp
             )
             self.events.append(event)
+            self._all_damage_types_cache.add(damage_type)
             # Update targets cache (O(1) set add)
             self._targets_cache.add(target)
             self._damage_taken_by_target[target] = (
@@ -202,6 +205,8 @@ class DataStore:
             # Always update the global last damage timestamp
             if self.last_damage_timestamp is None or timestamp > self.last_damage_timestamp:
                 self.last_damage_timestamp = timestamp
+            if self._earliest_timestamp is None or timestamp < self._earliest_timestamp:
+                self._earliest_timestamp = timestamp
 
             char_data = self.dps_data.get(character)
             if char_data is None:
@@ -239,16 +244,7 @@ class DataStore:
             The earliest timestamp of the first attack by any character, or None if no data
         """
         with self.lock:
-            if not self.dps_data:
-                return None
-
-            earliest = None
-            for character, data in self.dps_data.items():
-                first_ts = data['first_timestamp']
-                if earliest is None or first_ts < earliest:
-                    earliest = first_ts
-
-            return earliest
+            return self._earliest_timestamp
 
     def get_dps_data(self, time_tracking_mode: str = "per_character", global_start_time: Optional[datetime] = None) -> List[Dict]:
         """Get DPS data for all characters, sorted by DPS descending.
@@ -759,9 +755,11 @@ class DataStore:
             self.dps_data.clear()
             self.immunity_data.clear()
             self.last_damage_timestamp = None
+            self._earliest_timestamp = None
             # Clear caches
             self._targets_cache.clear()
             self._damage_dealers_cache.clear()
+            self._all_damage_types_cache.clear()
             self._damage_taken_by_target.clear()
             self._attack_stats_by_attacker.clear()
             self._attack_stats_by_attacker_target.clear()
@@ -786,8 +784,7 @@ class DataStore:
             Sorted list of damage type names
         """
         with self.lock:
-            damage_types = sorted(set(e.damage_type for e in self.events))
-            return damage_types
+            return sorted(self._all_damage_types_cache)
 
     def get_max_damage_for_target_and_type(self, target: str, damage_type: str) -> int:
         """Return the maximum single-hit damage recorded for target+damage_type.

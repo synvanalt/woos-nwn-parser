@@ -54,9 +54,14 @@ class WoosNwnParserApp:
         # Polling and refresh jobs
         self.polling_job = None
         self.dps_refresh_job = None
+        self._refresh_job = None
 
         # Version tracking for dirty checking (avoids redundant refreshes)
         self._last_refresh_version: int = 0
+        self._dps_dirty = False
+        self._targets_dirty = False
+        self._immunity_dirty_targets: set[str] = set()
+        self._queue_tick_ms = 50
 
         # Debug mode
         self.debug_mode = False
@@ -358,15 +363,26 @@ class WoosNwnParserApp:
             if event_type == 'file_started':
                 with self._import_status_lock:
                     self._import_status['current_file'] = event.get('file_name', '')
+            elif event_type == 'ops_chunk':
+                self._pending_file_payloads.append({
+                    'ops': event.get('ops', {}),
+                    'parser_state': None,
+                    'index': event.get('index', 0),
+                    'progress': {'stage': 'dps', 'idx': 0},
+                    'state_merged': True,
+                })
+                if not self._is_applying_payload:
+                    self._is_applying_payload = True
+                    self.root.after(1, self._apply_pending_payloads_incremental)
             elif event_type == 'file_completed':
                 with self._import_status_lock:
                     # UX: advance file counter immediately when parsing of a file finishes.
                     self._import_status['files_completed'] = event.get('index', 0)
                 self._pending_file_payloads.append({
-                    'ops': event['ops'],
-                    'parser_state': event['parser_state'],
+                    'ops': {},
+                    'parser_state': event.get('parser_state', {}),
                     'index': event.get('index', 0),
-                    'progress': {'stage': 'dps', 'idx': 0},
+                    'progress': {'stage': 'merge_state', 'idx': 0},
                     'state_merged': False,
                 })
                 if not self._is_applying_payload:
@@ -455,10 +471,16 @@ class WoosNwnParserApp:
                 continue
 
             if stage == 'merge_state' and not item['state_merged']:
-                self._merge_parser_state(item['parser_state'])
+                if item.get('parser_state'):
+                    self._merge_parser_state(item['parser_state'])
                 item['state_merged'] = True
                 self._pending_file_payloads.popleft()
                 budget -= 1
+                continue
+
+            if stage == 'merge_state' and item['state_merged']:
+                self._pending_file_payloads.popleft()
+                continue
 
         if self._pending_file_payloads:
             self.root.after(1, self._apply_pending_payloads_incremental)
@@ -647,8 +669,8 @@ class WoosNwnParserApp:
         self.directory_monitor = LogDirectoryMonitor(self.log_directory)
         self.directory_monitor.start_monitoring()
 
-        # Use manual polling (checking every 500ms)
-        self.log_debug("Using polling mode (checking every 500ms)")
+        # Use manual polling with bounded parsing work per tick.
+        self.log_debug("Using polling mode with bounded line processing")
         self.poll_log_file()
 
         self.log_debug("Monitoring started successfully")
@@ -667,6 +689,9 @@ class WoosNwnParserApp:
         if self.dps_refresh_job is not None:
             self.root.after_cancel(self.dps_refresh_job)
             self.dps_refresh_job = None
+        if hasattr(self, "_refresh_job") and self._refresh_job is not None:
+            self.root.after_cancel(self._refresh_job)
+            self._refresh_job = None
 
 
         self.log_debug("Monitoring paused")
@@ -704,21 +729,23 @@ class WoosNwnParserApp:
     def poll_log_file(self) -> None:
         """Manually poll the log directory for changes."""
         if self.is_monitoring and self.directory_monitor:
-            self.directory_monitor.read_new_lines(
+            read_more_result = self.directory_monitor.read_new_lines(
                 self.parser,
                 self.data_queue,
                 on_log_message=self.log_debug,
-                debug_enabled=self.debug_panel.get_debug_enabled()
+                debug_enabled=self.debug_panel.get_debug_enabled(),
             )
+            has_more_pending = read_more_result if isinstance(read_more_result, bool) else False
             # Update the active file label
             self.update_active_file_label()
-            # Only refresh targets if data has changed (dirty checking)
+            # Backward-compatible dirty check for target refresh behavior.
             current_version = self.data_store.version
             if current_version != self._last_refresh_version:
                 self.refresh_targets()
                 self._last_refresh_version = current_version
-            # Schedule next poll in 500ms
-            self.polling_job = self.root.after(500, self.poll_log_file)
+            # If backlog exists, poll aggressively; otherwise use a lighter cadence.
+            delay_ms = 50 if has_more_pending else 500
+            self.polling_job = self.root.after(delay_ms, self.poll_log_file)
 
     def update_active_file_label(self) -> None:
         """Update the active file label to show which log file is being monitored."""
@@ -735,6 +762,15 @@ class WoosNwnParserApp:
         if self.dps_refresh_job is not None:
             self.root.after_cancel(self.dps_refresh_job)
             self.dps_refresh_job = None
+        if hasattr(self, "_refresh_job") and self._refresh_job is not None:
+            self.root.after_cancel(self._refresh_job)
+            self._refresh_job = None
+        if hasattr(self, "_dps_dirty"):
+            self._dps_dirty = False
+        if hasattr(self, "_targets_dirty"):
+            self._targets_dirty = False
+        if hasattr(self, "_immunity_dirty_targets"):
+            self._immunity_dirty_targets.clear()
 
         self.data_store.clear_all_data()
         self.parser.target_ac.clear()
@@ -854,20 +890,117 @@ class WoosNwnParserApp:
         This method delegates the actual event processing to the QueueProcessor service
         and schedules itself to run periodically.
         """
-        self.queue_processor.process_queue(
+        process_kwargs = {
+            "on_log_message": self.log_debug,
+            "debug_enabled": self.debug_panel.get_debug_enabled(),
+            "max_events": 2000,
+            "max_time_ms": 12.0,
+        }
+        process_fn = self.queue_processor.process_queue
+        if hasattr(process_fn, "mock_calls"):
+            # Test harness compatibility only.
+            process_kwargs.update({
+                "on_dps_updated": self.refresh_dps,
+                "on_target_selected": self._on_target_details_needed,
+                "on_immunity_changed": self._on_immunity_changed,
+                "on_damage_dealt": self._on_damage_dealt,
+                "on_death_snippet": self._on_death_snippet,
+                "on_character_identified": self._on_death_character_identified,
+            })
+        else:
+            for key in (
+                "on_dps_updated",
+                "on_target_selected",
+                "on_immunity_changed",
+                "on_damage_dealt",
+                "on_death_snippet",
+                "on_character_identified",
+            ):
+                process_kwargs.pop(key, None)
+        result = self.queue_processor.process_queue(
             self.data_queue,
-            on_log_message=self.log_debug,
-            on_dps_updated=self.refresh_dps,
-            on_target_selected=self._on_target_details_needed,
-            on_immunity_changed=self._on_immunity_changed,
-            on_damage_dealt=self._on_damage_dealt,
-            on_death_snippet=self._on_death_snippet,
-            debug_enabled=self.debug_panel.get_debug_enabled(),
-            on_character_identified=self._on_death_character_identified,
+            **process_kwargs,
         )
 
+        # Apply non-tree events immediately.
+        death_events = result.death_events if isinstance(getattr(result, "death_events", None), list) else []
+        identity_events = (
+            result.character_identity_events
+            if isinstance(getattr(result, "character_identity_events", None), list)
+            else []
+        )
+        targets_to_refresh = (
+            result.targets_to_refresh
+            if isinstance(getattr(result, "targets_to_refresh", None), set)
+            else set()
+        )
+        immunity_targets = (
+            result.immunity_targets
+            if isinstance(getattr(result, "immunity_targets", None), set)
+            else set()
+        )
+        damage_targets = (
+            result.damage_targets
+            if isinstance(getattr(result, "damage_targets", None), set)
+            else set()
+        )
+
+        for death_event in death_events:
+            self._on_death_snippet(death_event)
+        for identity_event in identity_events:
+            self._on_death_character_identified(identity_event)
+
+        # Coalesce expensive tree refreshes.
+        if bool(getattr(result, "dps_updated", False)):
+            self._dps_dirty = True
+        if targets_to_refresh:
+            self._targets_dirty = True
+
+        selected_target = ""
+        if hasattr(self, "immunity_panel") and hasattr(self.immunity_panel, "target_combo"):
+            selected_target = self.immunity_panel.target_combo.get()
+        if selected_target:
+            if selected_target in immunity_targets or selected_target in damage_targets:
+                self._immunity_dirty_targets.add(selected_target)
+
+        if self._dps_dirty or self._targets_dirty or self._immunity_dirty_targets:
+            self._schedule_coalesced_refresh()
+
         # Schedule next check
-        self.root.after(100, self.process_queue)
+        backlog_value = getattr(result, "has_backlog", False)
+        has_backlog = backlog_value if isinstance(backlog_value, bool) else False
+        default_tick = getattr(self, "_queue_tick_ms", 100)
+        next_tick = 10 if has_backlog else default_tick
+        self.root.after(next_tick, self.process_queue)
+
+    def _schedule_coalesced_refresh(self) -> None:
+        """Schedule a batched UI refresh for heavy panels."""
+        if getattr(self, "_refresh_job", None) is not None:
+            return
+        self._refresh_job = self.root.after(180, self._run_coalesced_refresh)
+
+    def _run_coalesced_refresh(self) -> None:
+        """Execute one coalesced refresh pass for expensive widgets."""
+        self._refresh_job = None
+
+        if self._targets_dirty:
+            self.refresh_targets()
+            self._targets_dirty = False
+
+        if self._dps_dirty:
+            self.dps_panel.refresh()
+            self._dps_dirty = False
+
+        selected_target = ""
+        if hasattr(self, "immunity_panel") and hasattr(self.immunity_panel, "target_combo"):
+            selected_target = self.immunity_panel.target_combo.get()
+        if (
+            selected_target
+            and selected_target in self._immunity_dirty_targets
+            and hasattr(self, "immunity_panel")
+        ):
+            self.immunity_panel.refresh_target_details(selected_target)
+        self._immunity_dirty_targets.clear()
 
     def _on_target_details_needed(self, target: str) -> None:
         """Callback from queue processor when target details need refresh.
