@@ -224,3 +224,23 @@ class TestLoadAndParseWorkflow:
         app._apply_pending_payloads_incremental()
 
         app.death_snippet_panel.add_death_event.assert_called_once()
+
+    def test_on_death_character_identified_sets_panel_character(self) -> None:
+        app = _make_app_shell()
+        app.death_snippet_panel = Mock()
+
+        app._on_death_character_identified(
+            {"type": "death_character_identified", "character_name": "Woo Wildrock"}
+        )
+
+        app.death_snippet_panel.set_character_name.assert_called_once_with("Woo Wildrock")
+
+    def test_identity_and_fallback_callbacks_update_parser(self) -> None:
+        app = _make_app_shell()
+        app.parser = Mock()
+
+        app._on_death_character_name_changed("Woo Wildrock")
+        app._on_death_fallback_line_changed("Your God refuses to hear your prayers!")
+
+        app.parser.set_death_character_name.assert_called_once_with("Woo Wildrock")
+        app.parser.set_death_fallback_line.assert_called_once_with("Your God refuses to hear your prayers!")

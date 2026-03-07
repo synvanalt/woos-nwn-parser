@@ -206,6 +206,7 @@ def test_process_queue_wires_callbacks_and_reschedules(app_shell) -> None:
     assert kwargs["on_immunity_changed"] == app_shell._on_immunity_changed
     assert kwargs["on_damage_dealt"] == app_shell._on_damage_dealt
     assert kwargs["on_death_snippet"] == app_shell._on_death_snippet
+    assert kwargs["on_character_identified"] == app_shell._on_death_character_identified
     app_shell.root.after.assert_called_with(100, app_shell.process_queue)
 
 

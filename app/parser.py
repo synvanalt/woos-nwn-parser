@@ -20,6 +20,8 @@ MONTHS = {
 
 class LogParser:
     """Handles parsing of game log files to extract damage resist data."""
+    DEFAULT_DEATH_FALLBACK_LINE = "Your God refuses to hear your prayers!"
+    DEATH_IDENTIFY_TOKEN = "wooparseme"
 
     def __init__(self, player_name: Optional[str] = None, parse_immunity: bool = False) -> None:
         """Initialize the parser.
@@ -100,8 +102,8 @@ class LogParser:
             'killed': re.compile(
                 r'\[CHAT WINDOW TEXT]\s*\[.*?]\s*(?P<killer>.+?)\s+killed\s+(?P<target>.+?)\s*$'
             ),
-            'god_refusal': re.compile(
-                r'\[CHAT WINDOW TEXT]\s*\[.*?]\s*Your God refuses to hear your prayers!\s*$'
+            'chat_whisper': re.compile(
+                r'\[CHAT WINDOW TEXT]\s*\[.*?]\s*(?P<speaker>.+?)\s*:\s*\[Whisper]\s*(?P<message>.*?)\s*$'
             ),
         }
 
@@ -128,6 +130,38 @@ class LogParser:
         self._target_concealed_marker = "target concealed:"
         self._save_marker = " Save"
         self._epic_dodge_marker = "Epic Dodge"
+        self._killed_marker = " killed "
+        self._whisper_marker = "[Whisper]"
+        self.death_character_name = ""
+        self._death_character_name_normalized = ""
+        self.death_fallback_line = self.DEFAULT_DEATH_FALLBACK_LINE
+        self._death_fallback_pattern: Optional[Pattern[str]] = self._compile_fallback_line_pattern(
+            self.death_fallback_line
+        )
+
+    @staticmethod
+    def _normalize_name(value: str) -> str:
+        """Trim and normalize a character name string."""
+        return " ".join(value.strip().split())
+
+    def set_death_character_name(self, name: str) -> None:
+        """Set character name used for character-specific death detection."""
+        normalized = self._normalize_name(name)
+        self.death_character_name = normalized
+        self._death_character_name_normalized = normalized
+
+    @staticmethod
+    def _compile_fallback_line_pattern(value: str) -> Optional[Pattern[str]]:
+        """Compile a fallback death-line matcher from exact line text."""
+        normalized = value.strip()
+        if not normalized:
+            return None
+        return re.compile(rf'\[CHAT WINDOW TEXT]\s*\[.*?]\s*{re.escape(normalized)}\s*$')
+
+    def set_death_fallback_line(self, line: str) -> None:
+        """Set fallback death line used when character name is unknown."""
+        self.death_fallback_line = line.strip()
+        self._death_fallback_pattern = self._compile_fallback_line_pattern(self.death_fallback_line)
 
     def _get_name_token_pattern(self, character_name: str) -> Pattern[str]:
         """Get cached exact-token, case-sensitive regex for a character name."""
@@ -140,9 +174,36 @@ class LogParser:
         self._name_token_pattern_cache[character_name] = pattern
         return pattern
 
-    def _build_death_snippet_event(
+    def _collect_death_snippet_lines(
         self,
-        prayer_line: str,
+        *,
+        history: list[str],
+        target_name: str,
+        trigger_line: Optional[str] = None,
+    ) -> Optional[list[str]]:
+        """Collect up to max recent lines that mention the target name."""
+        if not target_name:
+            return None
+
+        name_pattern = self._get_name_token_pattern(target_name)
+        snippet_reversed = []
+        for candidate in reversed(history):
+            if name_pattern.search(candidate):
+                snippet_reversed.append(candidate)
+                if len(snippet_reversed) >= self.death_snippet_max_lines:
+                    break
+
+        if not snippet_reversed:
+            return None
+
+        snippet_lines = list(reversed(snippet_reversed))
+        if trigger_line and (not snippet_lines or snippet_lines[-1] != trigger_line):
+            snippet_lines.append(trigger_line)
+        return snippet_lines
+
+    def _build_death_snippet_event_from_fallback(
+        self,
+        fallback_line: str,
         timestamp: datetime,
     ) -> Optional[Dict[str, Any]]:
         """Build a death snippet event by scanning backward from the prayer line."""
@@ -170,24 +231,41 @@ class LogParser:
         if not dead_target:
             return None
 
-        name_pattern = self._get_name_token_pattern(dead_target)
-        snippet_reversed = []
-        for candidate in reversed(history):
-            if name_pattern.search(candidate):
-                snippet_reversed.append(candidate)
-                if len(snippet_reversed) >= self.death_snippet_max_lines:
-                    break
-
-        if not snippet_reversed:
+        snippet_lines = self._collect_death_snippet_lines(
+            history=history,
+            target_name=dead_target,
+            trigger_line=fallback_line,
+        )
+        if not snippet_lines:
             return None
-
-        snippet_lines = list(reversed(snippet_reversed))
-        # Ensure the trigger line is always the final line in the snippet block.
-        snippet_lines.append(prayer_line)
 
         return {
             'type': 'death_snippet',
             'target': dead_target,
+            'killer': killer,
+            'lines': snippet_lines,
+            'timestamp': timestamp,
+        }
+
+    def _build_death_snippet_event_from_killed_match(
+        self,
+        *,
+        killer: str,
+        target: str,
+        timestamp: datetime,
+    ) -> Optional[Dict[str, Any]]:
+        """Build death snippet event using current killed line as trigger."""
+        history = list(self.recent_log_lines)
+        snippet_lines = self._collect_death_snippet_lines(
+            history=history,
+            target_name=target,
+        )
+        if not snippet_lines:
+            return None
+
+        return {
+            'type': 'death_snippet',
+            'target': target,
             'killer': killer,
             'lines': snippet_lines,
             'timestamp': timestamp,
@@ -285,11 +363,41 @@ class LogParser:
                     timestamp = datetime.now()
             return timestamp
 
-        # Death Snippet: trigger only on the unique prayer line and then scan backward.
-        if self.patterns['god_refusal'].search(raw_line):
-            death_event = self._build_death_snippet_event(raw_line, get_timestamp())
-            if death_event:
-                return death_event
+        if self._whisper_marker in raw_line:
+            whisper_match = self.patterns['chat_whisper'].search(raw_line)
+            if whisper_match:
+                message = str(whisper_match.group("message")).strip()
+                if message.casefold() == self.DEATH_IDENTIFY_TOKEN:
+                    speaker = self._normalize_name(str(whisper_match.group("speaker")))
+                    if speaker:
+                        self.set_death_character_name(speaker)
+                        return {
+                            'type': 'death_character_identified',
+                            'character_name': speaker,
+                            'timestamp': get_timestamp(),
+                        }
+
+        if self._killed_marker in raw_line and self._death_character_name_normalized:
+            killed_match = self.patterns['killed'].search(raw_line)
+            if killed_match:
+                dead_target = self._normalize_name(str(killed_match.group('target')))
+                if dead_target == self._death_character_name_normalized:
+                    killer = self._normalize_name(str(killed_match.group('killer')))
+                    death_event = self._build_death_snippet_event_from_killed_match(
+                        killer=killer,
+                        target=dead_target,
+                        timestamp=get_timestamp(),
+                    )
+                    if death_event:
+                        return death_event
+
+        # Death Snippet fallback is active only while character name is unknown.
+        if (not self._death_character_name_normalized) and self._death_fallback_pattern:
+            fallback_match = self._death_fallback_pattern.search(raw_line)
+            if fallback_match:
+                death_event = self._build_death_snippet_event_from_fallback(raw_line, get_timestamp())
+                if death_event:
+                    return death_event
 
         # Check for damage dealt (this sets the context for subsequent resist lines)
         damage_match = self.patterns['damage_dealt'].search(line)
