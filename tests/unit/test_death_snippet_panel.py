@@ -94,6 +94,7 @@ class TestDeathSnippetPanel:
         panel._event_sequence = 0
         panel._text_tags_by_color = {}
         panel._last_render_key = None
+        panel._name_pattern_cache = {}
         return panel
 
     def test_sanitize_display_line_removes_chat_window_prefix(self) -> None:
@@ -224,3 +225,65 @@ class TestDeathSnippetPanel:
 
         assert not panel.text.tag_configs
         assert panel.text.content == "[t] HYDROXIS killed Woo Wildrock\n"
+
+    def test_extract_opponent_names_from_hostile_lines_targeting_killed(self) -> None:
+        lines = [
+            "[Wed Jan 09 14:30:00] Ash-Tusk Clan Sniper attacks Woo Whirlwind : *hit* : (12 + 56 = 68)",
+            "[Wed Jan 09 14:30:01] GENERAL KORGAN damages Woo Whirlwind: 40 (0 Physical 4 Divine 36 Electrical 0 Fire)",
+            "[Wed Jan 09 14:30:02] HYDROXIS killed Woo Whirlwind",
+            "[Wed Jan 09 14:30:03] GENERAL KORGAN casts unknown spell",
+        ]
+
+        opponents = DeathSnippetPanel._extract_opponent_names(
+            lines=lines,
+            killed_name="Woo Whirlwind",
+            killer_name="HYDROXIS",
+        )
+
+        assert "HYDROXIS" in opponents
+        assert "Ash-Tusk Clan Sniper" in opponents
+        assert "GENERAL KORGAN" in opponents
+
+    def test_render_colors_killed_name_in_save_and_spell_resist_lines(self) -> None:
+        panel = self._make_panel()
+        panel.add_death_event({
+            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
+            "killer": "HYDROXIS",
+            "target": "Woo Whirlwind",
+            "lines": [
+                "[CHAT WINDOW TEXT] [t] Woo Whirlwind : Fortitude Save vs. Poison : *success* : (8 + 50 = 58 vs. DC: 55)",
+                "[CHAT WINDOW TEXT] [t] SPELL RESIST: Woo Whirlwind attempts to resist: Acid Fog - Result: FAILED",
+            ],
+        })
+
+        killed_tag = next(
+            tag for tag, conf in panel.text.tag_configs.items()
+            if conf.get("foreground") == DeathSnippetPanel.KILLED_NAME_COLOR
+        )
+        killed_tagged_text = [text for _idx, text, tag in panel.text.inserts if tag == killed_tag]
+
+        assert "Woo Whirlwind" in killed_tagged_text
+        assert killed_tagged_text.count("Woo Whirlwind") == 2
+
+    def test_render_colors_opponents_from_attacks_and_damages_against_killed(self) -> None:
+        panel = self._make_panel()
+        panel.add_death_event({
+            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
+            "killer": "HYDROXIS",
+            "target": "Woo Whirlwind",
+            "lines": [
+                "[CHAT WINDOW TEXT] [t] Ash-Tusk Clan Sniper attacks Woo Whirlwind : *hit* : (12 + 56 = 68)",
+                "[CHAT WINDOW TEXT] [t] GENERAL KORGAN damages Woo Whirlwind: 40 (0 Physical 4 Divine 36 Electrical 0 Fire)",
+                "[CHAT WINDOW TEXT] [t] HYDROXIS killed Woo Whirlwind",
+            ],
+        })
+
+        opponent_tag = next(
+            tag for tag, conf in panel.text.tag_configs.items()
+            if conf.get("foreground") == DeathSnippetPanel.OPPONENT_NAME_COLOR
+        )
+        opponent_tagged_text = [text for _idx, text, tag in panel.text.inserts if tag == opponent_tag]
+
+        assert "Ash-Tusk Clan Sniper" in opponent_tagged_text
+        assert "GENERAL KORGAN" in opponent_tagged_text
+        assert "HYDROXIS" in opponent_tagged_text

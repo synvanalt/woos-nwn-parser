@@ -38,7 +38,25 @@ class DeathSnippetPanel(ttk.Frame):
 
     EMPTY_DROPDOWN_PLACEHOLDER = "Hurray! You have not died (yet)"
     EMPTY_TEXT_PLACEHOLDER = "Last 100 character-related log lines before death will appear here"
+    KILLED_NAME_COLOR = "#98FEFF"
+    OPPONENT_NAME_COLOR = "#CD98CC"
     _DAMAGE_KEYWORDS, _PAIR_PATTERNS, _TYPE_PATTERNS = _compile_damage_patterns()
+    _TIMESTAMP_PREFIX = re.compile(r"^\[[^]]+]\s*")
+    _ATTACKS_TARGET = re.compile(
+        r"(?:Off Hand\s*:\s*)?"
+        r"(?:[\w\s]+\s*:\s*)*"
+        r"(?:Attack Of Opportunity\s*:\s*)?"
+        r"(?P<attacker>.+?)\s+attacks\s+(?P<target>.+?)\s*:",
+        re.IGNORECASE,
+    )
+    _DAMAGES_TARGET = re.compile(
+        r"(?P<attacker>.+?)\s+damages\s+(?P<target>[^:]+?)\s*:",
+        re.IGNORECASE,
+    )
+    _KILLED_TARGET = re.compile(
+        r"(?P<killer>.+?)\s+killed\s+(?P<target>.+?)\s*$",
+        re.IGNORECASE,
+    )
 
     def __init__(self, parent: ttk.Notebook) -> None:
         super().__init__(parent, padding="10")
@@ -47,6 +65,7 @@ class DeathSnippetPanel(ttk.Frame):
         self.killed_by_var = tk.StringVar(value=self.EMPTY_DROPDOWN_PLACEHOLDER)
         self._text_tags_by_color: Dict[str, str] = {}
         self._last_render_key: Optional[tuple] = None
+        self._name_pattern_cache: Dict[str, re.Pattern[str]] = {}
 
         try:
             self.theme_font = font.nametofont("SunValleyBodyFont")
@@ -200,28 +219,148 @@ class DeathSnippetPanel(ttk.Frame):
     def _get_or_create_text_tag(self, color_key: str) -> str:
         """Get cached text tag for color key, configuring it once."""
         color = damage_type_to_color(color_key)
+        return self._get_or_create_color_tag(color, f"dt_{color_key.replace(' ', '_')}")
+
+    def _get_or_create_color_tag(self, color: str, name_prefix: str) -> str:
+        """Get cached text tag for a direct color value."""
         tag_name = self._text_tags_by_color.get(color)
         if tag_name is not None:
             return tag_name
-        tag_name = f"dt_{color_key.replace(' ', '_')}_{len(self._text_tags_by_color)}"
+        tag_name = f"{name_prefix}_{len(self._text_tags_by_color)}"
         self.text.tag_configure(tag_name, foreground=color)
         self._text_tags_by_color[color] = tag_name
         return tag_name
 
-    def _insert_colored_line(self, line: str) -> None:
+    @classmethod
+    def _strip_timestamp_prefix(cls, line: str) -> str:
+        """Remove leading timestamp prefix from a display line."""
+        return cls._TIMESTAMP_PREFIX.sub("", line, count=1)
+
+    def _get_name_pattern(self, name: str) -> re.Pattern[str]:
+        """Get cached exact token-boundary regex for a name."""
+        cached = self._name_pattern_cache.get(name)
+        if cached is not None:
+            return cached
+        pattern = re.compile(rf"(?<!\w){re.escape(name)}(?!\w)")
+        self._name_pattern_cache[name] = pattern
+        return pattern
+
+    @staticmethod
+    def _line_contains_any_name(line: str, names: set[str]) -> bool:
+        """Fast substring gate before regex matching names."""
+        if not names:
+            return False
+        lowered = line.lower()
+        return any(name.lower() in lowered for name in names if name)
+
+    def _collect_name_spans(
+        self,
+        line: str,
+        killed_name: str,
+        opponent_names: set[str],
+    ) -> list[tuple[int, int, str]]:
+        """Collect name color spans with killed/opponent precedence."""
+        spans: list[tuple[int, int, str]] = []
+
+        if killed_name:
+            killed_pattern = self._get_name_pattern(killed_name)
+            for match in killed_pattern.finditer(line):
+                spans.append((match.start(), match.end(), "killed"))
+
+        occupied = [(start, end) for start, end, _kind in spans]
+        if not self._line_contains_any_name(line, opponent_names):
+            return spans
+
+        for opponent in sorted(opponent_names, key=len, reverse=True):
+            if not opponent:
+                continue
+            pattern = self._get_name_pattern(opponent)
+            for match in pattern.finditer(line):
+                start, end = match.span(0)
+                if self._spans_overlap(start, end, occupied):
+                    continue
+                spans.append((start, end, "opponent"))
+                occupied.append((start, end))
+
+        return sorted(spans, key=lambda item: (item[0], item[1]))
+
+    @classmethod
+    def _normalize_name(cls, value: str) -> str:
+        """Trim and normalize a name string."""
+        return " ".join(value.strip().split())
+
+    @classmethod
+    def _extract_opponent_names(
+        cls,
+        lines: list[str],
+        killed_name: str,
+        killer_name: str,
+    ) -> set[str]:
+        """Extract opponents from lines that explicitly target the killed character."""
+        opponents: set[str] = set()
+        killed_fold = killed_name.casefold()
+
+        killer = cls._normalize_name(killer_name)
+        if killer and killer.casefold() != killed_fold:
+            opponents.add(killer)
+
+        for line in lines:
+            scan_line = cls._strip_timestamp_prefix(line)
+            for pattern, actor_group in (
+                (cls._ATTACKS_TARGET, "attacker"),
+                (cls._DAMAGES_TARGET, "attacker"),
+                (cls._KILLED_TARGET, "killer"),
+            ):
+                match = pattern.search(scan_line)
+                if not match:
+                    continue
+                target = cls._normalize_name(str(match.group("target")))
+                if target.casefold() != killed_fold:
+                    continue
+                actor = cls._normalize_name(str(match.group(actor_group)))
+                if actor and actor.casefold() != killed_fold:
+                    opponents.add(actor)
+
+        return opponents
+
+    def _insert_colored_line(
+        self,
+        line: str,
+        killed_name: str = "",
+        opponent_names: Optional[set[str]] = None,
+    ) -> None:
         """Insert one line with damage-type-aware coloring."""
-        spans = self._collect_color_spans(line)
+        opponent_names = opponent_names or set()
+        name_spans = self._collect_name_spans(line, killed_name, opponent_names)
+        damage_spans = self._collect_color_spans(line)
+
+        occupied_by_names = [(start, end) for start, end, _kind in name_spans]
+        spans: list[tuple[int, int, str, str]] = []
+        for start, end, kind in name_spans:
+            spans.append((start, end, kind, "name"))
+        for start, end, color_key in damage_spans:
+            if self._spans_overlap(start, end, occupied_by_names):
+                continue
+            spans.append((start, end, color_key, "damage"))
+        spans.sort(key=lambda item: (item[0], item[1]))
+
         if not spans:
             self.text.insert(tk.END, f"{line}\n")
             return
 
         cursor = 0
-        for start, end, color_key in spans:
+        for start, end, color_value, span_kind in spans:
             if start < cursor:
                 continue
             if start > cursor:
                 self.text.insert(tk.END, line[cursor:start])
-            tag_name = self._get_or_create_text_tag(color_key)
+            if span_kind == "name":
+                if color_value == "killed":
+                    tag_name = self._get_or_create_color_tag(self.KILLED_NAME_COLOR, "killed_name")
+                else:
+                    tag_name = self._get_or_create_color_tag(self.OPPONENT_NAME_COLOR, "opponent_name")
+            else:
+                tag_name = self._get_or_create_text_tag(color_value)
             self.text.insert(tk.END, line[start:end], tag_name)
             cursor = end
 
@@ -242,10 +381,14 @@ class DeathSnippetPanel(ttk.Frame):
         if render_key == self._last_render_key:
             return
 
-        lines = selected_event.get("lines", [])
+        lines = [self._sanitize_display_line(str(line)) for line in selected_event.get("lines", [])]
+        killed_name = self._normalize_name(str(selected_event.get("target", "")))
+        killer_name = self._normalize_name(str(selected_event.get("killer", "")))
+        opponent_names = self._extract_opponent_names(lines, killed_name, killer_name)
+
         self.text.delete("1.0", tk.END)
         for line in lines:
-            self._insert_colored_line(self._sanitize_display_line(str(line)))
+            self._insert_colored_line(line, killed_name=killed_name, opponent_names=opponent_names)
         self.text.see(tk.END)
         self._last_render_key = render_key
 
