@@ -50,6 +50,11 @@ class WoosNwnParserApp:
         self.directory_monitor: Optional[LogDirectoryMonitor] = None
         self.is_monitoring = False
         self.log_directory = get_default_log_directory()
+        self.monitor_thread: Optional[threading.Thread] = None
+        self.monitor_stop_event = threading.Event()
+        self._monitor_active_file_name = "-"
+        self._monitor_log_queue: queue.SimpleQueue[tuple[str, str]] = queue.SimpleQueue()
+        self._debug_monitor_enabled = False
 
         # Polling and refresh jobs
         self.polling_job = None
@@ -654,6 +659,8 @@ class WoosNwnParserApp:
 
     def start_monitoring(self) -> None:
         """Start monitoring the log directory for new log files."""
+        if self.is_monitoring:
+            return
         if not self.log_directory:
             messagebox.showwarning("No Directory", "Please select a log directory first.")
             self._set_monitoring_switch_ui(False)
@@ -668,9 +675,17 @@ class WoosNwnParserApp:
         # Setup directory monitor for polling
         self.directory_monitor = LogDirectoryMonitor(self.log_directory)
         self.directory_monitor.start_monitoring()
+        current_log_file = getattr(self.directory_monitor, "current_log_file", None)
+        self._monitor_active_file_name = (
+            current_log_file.name
+            if current_log_file is not None
+            else "-"
+        )
+        self._debug_monitor_enabled = bool(self.debug_panel.get_debug_enabled())
+        self._start_monitor_thread()
 
-        # Use manual polling with bounded parsing work per tick.
-        self.log_debug("Using polling mode with bounded line processing")
+        # Keep a lightweight UI ticker for status labels and queued debug logs.
+        self.log_debug("Using background monitor thread with bounded line processing")
         self.poll_log_file()
 
         self.log_debug("Monitoring started successfully")
@@ -679,6 +694,7 @@ class WoosNwnParserApp:
         """Pause monitoring the log directory."""
         self.is_monitoring = False
         self._set_monitoring_switch_ui(False)
+        self._stop_monitor_thread()
 
         # Cancel polling if active
         if self.polling_job:
@@ -726,35 +742,80 @@ class WoosNwnParserApp:
             ],
         )
 
+    def _enqueue_monitor_log(self, message: str, msg_type: str = "debug") -> None:
+        """Queue background-monitor log messages for UI-thread rendering."""
+        self._monitor_log_queue.put((str(message), str(msg_type)))
+
+    def _drain_monitor_logs(self, max_messages: int = 200) -> None:
+        """Flush queued monitor logs on Tk thread."""
+        drained = 0
+        while drained < max_messages:
+            try:
+                message, msg_type = self._monitor_log_queue.get_nowait()
+            except queue.Empty:
+                break
+            self.log_debug(message, msg_type)
+            drained += 1
+
+    def _start_monitor_thread(self) -> None:
+        """Start background thread that performs file I/O and parsing."""
+        if self.monitor_thread is not None and self.monitor_thread.is_alive():
+            return
+        self.monitor_stop_event.clear()
+        self.monitor_thread = threading.Thread(
+            target=self._monitor_loop,
+            name="nwn-log-monitor",
+            daemon=True,
+        )
+        self.monitor_thread.start()
+
+    def _stop_monitor_thread(self) -> None:
+        """Signal monitor thread to stop and join it quickly."""
+        self.monitor_stop_event.set()
+        thread = self.monitor_thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=1.0)
+        self.monitor_thread = None
+        self._monitor_active_file_name = "-"
+
+    def _monitor_loop(self) -> None:
+        """Worker loop that polls the active log file and parses new lines."""
+        while not self.monitor_stop_event.is_set():
+            directory_monitor = self.directory_monitor
+            if directory_monitor is None:
+                break
+
+            try:
+                has_more_pending = directory_monitor.read_new_lines(
+                    self.parser,
+                    self.data_queue,
+                    on_log_message=self._enqueue_monitor_log,
+                    debug_enabled=bool(self._debug_monitor_enabled),
+                )
+            except Exception as exc:
+                self._enqueue_monitor_log(f"I/O Error: {exc}", "error")
+                has_more_pending = False
+
+            current_file = directory_monitor.current_log_file
+            self._monitor_active_file_name = current_file.name if current_file is not None else "-"
+
+            if self.monitor_stop_event.is_set():
+                break
+            time.sleep(0.05 if has_more_pending else 0.5)
+
     def poll_log_file(self) -> None:
-        """Manually poll the log directory for changes."""
-        if self.is_monitoring and self.directory_monitor:
-            read_more_result = self.directory_monitor.read_new_lines(
-                self.parser,
-                self.data_queue,
-                on_log_message=self.log_debug,
-                debug_enabled=self.debug_panel.get_debug_enabled(),
-            )
-            has_more_pending = read_more_result if isinstance(read_more_result, bool) else False
-            # Update the active file label
+        """Lightweight UI tick for monitor status updates."""
+        if self.is_monitoring:
+            self._drain_monitor_logs()
             self.update_active_file_label()
-            # Backward-compatible dirty check for target refresh behavior.
-            current_version = self.data_store.version
-            if current_version != self._last_refresh_version:
-                self.refresh_targets()
-                self._last_refresh_version = current_version
-            # If backlog exists, poll aggressively; otherwise use a lighter cadence.
-            delay_ms = 50 if has_more_pending else 500
-            self.polling_job = self.root.after(delay_ms, self.poll_log_file)
+            self.polling_job = self.root.after(250, self.poll_log_file)
 
     def update_active_file_label(self) -> None:
         """Update the active file label to show which log file is being monitored."""
         if self.directory_monitor:
-            active_file = self.directory_monitor.get_active_log_file()
-            if active_file:
-                self.active_file_text.set(value=active_file.name)
-            else:
-                self.active_file_text.set(value="-")
+            self.active_file_text.set(value=self._monitor_active_file_name)
+        else:
+            self.active_file_text.set(value="-")
 
     def reset_data(self) -> None:
         """Clear all collected data."""
@@ -1080,6 +1141,7 @@ class WoosNwnParserApp:
     def _on_debug_toggle(self, *args) -> None:
         """Handle debug mode toggle from the debug panel."""
         self.debug_mode = bool(self.debug_panel.debug_mode_var.get())
+        self._debug_monitor_enabled = self.debug_mode
         self.log_debug(f"Debug output {'enabled' if self.debug_mode else 'disabled'}")
 
     def _on_notebook_click(self, event: tk.Event) -> None:
