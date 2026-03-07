@@ -52,6 +52,7 @@ class WoosNwnParserApp:
         self.log_directory = get_default_log_directory()
         self.monitor_thread: Optional[threading.Thread] = None
         self.monitor_stop_event = threading.Event()
+        self._monitor_restart_job = None
         self._monitor_active_file_name = "-"
         self._monitor_log_queue: queue.SimpleQueue[tuple[str, str]] = queue.SimpleQueue()
         self._debug_monitor_enabled = False
@@ -682,7 +683,13 @@ class WoosNwnParserApp:
             else "-"
         )
         self._debug_monitor_enabled = bool(self.debug_panel.get_debug_enabled())
-        self._start_monitor_thread()
+        started = self._start_monitor_thread()
+        if not started:
+            self.log_debug(
+                "Previous monitor thread is still shutting down; retrying start shortly",
+                "warning",
+            )
+            self._schedule_monitor_restart()
 
         # Keep a lightweight UI ticker for status labels and queued debug logs.
         self.log_debug("Using background monitor thread with bounded line processing")
@@ -695,6 +702,10 @@ class WoosNwnParserApp:
         self.is_monitoring = False
         self._set_monitoring_switch_ui(False)
         self._stop_monitor_thread()
+        restart_job = getattr(self, "_monitor_restart_job", None)
+        if restart_job is not None:
+            self.root.after_cancel(restart_job)
+            self._monitor_restart_job = None
 
         # Cancel polling if active
         if self.polling_job:
@@ -757,10 +768,12 @@ class WoosNwnParserApp:
             self.log_debug(message, msg_type)
             drained += 1
 
-    def _start_monitor_thread(self) -> None:
+    def _start_monitor_thread(self) -> bool:
         """Start background thread that performs file I/O and parsing."""
-        if self.monitor_thread is not None and self.monitor_thread.is_alive():
-            return
+        thread = self.monitor_thread
+        if thread is not None and thread.is_alive():
+            # If stop is already requested, wait for the shutdown path to finish.
+            return False
         self.monitor_stop_event.clear()
         self.monitor_thread = threading.Thread(
             target=self._monitor_loop,
@@ -768,6 +781,7 @@ class WoosNwnParserApp:
             daemon=True,
         )
         self.monitor_thread.start()
+        return True
 
     def _stop_monitor_thread(self) -> None:
         """Signal monitor thread to stop and join it quickly."""
@@ -775,33 +789,58 @@ class WoosNwnParserApp:
         thread = self.monitor_thread
         if thread is not None and thread.is_alive():
             thread.join(timeout=1.0)
-        self.monitor_thread = None
+        if thread is not None and thread.is_alive():
+            # Keep a reference while shutdown is still in progress to prevent a second worker.
+            self.log_debug("Monitor thread is still shutting down; restart deferred", "warning")
+        else:
+            self.monitor_thread = None
         self._monitor_active_file_name = "-"
+
+    def _schedule_monitor_restart(self) -> None:
+        """Retry starting monitoring thread after prior worker shutdown completes."""
+        if getattr(self, "_monitor_restart_job", None) is not None:
+            return
+        self._monitor_restart_job = self.root.after(100, self._retry_monitor_restart)
+
+    def _retry_monitor_restart(self) -> None:
+        """Attempt deferred monitor thread start if app is still monitoring."""
+        self._monitor_restart_job = None
+        if not self.is_monitoring:
+            return
+        if self._start_monitor_thread():
+            self.log_debug("Monitor thread restarted after shutdown")
+            return
+        self._schedule_monitor_restart()
 
     def _monitor_loop(self) -> None:
         """Worker loop that polls the active log file and parses new lines."""
-        while not self.monitor_stop_event.is_set():
-            directory_monitor = self.directory_monitor
-            if directory_monitor is None:
-                break
+        current_thread = threading.current_thread()
+        try:
+            while not self.monitor_stop_event.is_set():
+                directory_monitor = self.directory_monitor
+                if directory_monitor is None:
+                    break
 
-            try:
-                has_more_pending = directory_monitor.read_new_lines(
-                    self.parser,
-                    self.data_queue,
-                    on_log_message=self._enqueue_monitor_log,
-                    debug_enabled=bool(self._debug_monitor_enabled),
-                )
-            except Exception as exc:
-                self._enqueue_monitor_log(f"I/O Error: {exc}", "error")
-                has_more_pending = False
+                try:
+                    has_more_pending = directory_monitor.read_new_lines(
+                        self.parser,
+                        self.data_queue,
+                        on_log_message=self._enqueue_monitor_log,
+                        debug_enabled=bool(self._debug_monitor_enabled),
+                    )
+                except Exception as exc:
+                    self._enqueue_monitor_log(f"I/O Error: {exc}", "error")
+                    has_more_pending = False
 
-            current_file = directory_monitor.current_log_file
-            self._monitor_active_file_name = current_file.name if current_file is not None else "-"
+                current_file = directory_monitor.current_log_file
+                self._monitor_active_file_name = current_file.name if current_file is not None else "-"
 
-            if self.monitor_stop_event.is_set():
-                break
-            time.sleep(0.05 if has_more_pending else 0.5)
+                if self.monitor_stop_event.is_set():
+                    break
+                time.sleep(0.05 if has_more_pending else 0.5)
+        finally:
+            if self.monitor_thread is current_thread:
+                self.monitor_thread = None
 
     def poll_log_file(self) -> None:
         """Lightweight UI tick for monitor status updates."""
