@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- App now handles heavy game activity more smoothly by processing updates in smaller batches
 - Death Snippets now support server-agnostic death detection:
   - Auto-identify the player's character from game whisper chat: `[Whisper] wooparseme` (can also be entered manually)
   - When character is known, deaths are tracked via `<Opponent> killed <CharacterName>` (exact match)
@@ -12,6 +13,7 @@
 - Death Snippets panel now includes a `Line Wrap` checkbox (default ON) to toggle wrapped vs. unwrapped log-line display
 
 ### Fixed
+- Monitor module edge-case handling
 - Death Snippets no-wrap horizontal scrollbar now appears reliably and allows scrolling fully to the right regardless of which lines are currently in view
 - Death Snippets wrap toggle now preserves the current viewing position when switching line-wrap mode (no forced jump to bottom)
 - Treeview numeric sorting now treats `"-"` and empty values as lower than `0` in both sort directions (ascending: top, descending: bottom)

@@ -195,12 +195,13 @@ woos-nwn-parser/
 - Watches NWN logs directory for changes
 - Handles log rotation (nwclientLog1.txt → nwclientLog2.txt, etc.)
 - Detects file truncation from game restarts
+- Uses bounded per-poll parsing to avoid long blocking reads when backlog grows
 
 **QueueProcessor** (`services/queue_processor.py`)
 - Routes parsed events to batched handlers and deduplicated UI refresh callbacks
 - Buffers damage for immunity matching
 - Manages cleanup of stale immunity queue entries
-- Forwards death snippet events to UI via callback
+- Carries death snippet and character-identification events in the drain result
 
 **DPSCalculationService** (`services/dps_service.py`)
 - Calculates DPS with configurable time tracking modes
@@ -328,3 +329,4 @@ pyinstaller>=6.17.0		# For building executable
 - **Repository**: [GitHub](https://github.com/yourusername/woos-nwn-parser)
 - **Issues**: [Bug Reports](https://github.com/yourusername/woos-nwn-parser/issues)
 - **Releases**: [Downloads](https://github.com/yourusername/woos-nwn-parser/releases)
+
