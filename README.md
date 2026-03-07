@@ -91,6 +91,17 @@ The parser works out-of-the-box with default NWN installations. If needed:
 
 Both modes use the same last timestamp (the most recent damage dealt by any character). The only difference is the start time used for calculations.
 
+### Death Snippets Panel
+
+- **Server-agnostic death tracking**
+  - Auto-identify your character by whispering `wooparseme` in game
+  - Once identified, death snippets are captured from `<Opponent> killed <CharacterName>`
+- **Fallback matching**
+  - If character name is unknown, `Fallback Log Line` is used as a trigger (editable in the panel)
+- **Selection and readability**
+  - `Killed by:` selector shows `[HH:MM:SS] Killer`
+  - Placeholder text is muted when no deaths are recorded
+
 ### Reading Target Statistics
 
 **AC (Armor Class)**
@@ -203,8 +214,8 @@ woos-nwn-parser/
 
 **DeathSnippetPanel** (`ui/widgets/death_snippet_panel.py`)
 - Displays death-context snippets with a `Killed by:` dropdown (newest first)
-- Provides placeholder and clear-state UI for death snippet history
-- Colors damage type tokens and adjacent damage values using game color palette
+- Supports character auto-identification from whisper token and runtime fallback log-line configuration
+- Colors character names, damage type tokens and adjacent damage values using game color palette
 
 ## Development
 
