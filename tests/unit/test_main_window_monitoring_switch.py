@@ -1,6 +1,7 @@
 """Unit tests for monitoring switch behavior in the main window."""
 
 import queue
+import threading
 import tkinter as tk
 from tkinter import ttk
 from unittest.mock import Mock
@@ -49,6 +50,14 @@ def app_shell(shared_tk_root):
     app.data_store.version = 0
     app._last_refresh_version = 0
     app.refresh_targets = Mock()
+    app.monitor_thread = None
+    app.monitor_stop_event = threading.Event()
+    app._monitor_active_file_name = "-"
+    app._monitor_log_queue = queue.SimpleQueue()
+    app._debug_monitor_enabled = False
+    app._start_monitor_thread = Mock()
+    app._stop_monitor_thread = Mock()
+    app._drain_monitor_logs = Mock()
 
     app.active_file_text = tk.StringVar(master=shared_tk_root, value="-")
     app.monitoring_var = tk.BooleanVar(master=shared_tk_root, value=False)
@@ -103,6 +112,7 @@ class TestMonitoringSwitch:
             def __init__(self, directory):
                 self.directory = directory
                 self.started = False
+                self.current_log_file = None
 
             def start_monitoring(self):
                 self.started = True
@@ -123,6 +133,7 @@ class TestMonitoringSwitch:
         assert app_shell.directory_monitor is not None
         assert app_shell.directory_monitor.started is True
         app_shell.dps_panel.refresh.assert_called_once()
+        app_shell._start_monitor_thread.assert_called_once()
         app_shell.root.after.assert_called_once()
         assert app_shell.polling_job == "poll-job-id"
 
@@ -140,6 +151,7 @@ class TestMonitoringSwitch:
         assert app_shell.monitoring_text.get() == "Paused"
         assert app_shell.polling_job is None
         assert app_shell.dps_refresh_job is None
+        app_shell._stop_monitor_thread.assert_called_once()
         app_shell.root.after_cancel.assert_any_call("poll-job-id")
         app_shell.root.after_cancel.assert_any_call("dps-job-id")
 

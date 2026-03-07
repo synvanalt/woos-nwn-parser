@@ -44,6 +44,14 @@ def app_shell(shared_tk_root) -> WoosNwnParserApp:
     app._last_refresh_version = 0
     app.data_queue = queue.Queue()
     app.parser = Mock()
+    app.monitor_thread = None
+    app.monitor_stop_event = threading.Event()
+    app._monitor_active_file_name = "-"
+    app._monitor_log_queue = queue.SimpleQueue()
+    app._debug_monitor_enabled = False
+    app._drain_monitor_logs = Mock()
+    app._start_monitor_thread = Mock()
+    app._stop_monitor_thread = Mock()
 
     app.debug_panel = Mock()
     app.debug_panel.get_debug_enabled.return_value = False
@@ -101,36 +109,38 @@ def test_browse_directory_logs_found_files(app_shell, monkeypatch) -> None:
     assert "Found 1 log file" in app_shell.log_debug.call_args[0][0]
 
 
-def test_poll_log_file_refreshes_only_when_version_changes(app_shell) -> None:
+def test_poll_log_file_runs_ui_tick_when_monitoring(app_shell) -> None:
     app_shell.is_monitoring = True
-    app_shell.directory_monitor = Mock()
-    app_shell.data_store.version = 5
-    app_shell._last_refresh_version = 4
+    app_shell.directory_monitor = object()
 
     app_shell.poll_log_file()
 
-    app_shell.directory_monitor.read_new_lines.assert_called_once_with(
-        app_shell.parser,
-        app_shell.data_queue,
-        on_log_message=app_shell.log_debug,
-        debug_enabled=False,
-    )
-    app_shell.refresh_targets.assert_called_once()
-    assert app_shell._last_refresh_version == 5
-    app_shell.root.after.assert_called_once_with(500, app_shell.poll_log_file)
+    app_shell._drain_monitor_logs.assert_called_once()
+    app_shell.update_active_file_label.assert_called_once()
+    app_shell.root.after.assert_called_once_with(250, app_shell.poll_log_file)
     assert app_shell.polling_job == "after-job-id"
 
 
-def test_poll_log_file_skips_refresh_when_version_unchanged(app_shell) -> None:
-    app_shell.is_monitoring = True
-    app_shell.directory_monitor = Mock()
-    app_shell.data_store.version = 7
-    app_shell._last_refresh_version = 7
+def test_poll_log_file_skips_when_not_monitoring(app_shell) -> None:
+    app_shell.is_monitoring = False
+    app_shell.directory_monitor = object()
 
     app_shell.poll_log_file()
 
-    app_shell.refresh_targets.assert_not_called()
-    app_shell.root.after.assert_called_once_with(500, app_shell.poll_log_file)
+    app_shell._drain_monitor_logs.assert_not_called()
+    app_shell.update_active_file_label.assert_not_called()
+    app_shell.root.after.assert_not_called()
+
+
+def test_poll_log_file_handles_missing_monitor(app_shell) -> None:
+    app_shell.is_monitoring = True
+    app_shell.directory_monitor = None
+
+    app_shell.poll_log_file()
+
+    app_shell._drain_monitor_logs.assert_called_once()
+    app_shell.update_active_file_label.assert_called_once()
+    app_shell.root.after.assert_called_once_with(250, app_shell.poll_log_file)
 
 
 def test_poll_import_progress_schedules_when_worker_not_done(app_shell) -> None:

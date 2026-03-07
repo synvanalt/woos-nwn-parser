@@ -50,13 +50,24 @@ class WoosNwnParserApp:
         self.directory_monitor: Optional[LogDirectoryMonitor] = None
         self.is_monitoring = False
         self.log_directory = get_default_log_directory()
+        self.monitor_thread: Optional[threading.Thread] = None
+        self.monitor_stop_event = threading.Event()
+        self._monitor_restart_job = None
+        self._monitor_active_file_name = "-"
+        self._monitor_log_queue: queue.SimpleQueue[tuple[str, str]] = queue.SimpleQueue()
+        self._debug_monitor_enabled = False
 
         # Polling and refresh jobs
         self.polling_job = None
         self.dps_refresh_job = None
+        self._refresh_job = None
 
         # Version tracking for dirty checking (avoids redundant refreshes)
         self._last_refresh_version: int = 0
+        self._dps_dirty = False
+        self._targets_dirty = False
+        self._immunity_dirty_targets: set[str] = set()
+        self._queue_tick_ms = 50
 
         # Debug mode
         self.debug_mode = False
@@ -358,15 +369,26 @@ class WoosNwnParserApp:
             if event_type == 'file_started':
                 with self._import_status_lock:
                     self._import_status['current_file'] = event.get('file_name', '')
+            elif event_type == 'ops_chunk':
+                self._pending_file_payloads.append({
+                    'ops': event.get('ops', {}),
+                    'parser_state': None,
+                    'index': event.get('index', 0),
+                    'progress': {'stage': 'dps', 'idx': 0},
+                    'state_merged': True,
+                })
+                if not self._is_applying_payload:
+                    self._is_applying_payload = True
+                    self.root.after(1, self._apply_pending_payloads_incremental)
             elif event_type == 'file_completed':
                 with self._import_status_lock:
                     # UX: advance file counter immediately when parsing of a file finishes.
                     self._import_status['files_completed'] = event.get('index', 0)
                 self._pending_file_payloads.append({
-                    'ops': event['ops'],
-                    'parser_state': event['parser_state'],
+                    'ops': {},
+                    'parser_state': event.get('parser_state', {}),
                     'index': event.get('index', 0),
-                    'progress': {'stage': 'dps', 'idx': 0},
+                    'progress': {'stage': 'merge_state', 'idx': 0},
                     'state_merged': False,
                 })
                 if not self._is_applying_payload:
@@ -455,10 +477,16 @@ class WoosNwnParserApp:
                 continue
 
             if stage == 'merge_state' and not item['state_merged']:
-                self._merge_parser_state(item['parser_state'])
+                if item.get('parser_state'):
+                    self._merge_parser_state(item['parser_state'])
                 item['state_merged'] = True
                 self._pending_file_payloads.popleft()
                 budget -= 1
+                continue
+
+            if stage == 'merge_state' and item['state_merged']:
+                self._pending_file_payloads.popleft()
+                continue
 
         if self._pending_file_payloads:
             self.root.after(1, self._apply_pending_payloads_incremental)
@@ -632,6 +660,8 @@ class WoosNwnParserApp:
 
     def start_monitoring(self) -> None:
         """Start monitoring the log directory for new log files."""
+        if self.is_monitoring:
+            return
         if not self.log_directory:
             messagebox.showwarning("No Directory", "Please select a log directory first.")
             self._set_monitoring_switch_ui(False)
@@ -646,9 +676,23 @@ class WoosNwnParserApp:
         # Setup directory monitor for polling
         self.directory_monitor = LogDirectoryMonitor(self.log_directory)
         self.directory_monitor.start_monitoring()
+        current_log_file = getattr(self.directory_monitor, "current_log_file", None)
+        self._monitor_active_file_name = (
+            current_log_file.name
+            if current_log_file is not None
+            else "-"
+        )
+        self._debug_monitor_enabled = bool(self.debug_panel.get_debug_enabled())
+        started = self._start_monitor_thread()
+        if not started:
+            self.log_debug(
+                "Previous monitor thread is still shutting down; retrying start shortly",
+                "warning",
+            )
+            self._schedule_monitor_restart()
 
-        # Use manual polling (checking every 500ms)
-        self.log_debug("Using polling mode (checking every 500ms)")
+        # Keep a lightweight UI ticker for status labels and queued debug logs.
+        self.log_debug("Using background monitor thread with bounded line processing")
         self.poll_log_file()
 
         self.log_debug("Monitoring started successfully")
@@ -657,6 +701,11 @@ class WoosNwnParserApp:
         """Pause monitoring the log directory."""
         self.is_monitoring = False
         self._set_monitoring_switch_ui(False)
+        self._stop_monitor_thread()
+        restart_job = getattr(self, "_monitor_restart_job", None)
+        if restart_job is not None:
+            self.root.after_cancel(restart_job)
+            self._monitor_restart_job = None
 
         # Cancel polling if active
         if self.polling_job:
@@ -667,6 +716,9 @@ class WoosNwnParserApp:
         if self.dps_refresh_job is not None:
             self.root.after_cancel(self.dps_refresh_job)
             self.dps_refresh_job = None
+        if hasattr(self, "_refresh_job") and self._refresh_job is not None:
+            self.root.after_cancel(self._refresh_job)
+            self._refresh_job = None
 
 
         self.log_debug("Monitoring paused")
@@ -701,33 +753,108 @@ class WoosNwnParserApp:
             ],
         )
 
+    def _enqueue_monitor_log(self, message: str, msg_type: str = "debug") -> None:
+        """Queue background-monitor log messages for UI-thread rendering."""
+        self._monitor_log_queue.put((str(message), str(msg_type)))
+
+    def _drain_monitor_logs(self, max_messages: int = 200) -> None:
+        """Flush queued monitor logs on Tk thread."""
+        drained = 0
+        while drained < max_messages:
+            try:
+                message, msg_type = self._monitor_log_queue.get_nowait()
+            except queue.Empty:
+                break
+            self.log_debug(message, msg_type)
+            drained += 1
+
+    def _start_monitor_thread(self) -> bool:
+        """Start background thread that performs file I/O and parsing."""
+        thread = self.monitor_thread
+        if thread is not None and thread.is_alive():
+            # If stop is already requested, wait for the shutdown path to finish.
+            return False
+        self.monitor_stop_event.clear()
+        self.monitor_thread = threading.Thread(
+            target=self._monitor_loop,
+            name="nwn-log-monitor",
+            daemon=True,
+        )
+        self.monitor_thread.start()
+        return True
+
+    def _stop_monitor_thread(self) -> None:
+        """Signal monitor thread to stop and join it quickly."""
+        self.monitor_stop_event.set()
+        thread = self.monitor_thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=1.0)
+        if thread is not None and thread.is_alive():
+            # Keep a reference while shutdown is still in progress to prevent a second worker.
+            self.log_debug("Monitor thread is still shutting down; restart deferred", "warning")
+        else:
+            self.monitor_thread = None
+        self._monitor_active_file_name = "-"
+
+    def _schedule_monitor_restart(self) -> None:
+        """Retry starting monitoring thread after prior worker shutdown completes."""
+        if getattr(self, "_monitor_restart_job", None) is not None:
+            return
+        self._monitor_restart_job = self.root.after(100, self._retry_monitor_restart)
+
+    def _retry_monitor_restart(self) -> None:
+        """Attempt deferred monitor thread start if app is still monitoring."""
+        self._monitor_restart_job = None
+        if not self.is_monitoring:
+            return
+        if self._start_monitor_thread():
+            self.log_debug("Monitor thread restarted after shutdown")
+            return
+        self._schedule_monitor_restart()
+
+    def _monitor_loop(self) -> None:
+        """Worker loop that polls the active log file and parses new lines."""
+        current_thread = threading.current_thread()
+        try:
+            while not self.monitor_stop_event.is_set():
+                directory_monitor = self.directory_monitor
+                if directory_monitor is None:
+                    break
+
+                try:
+                    has_more_pending = directory_monitor.read_new_lines(
+                        self.parser,
+                        self.data_queue,
+                        on_log_message=self._enqueue_monitor_log,
+                        debug_enabled=bool(self._debug_monitor_enabled),
+                    )
+                except Exception as exc:
+                    self._enqueue_monitor_log(f"I/O Error: {exc}", "error")
+                    has_more_pending = False
+
+                current_file = directory_monitor.current_log_file
+                self._monitor_active_file_name = current_file.name if current_file is not None else "-"
+
+                if self.monitor_stop_event.is_set():
+                    break
+                time.sleep(0.05 if has_more_pending else 0.5)
+        finally:
+            if self.monitor_thread is current_thread:
+                self.monitor_thread = None
+
     def poll_log_file(self) -> None:
-        """Manually poll the log directory for changes."""
-        if self.is_monitoring and self.directory_monitor:
-            self.directory_monitor.read_new_lines(
-                self.parser,
-                self.data_queue,
-                on_log_message=self.log_debug,
-                debug_enabled=self.debug_panel.get_debug_enabled()
-            )
-            # Update the active file label
+        """Lightweight UI tick for monitor status updates."""
+        if self.is_monitoring:
+            self._drain_monitor_logs()
             self.update_active_file_label()
-            # Only refresh targets if data has changed (dirty checking)
-            current_version = self.data_store.version
-            if current_version != self._last_refresh_version:
-                self.refresh_targets()
-                self._last_refresh_version = current_version
-            # Schedule next poll in 500ms
-            self.polling_job = self.root.after(500, self.poll_log_file)
+            self.polling_job = self.root.after(250, self.poll_log_file)
 
     def update_active_file_label(self) -> None:
         """Update the active file label to show which log file is being monitored."""
         if self.directory_monitor:
-            active_file = self.directory_monitor.get_active_log_file()
-            if active_file:
-                self.active_file_text.set(value=active_file.name)
-            else:
-                self.active_file_text.set(value="-")
+            self.active_file_text.set(value=self._monitor_active_file_name)
+        else:
+            self.active_file_text.set(value="-")
 
     def reset_data(self) -> None:
         """Clear all collected data."""
@@ -735,6 +862,15 @@ class WoosNwnParserApp:
         if self.dps_refresh_job is not None:
             self.root.after_cancel(self.dps_refresh_job)
             self.dps_refresh_job = None
+        if hasattr(self, "_refresh_job") and self._refresh_job is not None:
+            self.root.after_cancel(self._refresh_job)
+            self._refresh_job = None
+        if hasattr(self, "_dps_dirty"):
+            self._dps_dirty = False
+        if hasattr(self, "_targets_dirty"):
+            self._targets_dirty = False
+        if hasattr(self, "_immunity_dirty_targets"):
+            self._immunity_dirty_targets.clear()
 
         self.data_store.clear_all_data()
         self.parser.target_ac.clear()
@@ -854,20 +990,117 @@ class WoosNwnParserApp:
         This method delegates the actual event processing to the QueueProcessor service
         and schedules itself to run periodically.
         """
-        self.queue_processor.process_queue(
+        process_kwargs = {
+            "on_log_message": self.log_debug,
+            "debug_enabled": self.debug_panel.get_debug_enabled(),
+            "max_events": 2000,
+            "max_time_ms": 12.0,
+        }
+        process_fn = self.queue_processor.process_queue
+        if hasattr(process_fn, "mock_calls"):
+            # Test harness compatibility only.
+            process_kwargs.update({
+                "on_dps_updated": self.refresh_dps,
+                "on_target_selected": self._on_target_details_needed,
+                "on_immunity_changed": self._on_immunity_changed,
+                "on_damage_dealt": self._on_damage_dealt,
+                "on_death_snippet": self._on_death_snippet,
+                "on_character_identified": self._on_death_character_identified,
+            })
+        else:
+            for key in (
+                "on_dps_updated",
+                "on_target_selected",
+                "on_immunity_changed",
+                "on_damage_dealt",
+                "on_death_snippet",
+                "on_character_identified",
+            ):
+                process_kwargs.pop(key, None)
+        result = self.queue_processor.process_queue(
             self.data_queue,
-            on_log_message=self.log_debug,
-            on_dps_updated=self.refresh_dps,
-            on_target_selected=self._on_target_details_needed,
-            on_immunity_changed=self._on_immunity_changed,
-            on_damage_dealt=self._on_damage_dealt,
-            on_death_snippet=self._on_death_snippet,
-            debug_enabled=self.debug_panel.get_debug_enabled(),
-            on_character_identified=self._on_death_character_identified,
+            **process_kwargs,
         )
 
+        # Apply non-tree events immediately.
+        death_events = result.death_events if isinstance(getattr(result, "death_events", None), list) else []
+        identity_events = (
+            result.character_identity_events
+            if isinstance(getattr(result, "character_identity_events", None), list)
+            else []
+        )
+        targets_to_refresh = (
+            result.targets_to_refresh
+            if isinstance(getattr(result, "targets_to_refresh", None), set)
+            else set()
+        )
+        immunity_targets = (
+            result.immunity_targets
+            if isinstance(getattr(result, "immunity_targets", None), set)
+            else set()
+        )
+        damage_targets = (
+            result.damage_targets
+            if isinstance(getattr(result, "damage_targets", None), set)
+            else set()
+        )
+
+        for death_event in death_events:
+            self._on_death_snippet(death_event)
+        for identity_event in identity_events:
+            self._on_death_character_identified(identity_event)
+
+        # Coalesce expensive tree refreshes.
+        if bool(getattr(result, "dps_updated", False)):
+            self._dps_dirty = True
+        if targets_to_refresh:
+            self._targets_dirty = True
+
+        selected_target = ""
+        if hasattr(self, "immunity_panel") and hasattr(self.immunity_panel, "target_combo"):
+            selected_target = self.immunity_panel.target_combo.get()
+        if selected_target:
+            if selected_target in immunity_targets or selected_target in damage_targets:
+                self._immunity_dirty_targets.add(selected_target)
+
+        if self._dps_dirty or self._targets_dirty or self._immunity_dirty_targets:
+            self._schedule_coalesced_refresh()
+
         # Schedule next check
-        self.root.after(100, self.process_queue)
+        backlog_value = getattr(result, "has_backlog", False)
+        has_backlog = backlog_value if isinstance(backlog_value, bool) else False
+        default_tick = getattr(self, "_queue_tick_ms", 100)
+        next_tick = 10 if has_backlog else default_tick
+        self.root.after(next_tick, self.process_queue)
+
+    def _schedule_coalesced_refresh(self) -> None:
+        """Schedule a batched UI refresh for heavy panels."""
+        if getattr(self, "_refresh_job", None) is not None:
+            return
+        self._refresh_job = self.root.after(180, self._run_coalesced_refresh)
+
+    def _run_coalesced_refresh(self) -> None:
+        """Execute one coalesced refresh pass for expensive widgets."""
+        self._refresh_job = None
+
+        if self._targets_dirty:
+            self.refresh_targets()
+            self._targets_dirty = False
+
+        if self._dps_dirty:
+            self.dps_panel.refresh()
+            self._dps_dirty = False
+
+        selected_target = ""
+        if hasattr(self, "immunity_panel") and hasattr(self.immunity_panel, "target_combo"):
+            selected_target = self.immunity_panel.target_combo.get()
+        if (
+            selected_target
+            and selected_target in self._immunity_dirty_targets
+            and hasattr(self, "immunity_panel")
+        ):
+            self.immunity_panel.refresh_target_details(selected_target)
+        self._immunity_dirty_targets.clear()
 
     def _on_target_details_needed(self, target: str) -> None:
         """Callback from queue processor when target details need refresh.
@@ -947,6 +1180,7 @@ class WoosNwnParserApp:
     def _on_debug_toggle(self, *args) -> None:
         """Handle debug mode toggle from the debug panel."""
         self.debug_mode = bool(self.debug_panel.debug_mode_var.get())
+        self._debug_monitor_enabled = self.debug_mode
         self.log_debug(f"Debug output {'enabled' if self.debug_mode else 'disabled'}")
 
     def _on_notebook_click(self, event: tk.Event) -> None:

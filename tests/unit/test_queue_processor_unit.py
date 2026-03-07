@@ -1,4 +1,4 @@
-"""Unit tests for QueueProcessor.
+﻿"""Unit tests for QueueProcessor.
 
 Tests event processing, immunity queuing, damage buffering,
 attack handling, and cleanup methods.
@@ -12,6 +12,45 @@ from unittest.mock import Mock, call
 from app.services.queue_processor import QueueProcessor
 from app.storage import DataStore
 from app.parser import LogParser
+
+
+def _process(
+    processor: QueueProcessor,
+    data_queue: queue.Queue,
+    on_log_message: Mock,
+    on_dps_updated: Mock | None = None,
+    on_target_selected: Mock | None = None,
+    on_immunity_changed: Mock | None = None,
+    on_damage_dealt: Mock | None = None,
+    *,
+    on_death_snippet: Mock | None = None,
+    on_character_identified: Mock | None = None,
+    debug_enabled: bool = False,
+) -> object:
+    """Compatibility test helper that maps legacy callback-style calls to QueueDrainResult."""
+    result = processor.process_queue(
+        data_queue,
+        on_log_message,
+        debug_enabled=debug_enabled,
+    )
+    if on_dps_updated and result.dps_updated:
+        on_dps_updated()
+    if on_target_selected:
+        for target in result.targets_to_refresh:
+            on_target_selected(target)
+    if on_immunity_changed:
+        for target in result.immunity_targets:
+            on_immunity_changed(target)
+    if on_damage_dealt:
+        for target in result.damage_targets:
+            on_damage_dealt(target)
+    if on_death_snippet:
+        for event in result.death_events:
+            on_death_snippet(event)
+    if on_character_identified:
+        for event in result.character_identity_events:
+            on_character_identified(event)
+    return result
 
 
 class TestQueueProcessorInitialization:
@@ -52,7 +91,7 @@ class TestEventRouting:
         on_target_selected = Mock()
         on_immunity_changed = Mock()
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             on_log_message,
             on_dps_updated,
@@ -87,7 +126,7 @@ class TestEventRouting:
         on_target_selected = Mock()
         on_immunity_changed = Mock()
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             on_log_message,
             on_dps_updated,
@@ -119,7 +158,7 @@ class TestEventRouting:
         on_target_selected = Mock()
         on_immunity_changed = Mock()
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             on_log_message,
             on_dps_updated,
@@ -153,7 +192,7 @@ class TestEventRouting:
         on_target_selected = Mock()
         on_immunity_changed = Mock()
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             on_log_message,
             on_dps_updated,
@@ -187,7 +226,7 @@ class TestEventRouting:
         on_target_selected = Mock()
         on_immunity_changed = Mock()
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             on_log_message,
             on_dps_updated,
@@ -216,7 +255,7 @@ class TestEventRouting:
         on_target_selected = Mock()
         on_immunity_changed = Mock()
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             on_log_message,
             on_dps_updated,
@@ -246,7 +285,7 @@ class TestDamageBuffering:
 
         data_queue.put(damage_event)
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock()
         )
@@ -283,7 +322,7 @@ class TestDamageBuffering:
         data_queue.put(damage_event1)
         data_queue.put(damage_event2)
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock()
         )
@@ -316,7 +355,7 @@ class TestDamageBuffering:
         data_queue.put(damage_event1)
         data_queue.put(damage_event2)
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock()
         )
@@ -344,7 +383,7 @@ class TestImmunityQueuing:
 
         data_queue.put(immunity_event)
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock()
         )
@@ -385,7 +424,7 @@ class TestImmunityQueuing:
         data_queue.put(damage_event)
         data_queue.put(immunity_event)
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock()
         )
@@ -424,7 +463,7 @@ class TestImmunityQueuing:
         data_queue.put(damage_event)
         data_queue.put(immunity_event)
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock()
         )
@@ -464,7 +503,7 @@ class TestImmunityQueuing:
 
         on_immunity_changed = Mock()
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), on_immunity_changed
         )
@@ -503,7 +542,7 @@ class TestImmunityQueuing:
         data_queue.put(immunity1)
         data_queue.put(immunity2)
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock()
         )
@@ -583,7 +622,7 @@ class TestCleanupMethods:
         }
         data_queue.put(damage_event)
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock()
         )
@@ -630,7 +669,7 @@ class TestDPSTracking:
 
         data_queue.put(damage_event)
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock()
         )
@@ -654,7 +693,7 @@ class TestDPSTracking:
 
         data_queue.put(damage_event)
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock()
         )
@@ -683,7 +722,7 @@ class TestCallbacks:
 
         on_dps_updated = Mock()
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), on_dps_updated, Mock(), Mock()
         )
@@ -709,7 +748,7 @@ class TestCallbacks:
 
         data_queue.put(immunity_event)
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock()
         )
@@ -728,7 +767,7 @@ class TestCallbacks:
 
         on_immunity_changed = Mock()
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), on_immunity_changed
         )
@@ -753,10 +792,9 @@ class TestCallbacks:
 
         on_damage_dealt = Mock()
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
-            Mock(), Mock(), Mock(), Mock(),
-            on_damage_dealt=on_damage_dealt
+            Mock(), Mock(), Mock(), Mock(), on_damage_dealt
         )
 
         # Callback should be called with target
@@ -778,9 +816,9 @@ class TestCallbacks:
         data_queue.put(death_event)
 
         on_death_snippet = Mock()
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
-            Mock(), Mock(), Mock(), Mock(),
+            Mock(), Mock(), Mock(), Mock(), None,
             on_death_snippet=on_death_snippet,
         )
 
@@ -800,9 +838,9 @@ class TestCallbacks:
         data_queue.put(identity_event)
 
         on_character_identified = Mock()
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
-            Mock(), Mock(), Mock(), Mock(),
+            Mock(), Mock(), Mock(), Mock(), None,
             on_character_identified=on_character_identified,
         )
 
@@ -832,7 +870,7 @@ class TestErrorHandling:
 
         on_log_message = Mock()
 
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             on_log_message, Mock(), Mock(), Mock(),
             debug_enabled=True
@@ -848,7 +886,7 @@ class TestErrorHandling:
         data_queue = queue.Queue()
 
         # Should not raise exception
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock()
         )
@@ -867,10 +905,11 @@ class TestErrorHandling:
         on_log_message = Mock()
 
         # Should not raise exception
-        queue_processor.process_queue(
+        _process(queue_processor,
             data_queue,
             on_log_message, Mock(), Mock(), Mock()
         )
 
         # Message should be logged
         on_log_message.assert_called_with('Unknown event', 'invalid_type')
+

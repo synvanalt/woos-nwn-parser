@@ -4,7 +4,7 @@ Tests event processing, queue handling, and immunity tracking logic.
 """
 
 import unittest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
 from datetime import datetime, timedelta
 from queue import Queue
 
@@ -35,30 +35,15 @@ class TestQueueProcessor(unittest.TestCase):
 
     def test_process_empty_queue(self) -> None:
         """Test processing an empty queue does nothing."""
-        callbacks = {
-            'on_log_message': Mock(),
-            'on_dps_updated': Mock(),
-            'on_target_selected': Mock(),
-            'on_immunity_changed': Mock(),
-        }
-
-        self.processor.process_queue(
-            self.queue,
-            **callbacks
-        )
+        on_log_message = Mock()
+        result = self.processor.process_queue(self.queue, on_log_message)
 
         # No callbacks should be called for empty queue
-        callbacks['on_log_message'].assert_not_called()
+        on_log_message.assert_not_called()
+        self.assertEqual(result.events_processed, 0)
 
     def test_damage_dealt_event_processing(self) -> None:
         """Test processing damage_dealt event."""
-        callbacks = {
-            'on_log_message': Mock(),
-            'on_dps_updated': Mock(),
-            'on_target_selected': Mock(),
-            'on_immunity_changed': Mock(),
-        }
-
         damage_event = {
             'type': 'damage_dealt',
             'attacker': 'TestCharacter',
@@ -70,13 +55,8 @@ class TestQueueProcessor(unittest.TestCase):
 
         self.queue.put(damage_event)
 
-        self.processor.process_queue(
-            self.queue,
-            **callbacks
-        )
-
-        # Verify DPS update callback was called
-        callbacks['on_dps_updated'].assert_called()
+        result = self.processor.process_queue(self.queue, Mock())
+        self.assertTrue(result.dps_updated)
 
         # Verify data store was updated
         self.data_store.update_dps_data.assert_called()
@@ -85,13 +65,6 @@ class TestQueueProcessor(unittest.TestCase):
     def test_immunity_event_without_damage(self) -> None:
         """Test queuing immunity event when no recent damage exists."""
         self.parser.parse_immunity = True
-
-        callbacks = {
-            'on_log_message': Mock(),
-            'on_dps_updated': Mock(),
-            'on_target_selected': Mock(),
-            'on_immunity_changed': Mock(),
-        }
 
         immunity_event = {
             'type': 'immunity',
@@ -103,10 +76,7 @@ class TestQueueProcessor(unittest.TestCase):
 
         self.queue.put(immunity_event)
 
-        self.processor.process_queue(
-            self.queue,
-            **callbacks
-        )
+        self.processor.process_queue(self.queue, Mock())
 
         # Immunity should be queued
         self.assertIn('TestTarget', self.processor.pending_immunity_queue)
@@ -115,13 +85,6 @@ class TestQueueProcessor(unittest.TestCase):
     def test_immunity_with_matching_damage(self) -> None:
         """Test processing immunity event with matching recent damage."""
         self.parser.parse_immunity = True
-
-        callbacks = {
-            'on_log_message': Mock(),
-            'on_dps_updated': Mock(),
-            'on_target_selected': Mock(),
-            'on_immunity_changed': Mock(),
-        }
 
         now = datetime.now()
 
@@ -136,7 +99,7 @@ class TestQueueProcessor(unittest.TestCase):
         }
 
         self.queue.put(damage_event)
-        self.processor.process_queue(self.queue, **callbacks)
+        self.processor.process_queue(self.queue, Mock())
 
         # Then add matching immunity event
         immunity_event = {
@@ -148,20 +111,13 @@ class TestQueueProcessor(unittest.TestCase):
         }
 
         self.queue.put(immunity_event)
-        self.processor.process_queue(self.queue, **callbacks)
+        self.processor.process_queue(self.queue, Mock())
 
         # Verify immunity was recorded
         self.data_store.record_immunity.assert_called()
 
     def test_attack_hit_event(self) -> None:
         """Test processing attack_hit event."""
-        callbacks = {
-            'on_log_message': Mock(),
-            'on_dps_updated': Mock(),
-            'on_target_selected': Mock(),
-            'on_immunity_changed': Mock(),
-        }
-
         attack_event = {
             'type': 'attack_hit',
             'attacker': 'TestCharacter',
@@ -172,7 +128,7 @@ class TestQueueProcessor(unittest.TestCase):
         }
 
         self.queue.put(attack_event)
-        self.processor.process_queue(self.queue, **callbacks)
+        self.processor.process_queue(self.queue, Mock())
 
         # Verify attack was recorded
         self.data_store.insert_attack_event.assert_called_with(
@@ -210,13 +166,6 @@ class TestQueueProcessor(unittest.TestCase):
 
     def test_critical_hit_event(self) -> None:
         """Test processing critical_hit event."""
-        callbacks = {
-            'on_log_message': Mock(),
-            'on_dps_updated': Mock(),
-            'on_target_selected': Mock(),
-            'on_immunity_changed': Mock(),
-        }
-
         crit_event = {
             'type': 'critical_hit',
             'attacker': 'TestCharacter',
@@ -227,7 +176,7 @@ class TestQueueProcessor(unittest.TestCase):
         }
 
         self.queue.put(crit_event)
-        self.processor.process_queue(self.queue, **callbacks)
+        self.processor.process_queue(self.queue, Mock())
 
         # Verify critical hit was recorded
         self.data_store.insert_attack_event.assert_called_with(
@@ -241,13 +190,6 @@ class TestQueueProcessor(unittest.TestCase):
 
     def test_damage_buffer_state(self) -> None:
         """Test damage buffer maintains state correctly."""
-        callbacks = {
-            'on_log_message': Mock(),
-            'on_dps_updated': Mock(),
-            'on_target_selected': Mock(),
-            'on_immunity_changed': Mock(),
-        }
-
         damage_event = {
             'type': 'damage_dealt',
             'attacker': 'TestCharacter',
@@ -258,7 +200,7 @@ class TestQueueProcessor(unittest.TestCase):
         }
 
         self.queue.put(damage_event)
-        self.processor.process_queue(self.queue, **callbacks)
+        self.processor.process_queue(self.queue, Mock())
 
         # Verify damage buffer contains the damage data
         self.assertIn('TestTarget', self.processor.damage_buffer)
@@ -286,13 +228,6 @@ class TestQueueProcessorIntegration(unittest.TestCase):
 
     def test_full_damage_and_immunity_flow(self) -> None:
         """Test complete flow of damage event followed by immunity event."""
-        callbacks = {
-            'on_log_message': Mock(),
-            'on_dps_updated': Mock(),
-            'on_target_selected': Mock(),
-            'on_immunity_changed': Mock(),
-        }
-
         now = datetime.now()
 
         # Process damage event
@@ -306,7 +241,7 @@ class TestQueueProcessorIntegration(unittest.TestCase):
         }
 
         self.queue.put(damage_event)
-        self.processor.process_queue(self.queue, **callbacks)
+        self.processor.process_queue(self.queue, Mock())
 
         # Process immunity event
         immunity_event = {
@@ -318,7 +253,7 @@ class TestQueueProcessorIntegration(unittest.TestCase):
         }
 
         self.queue.put(immunity_event)
-        self.processor.process_queue(self.queue, **callbacks)
+        self.processor.process_queue(self.queue, Mock())
 
         # Verify data was recorded
         dps_data = self.data_store.get_dps_data()

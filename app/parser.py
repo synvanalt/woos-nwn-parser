@@ -334,7 +334,8 @@ class LogParser:
         for m in self.damage_breakdown_pattern.finditer(breakdown_str):
             amt = int(m.group(1))
             # Damage type string may have trailing/leading spaces; normalize internal whitespace
-            dtype = ' '.join(m.group(2).strip().split())
+            raw_dtype = m.group(2).strip()
+            dtype = ' '.join(raw_dtype.split()) if '  ' in raw_dtype else raw_dtype
             damage_types[dtype] = amt
 
         return damage_types
@@ -354,6 +355,7 @@ class LogParser:
         raw_line = line.rstrip('\r\n')
         self.recent_log_lines.append(raw_line)
         timestamp: Optional[datetime] = None
+        patterns = self.patterns
 
         def get_timestamp() -> datetime:
             nonlocal timestamp
@@ -364,7 +366,7 @@ class LogParser:
             return timestamp
 
         if self._whisper_marker in raw_line:
-            whisper_match = self.patterns['chat_whisper'].search(raw_line)
+            whisper_match = patterns['chat_whisper'].search(raw_line)
             if whisper_match:
                 message = str(whisper_match.group("message")).strip()
                 if message.casefold() == self.DEATH_IDENTIFY_TOKEN:
@@ -378,7 +380,7 @@ class LogParser:
                         }
 
         if self._killed_marker in raw_line and self._death_character_name_normalized:
-            killed_match = self.patterns['killed'].search(raw_line)
+            killed_match = patterns['killed'].search(raw_line)
             if killed_match:
                 dead_target = self._normalize_name(str(killed_match.group('target')))
                 if dead_target == self._death_character_name_normalized:
@@ -400,7 +402,7 @@ class LogParser:
                     return death_event
 
         # Check for damage dealt (this sets the context for subsequent resist lines)
-        damage_match = self.patterns['damage_dealt'].search(line)
+        damage_match = patterns['damage_dealt'].search(raw_line)
 
         if damage_match:
             attacker = damage_match.group(1).strip()
@@ -434,7 +436,7 @@ class LogParser:
             if not self.parse_immunity:
                 return None
 
-            immunity_match = self.patterns['damage_immunity'].search(line)
+            immunity_match = patterns['damage_immunity'].search(raw_line)
             if not immunity_match:
                 return None
 
@@ -467,13 +469,22 @@ class LogParser:
 
         # Strip [CHAT WINDOW TEXT] prefix for attack and save patterns.
         stripped_line = raw_line
-        prefix_match = self.chat_prefix_pattern.match(raw_line)
-        if prefix_match:
-            stripped_line = raw_line[prefix_match.end():]
+        if raw_line.startswith('[CHAT WINDOW TEXT] ['):
+            close_idx = raw_line.find('] ', len('[CHAT WINDOW TEXT] ['))
+            if close_idx != -1:
+                stripped_line = raw_line[close_idx + 2:]
+            else:
+                prefix_match = self.chat_prefix_pattern.match(raw_line)
+                if prefix_match:
+                    stripped_line = raw_line[prefix_match.end():]
+        else:
+            prefix_match = self.chat_prefix_pattern.match(raw_line)
+            if prefix_match:
+                stripped_line = raw_line[prefix_match.end():]
 
         # Check for Epic Dodge markers and tag the target AC estimate as uncertain.
         if self._epic_dodge_marker in stripped_line:
-            epic_dodge_match = self.patterns['epic_dodge'].search(stripped_line)
+            epic_dodge_match = patterns['epic_dodge'].search(stripped_line)
             if epic_dodge_match:
                 target = epic_dodge_match.group('target').strip()
                 if target not in self.target_ac:
@@ -490,9 +501,9 @@ class LogParser:
                 self._threat_roll_marker in stripped_line or
                 self._attacker_miss_chance_marker in stripped_line
             ):
-                attack_match = self.patterns['attack_with_threat'].search(stripped_line)
+                attack_match = patterns['attack_with_threat'].search(stripped_line)
             else:
-                attack_match = self.patterns['attack'].search(stripped_line)
+                attack_match = patterns['attack'].search(stripped_line)
         else:
             attack_match = None
 
@@ -565,7 +576,7 @@ class LogParser:
         # Check for save rolls to estimate saves
         save_match = None
         if self._save_marker in stripped_line:
-            save_match = self.patterns['save'].search(stripped_line)
+            save_match = patterns['save'].search(stripped_line)
         if save_match:
             target = save_match.group('target').strip()
             save_type = save_match.group('save_type').lower()

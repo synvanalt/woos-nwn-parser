@@ -421,6 +421,11 @@ def import_worker_process(
     death_fallback_line: str = LogParser.DEFAULT_DEATH_FALLBACK_LINE,
 ) -> None:
     """Process target for multiprocessing import pipeline."""
+    chunk_size = 2000
+
+    def _slice_chunks(values: List, size: int) -> List[List]:
+        return [values[i:i + size] for i in range(0, len(values), size)]
+
     total_files = len(file_paths)
     for index, file_path in enumerate(file_paths, start=1):
         if abort_event.is_set():
@@ -457,12 +462,42 @@ def import_worker_process(
             })
             continue
 
+        ops = result.get('ops', {})
+        dps_chunks = _slice_chunks(ops.get('dps_updates', []), chunk_size)
+        damage_chunks = _slice_chunks(ops.get('damage_events', []), chunk_size)
+        immunity_chunks = _slice_chunks(ops.get('immunity_records', []), chunk_size)
+        attack_chunks = _slice_chunks(ops.get('attack_events', []), chunk_size)
+        death_chunks = _slice_chunks(ops.get('death_snippets', []), chunk_size)
+
+        max_chunk_count = max(
+            len(dps_chunks),
+            len(damage_chunks),
+            len(immunity_chunks),
+            len(attack_chunks),
+            len(death_chunks),
+            0,
+        )
+
+        for chunk_idx in range(max_chunk_count):
+            result_queue.put({
+                'event': 'ops_chunk',
+                'index': index,
+                'total_files': total_files,
+                'file_name': file_name,
+                'ops': {
+                    'dps_updates': dps_chunks[chunk_idx] if chunk_idx < len(dps_chunks) else [],
+                    'damage_events': damage_chunks[chunk_idx] if chunk_idx < len(damage_chunks) else [],
+                    'immunity_records': immunity_chunks[chunk_idx] if chunk_idx < len(immunity_chunks) else [],
+                    'attack_events': attack_chunks[chunk_idx] if chunk_idx < len(attack_chunks) else [],
+                    'death_snippets': death_chunks[chunk_idx] if chunk_idx < len(death_chunks) else [],
+                },
+            })
+
         result_queue.put({
             'event': 'file_completed',
             'index': index,
             'total_files': total_files,
             'file_name': file_name,
-            'ops': result['ops'],
             'parser_state': result['parser_state'],
         })
 

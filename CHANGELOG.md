@@ -3,21 +3,21 @@
 ## [Unreleased]
 
 ### Changed
-- Death Snippets now support server-agnostic death detection:
-  - Auto-identify the player's character from game whisper chat: `[Whisper] wooparseme` (can also be entered manually)
-  - When character is known, deaths are tracked via `<Opponent> killed <CharacterName>` (exact match)
-  - When character name is empty, deaths are tracked via the fallback log line entry (exact match)
-- Death Snippets UX: `Killed by:` dropdown now drives snippet selection (newest first)
-- Death Snippets now color character and opponents names, as well as damage types and values
-- Death Snippets panel now includes a `Line Wrap` checkbox (default ON) to toggle wrapped vs. unwrapped log-line display
+- Monitoring now stays smoother during heavy combat (less UI freezing and stuttering)
+- Live log parsing now runs in the background to minimize UI interference
+- Death Snippets now server-agnostic:
+  - You can auto-identify your character by whispering `wooparseme`
+  - Death detection works either by your character name or by a fallback line (if character name is empty)
+- Death Snippets usability improved:
+  - `Killed by:` list selects and opens snippets directly (newest first)
+  - Better log coloring for names, damage types, and damage values
+  - New `Line Wrap` toggle for easier reading
 
 ### Fixed
-- Death Snippets no-wrap horizontal scrollbar now appears reliably and allows scrolling fully to the right regardless of which lines are currently in view
-- Death Snippets wrap toggle now preserves the current viewing position when switching line-wrap mode (no forced jump to bottom)
-- Treeview numeric sorting now treats `"-"` and empty values as lower than `0` in both sort directions (ascending: top, descending: bottom)
-- Target Stats sorting for `AC` now uses the numeric component for prefixed values (for example `~`, `≤`, `>`) and uses the upper bound for ranges (for example `48-65` sorts by `65`)
-- `SortedTreeview` now uses consistent numeric parsing between `sort_column()` and `_is_already_sorted()`, eliminating inconsistent reorder behavior after refreshes
-
+- Fixed monitor edge cases around log file handling
+- Fixed Death Snippets horizontal scrolling in no-wrap mode
+- Fixed Death Snippets wrap toggle so it keeps your current reading position
+- Improved table sorting consistency for numbers and special values (for example `-`, `≤`, `>`)
 
 ## [1.3.1] - 2026-03-04
 
@@ -169,5 +169,6 @@
 - Hit rate statistics
 - AB, AC, Saves per target
 - Damage immunities per target
+
 
 

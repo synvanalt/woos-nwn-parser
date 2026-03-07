@@ -49,6 +49,15 @@ class DataStore:
         self._damage_summary_by_target: Dict[str, Dict[str, Dict[str, int]]] = {}
         self._damage_dealers_by_target: Dict[str, set[str]] = {}
         self._dps_by_attacker_target: Dict[Tuple[str, str], Dict] = {}
+        self._dps_breakdown_token_by_character: Dict[str, tuple[tuple[str, int], ...]] = {}
+        self._dps_breakdown_dirty_characters: set[str] = set()
+        self._dps_breakdown_token_by_attacker_target: Dict[
+            Tuple[str, str], tuple[tuple[str, int], ...]
+        ] = {}
+        self._dps_breakdown_dirty_attacker_target: set[Tuple[str, str]] = set()
+        self._earliest_timestamp: Optional[datetime] = None
+        self._all_damage_types_cache: set[str] = set()
+        self._target_stats_cache: Dict[str, Dict[str, int]] = {}
 
     @property
     def version(self) -> int:
@@ -140,11 +149,18 @@ class DataStore:
                 timestamp=timestamp
             )
             self.events.append(event)
+            self._all_damage_types_cache.add(damage_type)
             # Update targets cache (O(1) set add)
             self._targets_cache.add(target)
             self._damage_taken_by_target[target] = (
                 self._damage_taken_by_target.get(target, 0) + total_damage
             )
+            target_stats = self._target_stats_cache.setdefault(
+                target, {'total_hits': 0, 'total_damage': 0, 'total_absorbed': 0}
+            )
+            target_stats['total_hits'] += 1
+            target_stats['total_damage'] += total_damage
+            target_stats['total_absorbed'] += immunity
             # Update damage dealers cache if damage was dealt
             if total_damage > 0 and attacker:
                 self._damage_dealers_cache.add(attacker)
@@ -177,6 +193,7 @@ class DataStore:
                         summary['last_timestamp'] = timestamp
                     damage_by_type = summary['damage_by_type']
                     damage_by_type[damage_type] = damage_by_type.get(damage_type, 0) + total_damage
+                self._dps_breakdown_dirty_attacker_target.add(key)
 
             if target not in self._damage_summary_by_target:
                 self._damage_summary_by_target[target] = {}
@@ -202,6 +219,8 @@ class DataStore:
             # Always update the global last damage timestamp
             if self.last_damage_timestamp is None or timestamp > self.last_damage_timestamp:
                 self.last_damage_timestamp = timestamp
+            if self._earliest_timestamp is None or timestamp < self._earliest_timestamp:
+                self._earliest_timestamp = timestamp
 
             char_data = self.dps_data.get(character)
             if char_data is None:
@@ -211,6 +230,7 @@ class DataStore:
                     'first_timestamp': timestamp,
                     'damage_by_type': damage_types.copy() if damage_types else {}
                 }
+                self._dps_breakdown_dirty_characters.add(character)
             else:
                 # Existing character - update efficiently
                 char_data['total_damage'] += damage_amount
@@ -231,6 +251,33 @@ class DataStore:
                                 damage_by_type[damage_type] += amount_int
                             else:
                                 damage_by_type[damage_type] = amount_int
+                        self._dps_breakdown_dirty_characters.add(character)
+
+    def _get_character_breakdown_token(self, character: str, damage_by_type: Dict[str, int]) -> tuple[tuple[str, int], ...]:
+        """Return cached sorted damage breakdown token for one character."""
+        if (
+            character not in self._dps_breakdown_token_by_character
+            or character in self._dps_breakdown_dirty_characters
+        ):
+            token = tuple(sorted(damage_by_type.items()))
+            self._dps_breakdown_token_by_character[character] = token
+            self._dps_breakdown_dirty_characters.discard(character)
+        return self._dps_breakdown_token_by_character[character]
+
+    def _get_attacker_target_breakdown_token(
+        self,
+        key: Tuple[str, str],
+        damage_by_type: Dict[str, int],
+    ) -> tuple[tuple[str, int], ...]:
+        """Return cached sorted damage breakdown token for one attacker/target pair."""
+        if (
+            key not in self._dps_breakdown_token_by_attacker_target
+            or key in self._dps_breakdown_dirty_attacker_target
+        ):
+            token = tuple(sorted(damage_by_type.items()))
+            self._dps_breakdown_token_by_attacker_target[key] = token
+            self._dps_breakdown_dirty_attacker_target.discard(key)
+        return self._dps_breakdown_token_by_attacker_target[key]
 
     def get_earliest_timestamp(self) -> Optional[datetime]:
         """Get the earliest timestamp from all recorded DPS data.
@@ -239,16 +286,7 @@ class DataStore:
             The earliest timestamp of the first attack by any character, or None if no data
         """
         with self.lock:
-            if not self.dps_data:
-                return None
-
-            earliest = None
-            for character, data in self.dps_data.items():
-                first_ts = data['first_timestamp']
-                if earliest is None or first_ts < earliest:
-                    earliest = first_ts
-
-            return earliest
+            return self._earliest_timestamp
 
     def get_dps_data(self, time_tracking_mode: str = "per_character", global_start_time: Optional[datetime] = None) -> List[Dict]:
         """Get DPS data for all characters, sorted by DPS descending.
@@ -292,7 +330,10 @@ class DataStore:
                         'total_damage': total_damage,
                         'time_seconds': time_delta,
                         'dps': dps,
-                        'breakdown_token': tuple(sorted(data.get('damage_by_type', {}).items())),
+                        'breakdown_token': self._get_character_breakdown_token(
+                            character,
+                            data.get('damage_by_type', {}),
+                        ),
                     })
             else:
                 # Per-character mode (default): use each character's own first timestamp (last timestamp is global)
@@ -317,7 +358,10 @@ class DataStore:
                         'total_damage': total_damage,
                         'time_seconds': time_delta,
                         'dps': dps,
-                        'breakdown_token': tuple(sorted(data.get('damage_by_type', {}).items())),
+                        'breakdown_token': self._get_character_breakdown_token(
+                            character,
+                            data.get('damage_by_type', {}),
+                        ),
                     })
 
             # Sort by DPS descending
@@ -486,10 +530,14 @@ class DataStore:
             if not target_events:
                 return None
 
-            total_hits = len(target_events)
-            total_damage = sum(e.total_damage_dealt for e in target_events)
-            total_absorbed = sum(e.immunity_absorbed for e in target_events)
-            return total_hits, total_damage, total_absorbed
+            stats = self._target_stats_cache.get(target)
+            if stats is None:
+                return None
+            return (
+                int(stats['total_hits']),
+                int(stats['total_damage']),
+                int(stats['total_absorbed']),
+            )
 
     def get_attack_stats(self, attacker: str, target: str) -> Optional[dict]:
         """Get attack statistics for a specific attacker vs target.
@@ -702,7 +750,10 @@ class DataStore:
                         'total_damage': summary['total_damage'],
                         'time_seconds': time_delta,
                         'dps': dps,
-                        'breakdown_token': tuple(sorted(summary['damage_by_type'].items())),
+                        'breakdown_token': self._get_attacker_target_breakdown_token(
+                            (character, target),
+                            summary['damage_by_type'],
+                        ),
                     })
             else:
                 # Per-character mode: use each character's first and last damage on this target
@@ -723,7 +774,10 @@ class DataStore:
                         'total_damage': summary['total_damage'],
                         'time_seconds': time_delta,
                         'dps': dps,
-                        'breakdown_token': tuple(sorted(summary['damage_by_type'].items())),
+                        'breakdown_token': self._get_attacker_target_breakdown_token(
+                            (character, target),
+                            summary['damage_by_type'],
+                        ),
                     })
 
             # Sort by DPS descending
@@ -759,9 +813,11 @@ class DataStore:
             self.dps_data.clear()
             self.immunity_data.clear()
             self.last_damage_timestamp = None
+            self._earliest_timestamp = None
             # Clear caches
             self._targets_cache.clear()
             self._damage_dealers_cache.clear()
+            self._all_damage_types_cache.clear()
             self._damage_taken_by_target.clear()
             self._attack_stats_by_attacker.clear()
             self._attack_stats_by_attacker_target.clear()
@@ -774,6 +830,11 @@ class DataStore:
             self._damage_summary_by_target.clear()
             self._damage_dealers_by_target.clear()
             self._dps_by_attacker_target.clear()
+            self._dps_breakdown_token_by_character.clear()
+            self._dps_breakdown_dirty_characters.clear()
+            self._dps_breakdown_token_by_attacker_target.clear()
+            self._dps_breakdown_dirty_attacker_target.clear()
+            self._target_stats_cache.clear()
 
     def close(self) -> None:
         """Close the data store (no-op for in-memory store)."""
@@ -786,8 +847,7 @@ class DataStore:
             Sorted list of damage type names
         """
         with self.lock:
-            damage_types = sorted(set(e.damage_type for e in self.events))
-            return damage_types
+            return sorted(self._all_damage_types_cache)
 
     def get_max_damage_for_target_and_type(self, target: str, damage_type: str) -> int:
         """Return the maximum single-hit damage recorded for target+damage_type.

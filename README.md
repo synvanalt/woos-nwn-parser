@@ -36,6 +36,7 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 ### Technical Features
 - **Automatic Truncation Detection** - Handles game restarts and log file resets
 - **Immunity Queuing** - Intelligent matching of damage and immunity events
+- **Responsive Monitoring Pipeline** - Log reading/parsing runs in the background to keep UI smooth during heavy combat
 - **Thread-Safe In-Memory Storage** - Concurrent data access without conflicts
 
 ## Quick Start
@@ -195,12 +196,13 @@ woos-nwn-parser/
 - Watches NWN logs directory for changes
 - Handles log rotation (nwclientLog1.txt → nwclientLog2.txt, etc.)
 - Detects file truncation from game restarts
+- Uses bounded per-poll parsing to avoid long blocking reads when backlog grows
 
 **QueueProcessor** (`services/queue_processor.py`)
 - Routes parsed events to batched handlers and deduplicated UI refresh callbacks
 - Buffers damage for immunity matching
 - Manages cleanup of stale immunity queue entries
-- Forwards death snippet events to UI via callback
+- Carries death snippet and character-identification events in the drain result
 
 **DPSCalculationService** (`services/dps_service.py`)
 - Calculates DPS with configurable time tracking modes
@@ -209,6 +211,7 @@ woos-nwn-parser/
 
 **WoosNwnParserApp** (`ui/main_window.py`)
 - Orchestrates parser, storage, monitor, and queue processor wiring
+- Keeps live monitoring responsive by running log read/parse work in a background worker thread
 - Runs "Load & Parse Logs" background import workflow with modal progress + abort
 - Keeps debug console hidden by default and reveals it through the DPS-tab click gesture
 
@@ -328,3 +331,4 @@ pyinstaller>=6.17.0		# For building executable
 - **Repository**: [GitHub](https://github.com/yourusername/woos-nwn-parser)
 - **Issues**: [Bug Reports](https://github.com/yourusername/woos-nwn-parser/issues)
 - **Releases**: [Downloads](https://github.com/yourusername/woos-nwn-parser/releases)
+
