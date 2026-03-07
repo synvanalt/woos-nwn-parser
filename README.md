@@ -148,6 +148,7 @@ woos-nwn-parser/
 │   ├── parser.py                  # Log parsing logic
 │   ├── storage.py                 # Data storage and queries
 │   ├── monitor.py                 # File monitoring and rotation
+│   ├── settings.py                # User settings persistence
 │   ├── utils.py                   # Utility functions
 │   ├── assets/                    # Application resources
 │   ├── services/
@@ -198,6 +199,11 @@ woos-nwn-parser/
 - Handles log rotation (nwclientLog1.txt → nwclientLog2.txt, etc.)
 - Detects file truncation from game restarts
 - Uses bounded per-poll parsing to avoid long blocking reads when backlog grows
+
+**Settings Persistence** (`settings.py`)
+- Loads and saves user preferences used across app restarts
+- Currently persists selected log directory and Death Snippets fallback log line
+- Settings are saved at `%LOCALAPPDATA%\WoosNwnParser\settings.json`
 
 **QueueProcessor** (`services/queue_processor.py`)
 - Routes parsed events to batched handlers and deduplicated UI refresh callbacks
