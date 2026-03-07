@@ -14,7 +14,7 @@ from app.ui.formatters import (
     format_time,
     get_default_log_directory,
 )
-from app.models import DAMAGE_TYPE_PALETTE
+from app.constants import DAMAGE_TYPE_PALETTE
 
 
 class TestDamageTypeToColor(unittest.TestCase):

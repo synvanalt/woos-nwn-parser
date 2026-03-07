@@ -433,7 +433,7 @@ class WoosNwnParserApp:
                 death_snippets = ops.get('death_snippets', [])
                 if idx < len(death_snippets):
                     event = death_snippets[idx]
-                    self.death_snippet_panel.append_snippet(event.get('lines', []))
+                    self.death_snippet_panel.add_death_event(event)
                     progress['idx'] += 1
                     budget -= 1
                     continue
@@ -886,8 +886,7 @@ class WoosNwnParserApp:
 
     def _on_death_snippet(self, event: Dict[str, Any]) -> None:
         """Callback from queue processor when a death snippet is produced."""
-        lines = event.get('lines', [])
-        self.death_snippet_panel.append_snippet(lines)
+        self.death_snippet_panel.add_death_event(event)
 
     def on_closing(self) -> None:
         """Handle application closing."""

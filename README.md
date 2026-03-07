@@ -130,6 +130,7 @@ woos-nwn-parser/
 ├── app/                           # Main application code
 │   ├── __init__.py
 │   ├── __main__.py                # Entry point
+│   ├── constants.py               # Shared constants (damage type palette)
 │   ├── models.py                  # Data models
 │   ├── parser.py                  # Log parsing logic
 │   ├── storage.py                 # Data storage and queries
@@ -201,8 +202,9 @@ woos-nwn-parser/
 - Keeps debug console hidden by default and reveals it through the DPS-tab click gesture
 
 **DeathSnippetPanel** (`ui/widgets/death_snippet_panel.py`)
-- Displays the latest character-related lines before each detected death
+- Displays death-context snippets with a `Killed by:` dropdown (newest first)
 - Provides placeholder and clear-state UI for death snippet history
+- Colors damage type tokens and adjacent damage values using game color palette
 
 ## Development
 
