@@ -15,8 +15,8 @@ Main modules:
 __version__ = "1.3.1"
 __author__ = "Synvan"
 
+from .constants import DAMAGE_TYPE_PALETTE
 from .models import (
-    DAMAGE_TYPE_PALETTE,
     EnemySaves,
     EnemyAC,
     DamageEvent,

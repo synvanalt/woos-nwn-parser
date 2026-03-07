@@ -9,15 +9,22 @@ class _FakeText:
     def __init__(self, content: str = "") -> None:
         self.content = content
         self.seen = False
+        self.tag_configs = {}
+        self.inserts = []
 
     def delete(self, *_args) -> None:
         self.content = ""
 
-    def insert(self, index, text: str) -> None:
+    def insert(self, index, text: str, *tags) -> None:
+        tag = tags[0] if tags else None
+        self.inserts.append((index, text, tag))
         if index == "1.0":
             self.content = text
         else:
             self.content += text
+
+    def tag_configure(self, tag: str, **kwargs) -> None:
+        self.tag_configs[tag] = kwargs
 
     def get(self, *_args) -> str:
         return self.content
@@ -85,6 +92,8 @@ class TestDeathSnippetPanel:
         panel.killed_by_var = _FakeVar(panel.killed_by_combo)
         panel.death_events = []
         panel._event_sequence = 0
+        panel._text_tags_by_color = {}
+        panel._last_render_key = None
         return panel
 
     def test_sanitize_display_line_removes_chat_window_prefix(self) -> None:
@@ -160,3 +169,58 @@ class TestDeathSnippetPanel:
         assert panel.killed_by_combo.values == ()
         assert panel.killed_by_combo.state == "disabled"
         assert panel.killed_by_combo.get() == DeathSnippetPanel.EMPTY_DROPDOWN_PLACEHOLDER
+
+    def test_collect_color_spans_colors_adjacent_pairs(self) -> None:
+        line = "27 Positive Energy 50 Fire 22 Negative Energy"
+        spans = DeathSnippetPanel._collect_color_spans(line)
+
+        colored_tokens = [line[start:end] for start, end, _ in spans]
+        assert "27" in colored_tokens
+        assert "Positive Energy" in colored_tokens
+        assert "50" in colored_tokens
+        assert "Fire" in colored_tokens
+        assert "22" in colored_tokens
+        assert "Negative Energy" in colored_tokens
+
+    def test_collect_color_spans_does_not_color_non_adjacent_immunity_number(self) -> None:
+        line = "Damage Immunity absorbs 10 point(s) of Fire"
+        spans = DeathSnippetPanel._collect_color_spans(line)
+
+        colored_tokens = [line[start:end] for start, end, _ in spans]
+        assert "Fire" in colored_tokens
+        assert "10" not in colored_tokens
+
+    def test_render_selected_event_uses_tags_for_colored_tokens(self) -> None:
+        panel = self._make_panel()
+        panel.add_death_event({
+            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
+            "killer": "HYDROXIS",
+            "lines": ["[CHAT WINDOW TEXT] [t] test damages target: 27 Fire"],
+            "target": "Woo Wildrock",
+        })
+
+        tagged_text = [text for _idx, text, tag in panel.text.inserts if tag is not None]
+        assert "27" in tagged_text
+        assert "Fire" in tagged_text
+
+    def test_render_selected_event_skips_unchanged_selection(self) -> None:
+        panel = self._make_panel()
+        panel.add_death_event({
+            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
+            "killer": "HYDROXIS",
+            "lines": ["[CHAT WINDOW TEXT] [t] test damages target: 27 Fire"],
+            "target": "Woo Wildrock",
+        })
+        first_insert_count = len(panel.text.inserts)
+
+        panel.render_selected_event()
+
+        assert len(panel.text.inserts) == first_insert_count
+
+    def test_insert_colored_line_fast_path_for_non_damage_lines(self) -> None:
+        panel = self._make_panel()
+        panel.text.delete("1.0", "end")
+        panel._insert_colored_line("[t] HYDROXIS killed Woo Wildrock")
+
+        assert not panel.text.tag_configs
+        assert panel.text.content == "[t] HYDROXIS killed Woo Wildrock\n"

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Death Snippets UX: `Killed by:` dropdown now drives snippet selection (newest first)
+
 ### Fixed
 - Treeview numeric sorting now treats `"-"` and empty values as lower than `0` in both sort directions (ascending: top, descending: bottom)
 - Target Stats sorting for `AC` now uses the numeric component for prefixed values (for example `~`, `≤`, `>`) and uses the upper bound for ranges (for example `48-65` sorts by `65`)
@@ -158,3 +161,4 @@
 - Hit rate statistics
 - AB, AC, Saves per target
 - Damage immunities per target
+

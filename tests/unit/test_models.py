@@ -12,8 +12,8 @@ from app.models import (
     TargetAttackBonus,
     DamageEvent,
     AttackEvent,
-    DAMAGE_TYPE_PALETTE,
 )
+from app.constants import DAMAGE_TYPE_PALETTE
 
 
 class TestEnemySaves:
@@ -549,7 +549,7 @@ class TestDamageTypePalette:
 
     def test_palette_contains_common_types(self) -> None:
         """Test palette contains common damage types."""
-        expected_types = ['physical', 'fire', 'cold', 'acid', 'electrical']
+        expected_types = ['physical', 'fire', 'cold', 'acid', 'electrical', 'positive energy', 'negative energy']
         for dtype in expected_types:
             assert dtype in DAMAGE_TYPE_PALETTE
 

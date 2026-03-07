@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 6, 2026 (post SortedTreeview numeric sorting updates)
+**Last Updated:** March 7, 2026 (post Death Snippets UX/coloring + constants refactor)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -q tests -p no:cacheprovider`
-- Result: **501 tests collected**
+- Result: **508 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 33 modules, 452 tests
+- `tests/unit/`: 33 modules, 459 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 41 test modules, 501 tests
+- Total: 41 test modules, 508 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -45,8 +45,8 @@ Notes:
 - `test_immunity_panel_incremental.py` (3)
 - `test_target_stats_panel_incremental.py` (3)
 - `test_ui_optimizations.py` (18)
-- `test_death_snippet_panel.py` (4)
-- `test_main_window_load_parse.py` (7)
+- `test_death_snippet_panel.py` (10)
+- `test_main_window_load_parse.py` (8)
 - `test_main_window_monitoring_switch.py` (5)
 - `test_main_window_debug_tab_unlock.py` (5)
 - `test_main_window_orchestration.py` (9)

@@ -8,7 +8,7 @@ from datetime import timedelta
 from pathlib import Path
 from tkinter import ttk
 
-from ..models import DAMAGE_TYPE_PALETTE
+from ..constants import DAMAGE_TYPE_PALETTE
 
 
 def damage_type_to_color(damage_type: str) -> str:
