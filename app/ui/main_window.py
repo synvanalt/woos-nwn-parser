@@ -18,6 +18,7 @@ from tkinter import ttk, filedialog, messagebox, font
 from ..parser import LogParser
 from ..storage import DataStore
 from ..monitor import LogDirectoryMonitor
+from ..settings import AppSettings, load_app_settings, save_app_settings
 from ..utils import import_worker_process
 from ..services import QueueProcessor, DPSCalculationService
 from .formatters import get_default_log_directory
@@ -49,7 +50,13 @@ class WoosNwnParserApp:
         self.data_queue = queue.Queue()
         self.directory_monitor: Optional[LogDirectoryMonitor] = None
         self.is_monitoring = False
-        self.log_directory = get_default_log_directory()
+        self._settings = load_app_settings()
+        self._settings_save_job = None
+        self._settings_save_delay_ms = 400
+        configured_log_directory = (self._settings.log_directory or "").strip()
+        self.log_directory = configured_log_directory or get_default_log_directory()
+        configured_fallback_line = (self._settings.death_fallback_line or "").strip()
+        self._initial_death_fallback_line = configured_fallback_line or LogParser.DEFAULT_DEATH_FALLBACK_LINE
         self.monitor_thread: Optional[threading.Thread] = None
         self.monitor_stop_event = threading.Event()
         self._monitor_restart_job = None
@@ -185,6 +192,7 @@ class WoosNwnParserApp:
 
         # Tab 4: Death Snippets Panel
         self.death_snippet_panel = DeathSnippetPanel(self.notebook)
+        self.death_snippet_panel.set_fallback_death_line(self._initial_death_fallback_line)
         self.notebook.add(self.death_snippet_panel, text="Death Snippets")
         self.death_snippet_panel.configure_identity_callbacks(
             on_character_name_changed=self._on_death_character_name_changed,
@@ -223,6 +231,7 @@ class WoosNwnParserApp:
 
             # Keep switch text/state synchronized with actual monitoring status
             self._set_monitoring_switch_ui(self.is_monitoring)
+            self._persist_session_settings()
 
     def load_and_parse_selected_files(self) -> None:
         """Open file picker and parse selected .txt logs in a background worker."""
@@ -1149,9 +1158,11 @@ class WoosNwnParserApp:
     def _on_death_fallback_line_changed(self, line: str) -> None:
         """Apply UI fallback line changes to parser death detection."""
         self.parser.set_death_fallback_line(line)
+        self._schedule_session_settings_save()
 
     def on_closing(self) -> None:
         """Handle application closing."""
+        self._flush_pending_session_settings_save()
         if self.is_importing:
             self.import_abort_event.set()
             if self.import_abort_flag is not None:
@@ -1161,6 +1172,56 @@ class WoosNwnParserApp:
         self.pause_monitoring()
         self.data_store.close()
         self.root.destroy()
+
+    def _build_session_settings(self) -> AppSettings:
+        """Build serializable user session settings from current UI state."""
+        log_directory = str(getattr(self, "log_directory", "")).strip() or None
+        death_fallback_line = None
+
+        death_panel = getattr(self, "death_snippet_panel", None)
+        if death_panel is not None:
+            death_fallback_line = death_panel.get_fallback_death_line()
+        else:
+            parser = getattr(self, "parser", None)
+            if parser is not None:
+                death_fallback_line = str(getattr(parser, "death_fallback_line", "")).strip()
+
+        return AppSettings(
+            log_directory=log_directory,
+            death_fallback_line=(death_fallback_line or "").strip() or None,
+        )
+
+    def _persist_session_settings(self) -> None:
+        """Persist current session settings."""
+        settings = self._build_session_settings()
+        self._settings = settings
+        try:
+            save_app_settings(settings)
+        except OSError:
+            # Settings persistence must never break runtime behavior.
+            return
+
+    def _schedule_session_settings_save(self) -> None:
+        """Debounce session settings persistence for frequently edited fields."""
+        root = getattr(self, "root", None)
+        if root is None:
+            self._persist_session_settings()
+            return
+
+        existing_job = getattr(self, "_settings_save_job", None)
+        if existing_job is not None:
+            try:
+                root.after_cancel(existing_job)
+            except tk.TclError:
+                pass
+
+        delay_ms = int(getattr(self, "_settings_save_delay_ms", 400))
+        self._settings_save_job = root.after(delay_ms, self._flush_pending_session_settings_save)
+
+    def _flush_pending_session_settings_save(self) -> None:
+        """Immediately persist settings and clear any scheduled save handle."""
+        self._settings_save_job = None
+        self._persist_session_settings()
 
     def clear_debug(self) -> None:
         """Clear the debug console."""
