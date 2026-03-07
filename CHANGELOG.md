@@ -5,6 +5,8 @@
 ### Changed
 - Monitoring now stays smoother during heavy combat (less UI freezing and stuttering)
 - Live log parsing now runs in the background to minimize UI interference
+- The app now remembers your last selected log directory between launches
+- The Death Snippets `Fallback Log Line` now persists between launches
 - Death Snippets now server-agnostic:
   - You can auto-identify your character by whispering `wooparseme`
   - Death detection works either by your character name or by a fallback line (if character name is empty)

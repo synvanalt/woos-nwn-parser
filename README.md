@@ -99,6 +99,7 @@ Both modes use the same last timestamp (the most recent damage dealt by any char
   - Once identified, death snippets are captured from `<Opponent> killed <CharacterName>`
 - **Fallback matching**
   - If character name is unknown, `Fallback Log Line` is used as a trigger (editable in the panel)
+  - If you edit `Fallback Log Line`, the app remembers it on next startup
 - **Selection and readability**
   - `Killed by:` selector shows `[HH:MM:SS] Killer`
   - Placeholder text is muted when no deaths are recorded
