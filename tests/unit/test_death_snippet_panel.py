@@ -172,7 +172,7 @@ class TestDeathSnippetPanel:
         assert panel.killed_by_combo.get() == DeathSnippetPanel.EMPTY_DROPDOWN_PLACEHOLDER
 
     def test_collect_color_spans_colors_adjacent_pairs(self) -> None:
-        line = "27 Positive Energy 50 Fire 22 Negative Energy"
+        line = "BIOLLANTE damages Woo Whirlwind: 99 (27 Positive Energy 50 Fire 22 Negative Energy)"
         spans = DeathSnippetPanel._collect_color_spans(line)
 
         colored_tokens = [line[start:end] for start, end, _ in spans]
@@ -191,12 +191,30 @@ class TestDeathSnippetPanel:
         assert "Fire" in colored_tokens
         assert "10" not in colored_tokens
 
+    def test_collect_color_spans_colors_save_vs_damage_type(self) -> None:
+        line = "Woo Whirlwind : Fortitude Save vs. Acid : *success* : (20 + 50 = 70 vs. DC: 52)"
+        spans = DeathSnippetPanel._collect_color_spans(line)
+        colored_tokens = [line[start:end] for start, end, _ in spans]
+        assert "Acid" in colored_tokens
+
+    def test_collect_color_spans_skips_spell_resist_spell_names(self) -> None:
+        line = "SPELL RESIST: Woo Whirlwind attempts to resist: Acid Fog - Result: FAILED"
+        spans = DeathSnippetPanel._collect_color_spans(line)
+        colored_tokens = [line[start:end] for start, end, _ in spans]
+        assert "Acid" not in colored_tokens
+
+    def test_collect_color_spans_skips_wall_of_fire_spell_name(self) -> None:
+        line = "SPELL RESIST: Woo Whirlwind attempts to resist: Wall of Fire - Result: FAILED"
+        spans = DeathSnippetPanel._collect_color_spans(line)
+        colored_tokens = [line[start:end] for start, end, _ in spans]
+        assert "Fire" not in colored_tokens
+
     def test_render_selected_event_uses_tags_for_colored_tokens(self) -> None:
         panel = self._make_panel()
         panel.add_death_event({
             "timestamp": datetime(2026, 1, 9, 14, 30, 0),
             "killer": "HYDROXIS",
-            "lines": ["[CHAT WINDOW TEXT] [t] test damages target: 27 Fire"],
+            "lines": ["[CHAT WINDOW TEXT] [t] test damages target: 27 (27 Fire)"],
             "target": "Woo Wildrock",
         })
 

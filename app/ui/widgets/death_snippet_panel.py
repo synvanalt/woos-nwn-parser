@@ -41,6 +41,11 @@ class DeathSnippetPanel(ttk.Frame):
     KILLED_NAME_COLOR = "#98FEFF"
     OPPONENT_NAME_COLOR = "#CD98CC"
     _DAMAGE_KEYWORDS, _PAIR_PATTERNS, _TYPE_PATTERNS = _compile_damage_patterns()
+    _DAMAGE_IMMUNITY_PREFIX = "Damage Immunity absorbs"
+    _SAVE_VS_MARKER = " Save vs. "
+    _DAMAGE_BREAKDOWN_PATTERN = re.compile(r"damages\s+[^:]+:\s*\d+\s*\((?P<breakdown>[^)]*)\)", re.IGNORECASE)
+    _IMMUNITY_OF_PATTERN = re.compile(r"\bof\s+(?P<dtype>.+?)\s*$", re.IGNORECASE)
+    _SAVE_VS_PATTERN = re.compile(r"\bSave\s+vs\.\s*(?P<dtype>.+?)\s*:", re.IGNORECASE)
     _TIMESTAMP_PREFIX = re.compile(r"^\[[^]]+]\s*")
     _ATTACKS_TARGET = re.compile(
         r"(?:Off Hand\s*:\s*)?"
@@ -186,34 +191,62 @@ class DeathSnippetPanel(ttk.Frame):
 
     @classmethod
     def _collect_color_spans(cls, line: str) -> list[tuple[int, int, str]]:
-        """Collect color spans for one line.
+        """Collect damage color spans for one line using context-gated matching.
 
         Returns tuples of (start_idx, end_idx, color_key).
         """
-        if not line or not cls._line_may_have_damage_type(line):
+        if not line:
             return []
 
         spans: list[tuple[int, int, str]] = []
-        pair_occupied: list[tuple[int, int]] = []
+        line_has_keyword = cls._line_may_have_damage_type(line)
 
-        # First pass: adjacent "<number> <damage type>" pairs color both tokens.
-        for color_key, pattern in cls._PAIR_PATTERNS:
-            for match in pattern.finditer(line):
-                num_start, num_end = match.span("num")
-                type_start, type_end = match.span("dtype")
-                spans.append((num_start, num_end, color_key))
-                spans.append((type_start, type_end, color_key))
-                pair_occupied.append((num_start, num_end))
-                pair_occupied.append((type_start, type_end))
+        # Context 1: "Damage Immunity absorbs ... of <Type>" -> color only <Type>.
+        if cls._DAMAGE_IMMUNITY_PREFIX in line and line_has_keyword:
+            immunity_match = cls._IMMUNITY_OF_PATTERN.search(line)
+            if immunity_match:
+                dtype_text = immunity_match.group("dtype")
+                dtype_start = immunity_match.start("dtype")
+                for color_key, pattern in cls._TYPE_PATTERNS:
+                    type_match = pattern.fullmatch(dtype_text.strip())
+                    if not type_match:
+                        continue
+                    # Map match inside stripped segment back to absolute indices.
+                    stripped = dtype_text.strip()
+                    local_offset = dtype_text.find(stripped)
+                    abs_start = dtype_start + local_offset
+                    abs_end = abs_start + len(stripped)
+                    spans.append((abs_start, abs_end, color_key))
+                    break
 
-        # Second pass: standalone damage-type words (only if not already in pair spans).
-        for color_key, pattern in cls._TYPE_PATTERNS:
-            for match in pattern.finditer(line):
-                start, end = match.span(0)
-                if cls._spans_overlap(start, end, pair_occupied):
-                    continue
-                spans.append((start, end, color_key))
+        # Context 2: "X damages Y: N (breakdown)" -> color adjacent number/type pairs in breakdown only.
+        if " damages " in line and "(" in line and ")" in line:
+            breakdown_match = cls._DAMAGE_BREAKDOWN_PATTERN.search(line)
+            if breakdown_match:
+                breakdown = breakdown_match.group("breakdown")
+                breakdown_start = breakdown_match.start("breakdown")
+                for color_key, pattern in cls._PAIR_PATTERNS:
+                    for pair_match in pattern.finditer(breakdown):
+                        num_start, num_end = pair_match.span("num")
+                        type_start, type_end = pair_match.span("dtype")
+                        spans.append((breakdown_start + num_start, breakdown_start + num_end, color_key))
+                        spans.append((breakdown_start + type_start, breakdown_start + type_end, color_key))
 
+        # Context 3: "... Save vs. <Type> : ..." -> color only <Type>.
+        if cls._SAVE_VS_MARKER in line and line_has_keyword:
+            save_match = cls._SAVE_VS_PATTERN.search(line)
+            if save_match:
+                dtype_text = save_match.group("dtype").strip()
+                dtype_start = save_match.start("dtype")
+                for color_key, pattern in cls._TYPE_PATTERNS:
+                    type_match = pattern.fullmatch(dtype_text)
+                    if not type_match:
+                        continue
+                    spans.append((dtype_start, dtype_start + len(dtype_text), color_key))
+                    break
+
+        # Deduplicate and keep stable order.
+        spans = sorted(set(spans), key=lambda item: (item[0], item[1]))
         return sorted(spans, key=lambda item: (item[0], item[1]))
 
     def _get_or_create_text_tag(self, color_key: str) -> str:
