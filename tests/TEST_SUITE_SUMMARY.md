@@ -1,24 +1,25 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 7, 2026 (post Death Snippets server-agnostic identification + UX/focus/scroll-preservation updates)
+**Last Updated:** March 7, 2026 (post background monitoring thread + main-window monitoring orchestration test updates)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
-- Command: `pytest --collect-only -q tests -p no:cacheprovider`
-- Result: **534 tests collected**
+- Command: `pytest --collect-only -qq tests -p no:cacheprovider`
+- Result: **535 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 33 modules, 485 tests
+- `tests/unit/`: 33 modules, 486 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 41 test modules, 534 tests
+- Total: 41 test modules, 535 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
 - `tests/demo_game_restart.py` remains a helper/demo script and is not collected as a test module.
+- Main-window monitoring tests now validate the background monitor thread flow and lightweight UI tick behavior.
 
 ## Module Inventory
 
@@ -46,10 +47,11 @@ Notes:
 - `test_target_stats_panel_incremental.py` (3)
 - `test_ui_optimizations.py` (18)
 - `test_death_snippet_panel.py` (24)
+- `test_debug_console_panel.py` (6)
 - `test_main_window_load_parse.py` (11)
 - `test_main_window_monitoring_switch.py` (5)
 - `test_main_window_debug_tab_unlock.py` (5)
-- `test_main_window_orchestration.py` (9)
+- `test_main_window_orchestration.py` (10)
 - `test_monitor_edge_cases.py` (4)
 - `test_queue_processor_resilience.py` (5)
 - `test_sorted_treeview_edge_cases.py` (7)
