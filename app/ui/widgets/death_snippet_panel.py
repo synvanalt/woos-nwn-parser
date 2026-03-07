@@ -68,6 +68,7 @@ class DeathSnippetPanel(ttk.Frame):
 
     def __init__(self, parent: ttk.Notebook) -> None:
         super().__init__(parent, padding="10")
+        self._notebook = parent
         self.death_events: list[Dict[str, Any]] = []
         self._event_sequence: int = 0
         self.killed_by_var = tk.StringVar(value=self.EMPTY_DROPDOWN_PLACEHOLDER)
@@ -88,6 +89,7 @@ class DeathSnippetPanel(ttk.Frame):
             self.theme_font = font.Font(family="Courier", size=10)
 
         self.setup_ui()
+        self._notebook.bind("<<NotebookTabChanged>>", self._on_notebook_tab_changed, add=True)
         self._set_combo_values()
         self._show_placeholder()
 
@@ -124,6 +126,7 @@ class DeathSnippetPanel(ttk.Frame):
             textvariable=self.fallback_death_line_var,
         )
         self.fallback_death_line_entry.pack(side="left", fill="x", expand=True)
+        self._set_fallback_entry_foreground("gray")
 
         selector_frame = ttk.Frame(self)
         selector_frame.pack(fill="x", padx=(10, 10), pady=(0, 10))
@@ -176,6 +179,21 @@ class DeathSnippetPanel(ttk.Frame):
         self.character_name_var.trace_add("write", self._on_character_name_text_changed)
         self.fallback_death_line_var.trace_add("write", self._on_fallback_line_text_changed)
 
+    def _on_notebook_tab_changed(self, _event: tk.Event) -> None:
+        """Set default focus to selector dropdown when entering this panel."""
+        if not hasattr(self, "_notebook"):
+            return
+        try:
+            selected_tab = self._notebook.nametowidget(self._notebook.select())
+        except tk.TclError:
+            return
+        if selected_tab is not self:
+            return
+        try:
+            self.killed_by_combo.focus_set()
+        except tk.TclError:
+            pass
+
     @staticmethod
     def _normalize_name(value: str) -> str:
         """Normalize user-entered character names."""
@@ -197,6 +215,24 @@ class DeathSnippetPanel(ttk.Frame):
             return
         try:
             self.character_name_entry.configure(foreground=color)
+        except tk.TclError:
+            pass
+
+    def _set_fallback_entry_foreground(self, color: str) -> None:
+        """Set the fallback line entry foreground with ttk/tk compatibility."""
+        if not hasattr(self, "fallback_death_line_entry"):
+            return
+        try:
+            self.fallback_death_line_entry.configure(foreground=color)
+        except tk.TclError:
+            pass
+
+    def _set_combo_text_foreground(self, color: str) -> None:
+        """Set dropdown text color with ttk/tk compatibility."""
+        if not hasattr(self, "killed_by_combo"):
+            return
+        try:
+            self.killed_by_combo.configure(foreground=color)
         except tk.TclError:
             pass
 
@@ -360,16 +396,18 @@ class DeathSnippetPanel(ttk.Frame):
         if not killer:
             killer = "Unknown"
 
-        return f"{timestamp_text} {killer}"
+        return f"[{timestamp_text}] {killer}"
 
     def _set_combo_values(self) -> None:
         """Refresh combobox values from current death events."""
         values = [self._format_dropdown_value(event) for event in self.death_events]
         self.killed_by_combo["values"] = values
         if values:
+            self._set_combo_text_foreground("")
             self.killed_by_combo.configure(state="readonly")
         else:
             # Set display text before disabling to ensure it remains visible.
+            self._set_combo_text_foreground("gray")
             self.killed_by_combo.configure(state="normal")
             self.killed_by_var.set(self.EMPTY_DROPDOWN_PLACEHOLDER)
             self.killed_by_combo.configure(state="disabled")

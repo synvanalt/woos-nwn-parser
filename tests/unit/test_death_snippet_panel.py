@@ -193,8 +193,8 @@ class TestDeathSnippetPanel:
         panel.add_death_event(newer)
 
         assert panel.killed_by_combo.values == (
-            "14:55:23 HYDROXIS",
-            "14:30:00 hydroXis",
+            "[14:55:23] HYDROXIS",
+            "[14:30:00] hydroXis",
         )
         assert panel.killed_by_combo.current() == 0
         assert "HYDROXIS killed Woo Wildrock" in panel.text.content
