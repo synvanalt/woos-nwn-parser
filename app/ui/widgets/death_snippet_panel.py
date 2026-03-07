@@ -68,6 +68,7 @@ class DeathSnippetPanel(ttk.Frame):
         self.death_events: list[Dict[str, Any]] = []
         self._event_sequence: int = 0
         self.killed_by_var = tk.StringVar(value=self.EMPTY_DROPDOWN_PLACEHOLDER)
+        self.line_wrap_var = tk.BooleanVar(value=True)
         self._text_tags_by_color: Dict[str, str] = {}
         self._last_render_key: Optional[tuple] = None
         self._name_pattern_cache: Dict[str, re.Pattern[str]] = {}
@@ -99,18 +100,47 @@ class DeathSnippetPanel(ttk.Frame):
         self.killed_by_combo.pack(side="left", fill="x", expand=True)
         self.killed_by_combo.bind("<<ComboboxSelected>>", _on_death_selected)
 
-        scroll = ttk.Scrollbar(self)
-        scroll.pack(side="right", fill="y")
+        ttk.Checkbutton(
+            selector_frame,
+            text="Line Wrap",
+            variable=self.line_wrap_var,
+            command=self._on_line_wrap_toggled,
+        ).pack(side="left", padx=(8, 0))
 
+        text_frame = ttk.Frame(self)
+        text_frame.pack(fill="both", expand=True)
+        text_frame.grid_rowconfigure(0, weight=1)
+        text_frame.grid_columnconfigure(0, weight=1)
+
+        vscroll = ttk.Scrollbar(text_frame, orient="vertical")
+        self.hscroll = ttk.Scrollbar(text_frame, orient="horizontal")
         self.text = tk.Text(
-            self,
+            text_frame,
             font=self.theme_font,
             wrap="word",
-            yscrollcommand=scroll.set,
+            yscrollcommand=vscroll.set,
             height=30,
         )
-        self.text.pack(fill="both", expand=True)
-        scroll.config(command=self.text.yview)
+        self.text.grid(row=0, column=0, sticky="nsew")
+        vscroll.grid(row=0, column=1, sticky="ns")
+        vscroll.config(command=self.text.yview)
+        self._apply_line_wrap_setting()
+
+    def _on_line_wrap_toggled(self) -> None:
+        """Apply line-wrap behavior from the toggle state."""
+        self._apply_line_wrap_setting()
+
+    def _apply_line_wrap_setting(self) -> None:
+        """Configure text wrapping and horizontal scrollbar visibility."""
+        if bool(self.line_wrap_var.get()):
+            self.text.configure(wrap="word", xscrollcommand="")
+            if self.hscroll.winfo_manager() == "grid":
+                self.hscroll.grid_remove()
+            return
+
+        self.text.configure(wrap="none", xscrollcommand=self.hscroll.set)
+        self.hscroll.config(command=self.text.xview)
+        self.hscroll.grid(row=1, column=0, sticky="ew")
 
     @staticmethod
     def _sanitize_display_line(line: str) -> str:

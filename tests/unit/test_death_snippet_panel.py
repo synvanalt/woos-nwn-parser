@@ -11,6 +11,7 @@ class _FakeText:
         self.seen = False
         self.tag_configs = {}
         self.inserts = []
+        self.config = {}
 
     def delete(self, *_args) -> None:
         self.content = ""
@@ -31,6 +32,59 @@ class _FakeText:
 
     def see(self, *_args) -> None:
         self.seen = True
+
+    def configure(self, **kwargs) -> None:
+        self.config.update(kwargs)
+
+    def xview(self, *_args) -> None:
+        return None
+
+
+class _FakeBoolVar:
+    def __init__(self, value: bool) -> None:
+        self.value = bool(value)
+
+    def get(self) -> bool:
+        return self.value
+
+    def set(self, value: bool) -> None:
+        self.value = bool(value)
+
+
+class _FakeScrollbar:
+    def __init__(self) -> None:
+        self.mapped = False
+        self.command = None
+        self.manager = ""
+
+    def set(self, *_args) -> None:
+        return None
+
+    def config(self, **kwargs) -> None:
+        if "command" in kwargs:
+            self.command = kwargs["command"]
+
+    def winfo_ismapped(self) -> bool:
+        return self.mapped
+
+    def winfo_manager(self) -> str:
+        return self.manager
+
+    def pack(self, **_kwargs) -> None:
+        self.mapped = True
+        self.manager = "pack"
+
+    def pack_forget(self) -> None:
+        self.mapped = False
+        self.manager = ""
+
+    def grid(self, **_kwargs) -> None:
+        self.mapped = True
+        self.manager = "grid"
+
+    def grid_remove(self) -> None:
+        self.mapped = False
+        self.manager = ""
 
 
 class _FakeCombo:
@@ -95,6 +149,8 @@ class TestDeathSnippetPanel:
         panel._text_tags_by_color = {}
         panel._last_render_key = None
         panel._name_pattern_cache = {}
+        panel.line_wrap_var = _FakeBoolVar(True)
+        panel.hscroll = _FakeScrollbar()
         return panel
 
     def test_sanitize_display_line_removes_chat_window_prefix(self) -> None:
@@ -305,3 +361,36 @@ class TestDeathSnippetPanel:
         assert "Ash-Tusk Clan Sniper" in opponent_tagged_text
         assert "GENERAL KORGAN" in opponent_tagged_text
         assert "HYDROXIS" in opponent_tagged_text
+
+    def test_apply_line_wrap_setting_defaults_to_wrapped_without_horizontal_scroll(self) -> None:
+        panel = self._make_panel()
+
+        panel._apply_line_wrap_setting()
+
+        assert panel.text.config["wrap"] == "word"
+        assert panel.text.config["xscrollcommand"] == ""
+        assert panel.hscroll.winfo_ismapped() is False
+
+    def test_line_wrap_toggle_off_disables_wrap_and_shows_horizontal_scrollbar(self) -> None:
+        panel = self._make_panel()
+        panel.line_wrap_var.set(False)
+
+        panel._on_line_wrap_toggled()
+
+        assert panel.text.config["wrap"] == "none"
+        assert panel.text.config["xscrollcommand"] == panel.hscroll.set
+        assert panel.hscroll.command == panel.text.xview
+        assert panel.hscroll.winfo_ismapped() is True
+
+    def test_line_wrap_toggle_on_hides_horizontal_scrollbar(self) -> None:
+        panel = self._make_panel()
+        panel.line_wrap_var.set(False)
+        panel._on_line_wrap_toggled()
+        assert panel.hscroll.winfo_ismapped() is True
+
+        panel.line_wrap_var.set(True)
+        panel._on_line_wrap_toggled()
+
+        assert panel.text.config["wrap"] == "word"
+        assert panel.text.config["xscrollcommand"] == ""
+        assert panel.hscroll.winfo_ismapped() is False
