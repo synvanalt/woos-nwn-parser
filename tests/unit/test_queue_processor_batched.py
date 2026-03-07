@@ -3,10 +3,9 @@
 Tests the new batched event processing that reduces UI callback overhead.
 """
 
-import pytest
 import queue
 from datetime import datetime
-from unittest.mock import Mock, call
+from unittest.mock import Mock
 
 from app.services.queue_processor import QueueProcessor
 from app.storage import DataStore
@@ -36,21 +35,8 @@ class TestBatchedEventProcessing:
                 'damage_types': {'Physical': 50}
             })
 
-        on_dps_updated = Mock()
-        on_log_message = Mock()
-
-        # Process queue
-        processor.process_queue(
-            data_queue,
-            on_log_message,
-            on_dps_updated,
-            Mock(),
-            Mock(),
-            Mock()
-        )
-
-        # Should only call on_dps_updated ONCE, not 10 times
-        assert on_dps_updated.call_count == 1
+        result = processor.process_queue(data_queue, Mock())
+        assert result.dps_updated is True
 
     def test_process_queue_deduplicates_target_updates(self) -> None:
         """Test that target updates are deduplicated."""
@@ -72,21 +58,8 @@ class TestBatchedEventProcessing:
                 'total': 25
             })
 
-        on_target_selected = Mock()
-        on_log_message = Mock()
-
-        # Process queue
-        processor.process_queue(
-            data_queue,
-            on_log_message,
-            Mock(),
-            on_target_selected,
-            Mock()
-        )
-
-        # Should only call on_target_selected ONCE for "Goblin", not 10 times
-        assert on_target_selected.call_count == 1
-        on_target_selected.assert_called_with('Goblin')
+        result = processor.process_queue(data_queue, Mock())
+        assert result.targets_to_refresh == {'Goblin'}
 
     def test_process_queue_handles_multiple_targets(self) -> None:
         """Test that batching handles multiple different targets correctly."""
@@ -109,23 +82,8 @@ class TestBatchedEventProcessing:
                     'total': 25
                 })
 
-        on_target_selected = Mock()
-        on_log_message = Mock()
-
-        # Process queue
-        processor.process_queue(
-            data_queue,
-            on_log_message,
-            Mock(),
-            on_target_selected,
-            Mock()
-        )
-
-        # Should call on_target_selected exactly 3 times (once per unique target)
-        assert on_target_selected.call_count == 3
-        # Check all targets were called
-        called_targets = {call_args[0][0] for call_args in on_target_selected.call_args_list}
-        assert called_targets == {'Goblin', 'Orc', 'Dragon'}
+        result = processor.process_queue(data_queue, Mock())
+        assert result.targets_to_refresh == {'Goblin', 'Orc', 'Dragon'}
 
     def test_process_queue_batches_immunity_updates(self) -> None:
         """Test that immunity updates are batched."""
@@ -155,21 +113,8 @@ class TestBatchedEventProcessing:
             'damage_types': {'Fire': 50}
         })
 
-        on_immunity_changed = Mock()
-        on_log_message = Mock()
-
-        # Process queue
-        processor.process_queue(
-            data_queue,
-            on_log_message,
-            Mock(),
-            Mock(),
-            on_immunity_changed
-        )
-
-        # Should call on_immunity_changed once
-        assert on_immunity_changed.call_count == 1
-        on_immunity_changed.assert_called_with('Goblin')
+        result = processor.process_queue(data_queue, Mock())
+        assert result.immunity_targets == {'Goblin'}
 
     def test_process_queue_batches_damage_dealt_callbacks(self) -> None:
         """Test that damage_dealt callbacks are batched and deduplicated."""
@@ -191,22 +136,8 @@ class TestBatchedEventProcessing:
                 'damage_types': {'Physical': 50}
             })
 
-        on_damage_dealt = Mock()
-        on_log_message = Mock()
-
-        # Process queue
-        processor.process_queue(
-            data_queue,
-            on_log_message,
-            Mock(),
-            Mock(),
-            Mock(),
-            on_damage_dealt
-        )
-
-        # Should only call on_damage_dealt ONCE for "Goblin"
-        assert on_damage_dealt.call_count == 1
-        on_damage_dealt.assert_called_with('Goblin')
+        result = processor.process_queue(data_queue, Mock())
+        assert result.damage_targets == {'Goblin'}
 
     def test_batched_processing_maintains_data_integrity(self) -> None:
         """Test that batched processing doesn't lose or corrupt data."""
@@ -237,13 +168,7 @@ class TestBatchedEventProcessing:
         })
 
         # Process queue
-        processor.process_queue(
-            data_queue,
-            Mock(),
-            Mock(),
-            Mock(),
-            Mock()
-        )
+        processor.process_queue(data_queue, Mock())
 
         # Verify data was stored correctly
         assert len(store.events) == 1
@@ -260,13 +185,7 @@ class TestBatchedEventProcessing:
         data_queue = queue.Queue()
 
         # Process empty queue - should not raise
-        processor.process_queue(
-            data_queue,
-            Mock(),
-            Mock(),
-            Mock(),
-            Mock()
-        )
+        processor.process_queue(data_queue, Mock())
 
         # No errors, no data stored
         assert len(store.events) == 0
@@ -298,25 +217,9 @@ class TestBatchedProcessingPerformance:
                 'damage_types': {'Physical': 50}
             })
 
-        on_dps_updated = Mock()
-        on_target_selected = Mock()
-        on_damage_dealt = Mock()
-
-        # Process queue
-        processor.process_queue(
-            data_queue,
-            Mock(),
-            on_dps_updated,
-            on_target_selected,
-            Mock(),
-            on_damage_dealt
-        )
-
-        # With batching: O(1) callbacks instead of O(n)
-        assert on_dps_updated.call_count == 1  # Not 100 - one DPS update
-        # Note: damage events don't trigger on_target_selected (they use damage_target instead)
-        # so we don't check on_target_selected here
-        assert on_damage_dealt.call_count == 1  # Not 100 - deduplicated to 1 target
+        result = processor.process_queue(data_queue, Mock())
+        assert result.dps_updated is True
+        assert result.damage_targets == {'Goblin'}
 
     def test_batching_with_heavy_combat_scenario(self) -> None:
         """Test batching performance with realistic heavy combat."""
@@ -353,27 +256,10 @@ class TestBatchedProcessingPerformance:
                     'damage_types': {'Physical': 50}
                 })
 
-        on_dps_updated = Mock()
-        on_target_selected = Mock()
-        on_damage_dealt = Mock()
-
-        # Process queue
-        processor.process_queue(
-            data_queue,
-            Mock(),
-            on_dps_updated,
-            on_target_selected,
-            Mock(),
-            on_damage_dealt
-        )
-
-        # Batching should result in:
-        # - 1 DPS update (not 100)
-        # - 5 target updates (one per unique target, not 200)
-        # - 5 damage dealt (one per unique target, not 100)
-        assert on_dps_updated.call_count == 1
-        assert on_target_selected.call_count == 5
-        assert on_damage_dealt.call_count == 5
+        result = processor.process_queue(data_queue, Mock())
+        assert result.dps_updated is True
+        assert result.targets_to_refresh == set(targets)
+        assert result.damage_targets == set(targets)
 
         # Verify all data was stored correctly
         assert len(store.attacks) == 100
