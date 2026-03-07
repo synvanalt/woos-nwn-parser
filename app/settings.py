@@ -1,0 +1,64 @@
+"""User settings persistence helpers."""
+
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+@dataclass(slots=True)
+class AppSettings:
+    """Persisted user settings."""
+
+    log_directory: str | None = None
+    death_fallback_line: str | None = None
+
+
+def get_settings_path() -> Path:
+    """Return the per-user settings file path."""
+    local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
+    if local_app_data:
+        base_dir = Path(local_app_data)
+    else:
+        base_dir = Path.home() / ".woos-nwn-parser"
+    return base_dir / "WoosNwnParser" / "settings.json"
+
+
+def _normalize_optional_text(value: Any) -> str | None:
+    """Normalize optional text values loaded from JSON."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def load_app_settings(path: Path | None = None) -> AppSettings:
+    """Load persisted app settings from disk."""
+    settings_path = path or get_settings_path()
+    try:
+        content = settings_path.read_text(encoding="utf-8")
+        payload = json.loads(content)
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return AppSettings()
+
+    if not isinstance(payload, dict):
+        return AppSettings()
+
+    return AppSettings(
+        log_directory=_normalize_optional_text(payload.get("log_directory")),
+        death_fallback_line=_normalize_optional_text(payload.get("death_fallback_line")),
+    )
+
+
+def save_app_settings(settings: AppSettings, path: Path | None = None) -> None:
+    """Persist app settings to disk."""
+    settings_path = path or get_settings_path()
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "log_directory": _normalize_optional_text(settings.log_directory),
+        "death_fallback_line": _normalize_optional_text(settings.death_fallback_line),
+    }
+    settings_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
