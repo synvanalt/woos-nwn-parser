@@ -40,6 +40,7 @@ class DeathSnippetPanel(ttk.Frame):
     EMPTY_TEXT_PLACEHOLDER = "Last 100 character-related log lines before death will appear here"
     CHARACTER_NAME_HINT = 'Whisper "wooparseme" in-game to auto-identify your character'
     DEFAULT_FALLBACK_DEATH_LINE = "Your God refuses to hear your prayers!"
+    CONFIG_LABEL_WIDTH = 14
     KILLED_NAME_COLOR = "#98FEFF"
     OPPONENT_NAME_COLOR = "#CD98CC"
     _DAMAGE_KEYWORDS, _PAIR_PATTERNS, _TYPE_PATTERNS = _compile_damage_patterns()
@@ -92,19 +93,32 @@ class DeathSnippetPanel(ttk.Frame):
 
     def setup_ui(self) -> None:
         config_frame = ttk.Frame(self)
-        config_frame.pack(fill="x", padx=(10, 10), pady=(6, 0))
+        config_frame.pack(fill="x", padx=(10, 10), pady=(0, 0))
 
         character_row = ttk.Frame(config_frame)
-        character_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(character_row, text="Character Name:").pack(side="left", padx=(0, 5))
-        self.character_name_entry = ttk.Entry(character_row, textvariable=self.character_name_var)
+        character_row.pack(fill="x", pady=(0, 7))
+        ttk.Label(
+            character_row,
+            text="Character Name:",
+            width=self.CONFIG_LABEL_WIDTH,
+            anchor="w",
+        ).pack(side="left", padx=(0, 5))
+        self.character_name_entry = ttk.Entry(
+            character_row,
+            textvariable=self.character_name_var,
+        )
         self.character_name_entry.pack(side="left", fill="x", expand=True)
         self.character_name_entry.bind("<FocusIn>", self._on_character_name_focus_in)
         self.character_name_entry.bind("<FocusOut>", self._on_character_name_focus_out)
 
         fallback_row = ttk.Frame(config_frame)
-        fallback_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(fallback_row, text="Fallback Death Line:").pack(side="left", padx=(0, 5))
+        fallback_row.pack(fill="x", pady=(0, 7))
+        ttk.Label(
+            fallback_row,
+            text="Fallback Log Line:",
+            width=self.CONFIG_LABEL_WIDTH,
+            anchor="w",
+        ).pack(side="left", padx=(0, 5))
         self.fallback_death_line_entry = ttk.Entry(
             fallback_row,
             textvariable=self.fallback_death_line_var,
@@ -118,7 +132,12 @@ class DeathSnippetPanel(ttk.Frame):
             _event.widget.selection_clear()
             self.render_selected_event()
 
-        ttk.Label(selector_frame, text="Killed by:").pack(side="left", padx=(0, 5))
+        ttk.Label(
+            selector_frame,
+            text="Killed by:",
+            width=self.CONFIG_LABEL_WIDTH,
+            anchor="w",
+        ).pack(side="left", padx=(0, 5))
         self.killed_by_combo = ttk.Combobox(
             selector_frame,
             state="disabled",
