@@ -129,6 +129,8 @@ class DeathSnippetPanel(ttk.Frame):
     def _on_line_wrap_toggled(self) -> None:
         """Apply line-wrap behavior from the toggle state."""
         self._apply_line_wrap_setting()
+        self._last_render_key = None
+        self.render_selected_event()
 
     def _apply_line_wrap_setting(self) -> None:
         """Configure text wrapping and horizontal scrollbar visibility."""
@@ -141,6 +143,34 @@ class DeathSnippetPanel(ttk.Frame):
         self.text.configure(wrap="none", xscrollcommand=self.hscroll.set)
         self.hscroll.config(command=self.text.xview)
         self.hscroll.grid(row=1, column=0, sticky="ew")
+
+    def _prepare_display_lines_for_wrap_mode(self, lines: list[str]) -> list[str]:
+        """Return lines adjusted for current wrap mode.
+
+        In no-wrap mode, pad each line to the widest line width to stabilize
+        horizontal scrollbar proportions while vertically scrolling.
+        """
+        if bool(self.line_wrap_var.get()) or not lines:
+            return lines
+        if not hasattr(self, "theme_font"):
+            return lines
+
+        line_widths = [self.theme_font.measure(line) for line in lines]
+        max_width = max(line_widths, default=0)
+        if max_width <= 0:
+            return lines
+
+        space_width = max(1, int(self.theme_font.measure(" ")))
+        padded_lines: list[str] = []
+        for line, width in zip(lines, line_widths):
+            deficit = max_width - width
+            if deficit <= 0:
+                padded_lines.append(line)
+                continue
+            padding_spaces = (deficit + space_width - 1) // space_width
+            padded_lines.append(f"{line}{' ' * padding_spaces}")
+
+        return padded_lines
 
     @staticmethod
     def _sanitize_display_line(line: str) -> str:
@@ -445,12 +475,13 @@ class DeathSnippetPanel(ttk.Frame):
             return
 
         lines = [self._sanitize_display_line(str(line)) for line in selected_event.get("lines", [])]
+        display_lines = self._prepare_display_lines_for_wrap_mode(lines)
         killed_name = self._normalize_name(str(selected_event.get("target", "")))
         killer_name = self._normalize_name(str(selected_event.get("killer", "")))
         opponent_names = self._extract_opponent_names(lines, killed_name, killer_name)
 
         self.text.delete("1.0", tk.END)
-        for line in lines:
+        for line in display_lines:
             self._insert_colored_line(line, killed_name=killed_name, opponent_names=opponent_names)
         self.text.see(tk.END)
         self._last_render_key = render_key

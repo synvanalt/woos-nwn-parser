@@ -56,7 +56,6 @@ class _FakeScrollbar:
         self.mapped = False
         self.command = None
         self.manager = ""
-
     def set(self, *_args) -> None:
         return None
 
@@ -152,6 +151,17 @@ class TestDeathSnippetPanel:
         panel.line_wrap_var = _FakeBoolVar(True)
         panel.hscroll = _FakeScrollbar()
         return panel
+
+    @staticmethod
+    def _make_fake_font(char_px: int = 8) -> object:
+        class _FakeFont:
+            def __init__(self, px: int) -> None:
+                self.px = px
+
+            def measure(self, text: str) -> int:
+                return len(text) * self.px
+
+        return _FakeFont(char_px)
 
     def test_sanitize_display_line_removes_chat_window_prefix(self) -> None:
         line = "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] Your God refuses to hear your prayers!"
@@ -394,3 +404,34 @@ class TestDeathSnippetPanel:
         assert panel.text.config["wrap"] == "word"
         assert panel.text.config["xscrollcommand"] == ""
         assert panel.hscroll.winfo_ismapped() is False
+
+    def test_prepare_display_lines_for_wrap_mode_no_wrap_pads_shorter_lines(self) -> None:
+        panel = self._make_panel()
+        panel.line_wrap_var.set(False)
+        panel.theme_font = self._make_fake_font()
+        lines = ["abcd", "ab"]
+
+        prepared = panel._prepare_display_lines_for_wrap_mode(lines)
+
+        assert prepared[0] == "abcd"
+        assert prepared[1] == "ab  "
+
+    def test_prepare_display_lines_for_wrap_mode_wrap_on_keeps_lines_unchanged(self) -> None:
+        panel = self._make_panel()
+        panel.line_wrap_var.set(True)
+        panel.theme_font = self._make_fake_font()
+        lines = ["abcd", "ab"]
+
+        prepared = panel._prepare_display_lines_for_wrap_mode(lines)
+
+        assert prepared == lines
+
+    def test_on_line_wrap_toggled_forces_rerender(self) -> None:
+        panel = self._make_panel()
+        panel.render_selected_event = lambda: panel.text.insert("end", "rerendered")
+        panel._last_render_key = (0, 1)
+
+        panel._on_line_wrap_toggled()
+
+        assert panel._last_render_key is None
+        assert "rerendered" in panel.text.content
