@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.0] - 2026-03-07
 
 ### Changed
 - Monitoring now stays smoother during heavy combat (less UI freezing and stuttering)
