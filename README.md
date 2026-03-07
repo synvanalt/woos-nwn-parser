@@ -17,6 +17,10 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 
 <img src="docs/screenshots/immunity-panel.png" alt="Immunity Panel" width="540">
 
+**Death Snippets:**
+
+<img src="docs/screenshots/death-snippets.png" alt="Immunity Panel" width="540">
+
 ## Features
 
 ### Core Functionality
