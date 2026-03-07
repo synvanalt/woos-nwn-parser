@@ -319,9 +319,33 @@ class DeathSnippetPanel(ttk.Frame):
 
     def _on_line_wrap_toggled(self) -> None:
         """Apply line-wrap behavior from the toggle state."""
+        top_visible_index: Optional[str] = None
+        yview_start: Optional[float] = None
+        try:
+            top_visible_index = str(self.text.index("@0,0"))
+        except (AttributeError, tk.TclError):
+            top_visible_index = None
+        try:
+            yview = self.text.yview()
+            if isinstance(yview, tuple) and yview:
+                yview_start = float(yview[0])
+        except (AttributeError, tk.TclError, ValueError, TypeError):
+            yview_start = None
+
         self._apply_line_wrap_setting()
         self._last_render_key = None
         self.render_selected_event()
+        if top_visible_index:
+            try:
+                self.text.yview(top_visible_index)
+                return
+            except (AttributeError, tk.TclError):
+                pass
+        if yview_start is not None:
+            try:
+                self.text.yview_moveto(yview_start)
+            except (AttributeError, tk.TclError):
+                pass
 
     def _apply_line_wrap_setting(self) -> None:
         """Configure text wrapping and horizontal scrollbar visibility."""
