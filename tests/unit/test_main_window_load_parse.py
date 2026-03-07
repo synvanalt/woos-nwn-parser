@@ -238,12 +238,39 @@ class TestLoadAndParseWorkflow:
     def test_identity_and_fallback_callbacks_update_parser(self) -> None:
         app = _make_app_shell()
         app.parser = Mock()
+        app._schedule_session_settings_save = Mock()
 
         app._on_death_character_name_changed("Woo Wildrock")
         app._on_death_fallback_line_changed("Your God refuses to hear your prayers!")
 
         app.parser.set_death_character_name.assert_called_once_with("Woo Wildrock")
         app.parser.set_death_fallback_line.assert_called_once_with("Your God refuses to hear your prayers!")
+        app._schedule_session_settings_save.assert_called_once()
+
+    def test_schedule_session_settings_save_debounces_jobs(self) -> None:
+        app = _make_app_shell()
+        app.root = Mock()
+        app.root.after = Mock(return_value="new-job")
+        app.root.after_cancel = Mock()
+        app._settings_save_delay_ms = 400
+        app._settings_save_job = "old-job"
+        app._flush_pending_session_settings_save = Mock()
+
+        app._schedule_session_settings_save()
+
+        app.root.after_cancel.assert_called_once_with("old-job")
+        app.root.after.assert_called_once_with(400, app._flush_pending_session_settings_save)
+        assert app._settings_save_job == "new-job"
+
+    def test_flush_pending_session_settings_save_persists_now(self) -> None:
+        app = _make_app_shell()
+        app._settings_save_job = "job-id"
+        app._persist_session_settings = Mock()
+
+        app._flush_pending_session_settings_save()
+
+        assert app._settings_save_job is None
+        app._persist_session_settings.assert_called_once()
 
     def test_start_import_worker_passes_death_settings_to_worker(self, monkeypatch) -> None:
         app = _make_app_shell()

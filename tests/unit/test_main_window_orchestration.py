@@ -10,6 +10,7 @@ import pytest
 
 import app.ui.main_window as main_window_module
 from app.ui.main_window import WoosNwnParserApp
+from app.settings import AppSettings
 
 
 @pytest.fixture
@@ -107,6 +108,16 @@ def test_browse_directory_logs_found_files(app_shell, monkeypatch) -> None:
     warning_mock.assert_not_called()
     app_shell.log_debug.assert_called_once()
     assert "Found 1 log file" in app_shell.log_debug.call_args[0][0]
+
+
+def test_browse_directory_persists_session_settings(app_shell, monkeypatch) -> None:
+    monkeypatch.setattr(main_window_module.filedialog, "askdirectory", lambda **kwargs: r"C:\saved_logs")
+    monkeypatch.setattr(main_window_module.Path, "glob", lambda self, pattern: [main_window_module.Path("nwclientLog1.txt")])
+    app_shell._persist_session_settings = Mock()
+
+    app_shell.browse_directory()
+
+    app_shell._persist_session_settings.assert_called_once()
 
 
 def test_poll_log_file_runs_ui_tick_when_monitoring(app_shell) -> None:
@@ -227,14 +238,38 @@ def test_on_closing_terminates_active_import_process(app_shell) -> None:
     app_shell.import_abort_flag.set = Mock()
     app_shell.import_process = Mock()
     app_shell.import_process.is_alive.return_value = True
+    app_shell._flush_pending_session_settings_save = Mock()
     app_shell.data_store = Mock()
     app_shell.pause_monitoring = Mock()
 
     app_shell.on_closing()
 
+    app_shell._flush_pending_session_settings_save.assert_called_once()
     assert app_shell.import_abort_event.is_set() is True
     app_shell.import_abort_flag.set.assert_called_once()
     app_shell.import_process.terminate.assert_called_once()
     app_shell.pause_monitoring.assert_called_once()
     app_shell.data_store.close.assert_called_once()
     app_shell.root.destroy.assert_called_once()
+
+
+def test_init_uses_persisted_settings_over_defaults(monkeypatch) -> None:
+    root = Mock()
+    root.after = Mock()
+    root.title = Mock()
+    root.geometry = Mock()
+
+    monkeypatch.setattr(main_window_module, "load_app_settings", lambda: AppSettings(
+        log_directory=r"C:\persisted_logs",
+        death_fallback_line="Persisted fallback",
+    ))
+    monkeypatch.setattr(main_window_module, "get_default_log_directory", lambda: r"C:\default_logs")
+    monkeypatch.setattr(main_window_module.font, "nametofont", lambda _name: Mock())
+    monkeypatch.setattr(WoosNwnParserApp, "setup_ui", lambda self: None)
+    monkeypatch.setattr(WoosNwnParserApp, "process_queue", lambda self: None)
+    monkeypatch.setattr(WoosNwnParserApp, "_set_monitoring_switch_ui", lambda self, _value: None)
+
+    app = WoosNwnParserApp(root)
+
+    assert app.log_directory == r"C:\persisted_logs"
+    assert app._initial_death_fallback_line == "Persisted fallback"

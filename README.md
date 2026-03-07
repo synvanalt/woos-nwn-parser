@@ -17,6 +17,10 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 
 <img src="docs/screenshots/immunity-panel.png" alt="Immunity Panel" width="540">
 
+**Death Snippets:**
+
+<img src="docs/screenshots/death-snippets.png" alt="Immunity Panel" width="540">
+
 ## Features
 
 ### Core Functionality
@@ -99,6 +103,7 @@ Both modes use the same last timestamp (the most recent damage dealt by any char
   - Once identified, death snippets are captured from `<Opponent> killed <CharacterName>`
 - **Fallback matching**
   - If character name is unknown, `Fallback Log Line` is used as a trigger (editable in the panel)
+  - If you edit `Fallback Log Line`, the app remembers it on next startup
 - **Selection and readability**
   - `Killed by:` selector shows `[HH:MM:SS] Killer`
   - Placeholder text is muted when no deaths are recorded
@@ -147,6 +152,7 @@ woos-nwn-parser/
 │   ├── parser.py                  # Log parsing logic
 │   ├── storage.py                 # Data storage and queries
 │   ├── monitor.py                 # File monitoring and rotation
+│   ├── settings.py                # User settings persistence
 │   ├── utils.py                   # Utility functions
 │   ├── assets/                    # Application resources
 │   ├── services/
@@ -197,6 +203,11 @@ woos-nwn-parser/
 - Handles log rotation (nwclientLog1.txt → nwclientLog2.txt, etc.)
 - Detects file truncation from game restarts
 - Uses bounded per-poll parsing to avoid long blocking reads when backlog grows
+
+**Settings Persistence** (`settings.py`)
+- Loads and saves user preferences used across app restarts
+- Currently persists selected log directory and Death Snippets fallback log line
+- Settings are saved at `%LOCALAPPDATA%\WoosNwnParser\settings.json`
 
 **QueueProcessor** (`services/queue_processor.py`)
 - Routes parsed events to batched handlers and deduplicated UI refresh callbacks
