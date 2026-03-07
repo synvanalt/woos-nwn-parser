@@ -46,6 +46,45 @@ def test_parse_file_to_ops_collects_damage_immunity_attacks_and_death_snippet(mo
     assert ops["death_snippets"][0]["target"] == "Goblin"
 
 
+def test_parse_file_to_ops_respects_custom_fallback_line(monkeypatch) -> None:
+    log_data = "\n".join([
+        "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:02] Woo killed Goblin",
+        "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:03] Your God refuses to hear your prayers!",
+        "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:04] You have fallen.",
+        "",
+    ])
+    monkeypatch.setattr("builtins.open", lambda *args, **kwargs: io.StringIO(log_data))
+
+    result = parse_file_to_ops(
+        "ignored.txt",
+        parse_immunity=False,
+        death_fallback_line="You have fallen.",
+    )
+
+    assert result["success"] is True
+    death_snippets = result["ops"]["death_snippets"]
+    assert len(death_snippets) == 1
+    assert death_snippets[0]["lines"][-1].endswith("You have fallen.")
+
+
+def test_parse_file_to_ops_disables_fallback_when_character_name_known(monkeypatch) -> None:
+    log_data = "\n".join([
+        "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:02] Woo killed Goblin",
+        "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:03] Your God refuses to hear your prayers!",
+        "",
+    ])
+    monkeypatch.setattr("builtins.open", lambda *args, **kwargs: io.StringIO(log_data))
+
+    result = parse_file_to_ops(
+        "ignored.txt",
+        parse_immunity=False,
+        death_character_name="Nonexistent Character",
+    )
+
+    assert result["success"] is True
+    assert result["ops"]["death_snippets"] == []
+
+
 def test_parse_file_to_ops_can_abort_mid_file(monkeypatch) -> None:
     log_data = "\n".join([
         "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 50 (50 Physical)",
@@ -122,3 +161,35 @@ def test_import_worker_process_stops_when_parser_reports_aborted(monkeypatch) ->
 
     events = [item["event"] for item in result_queue.items]
     assert events == ["file_started", "aborted"]
+
+
+def test_import_worker_process_forwards_death_settings(monkeypatch) -> None:
+    parse_mock = Mock(return_value={
+        "success": True,
+        "aborted": False,
+        "error": None,
+        "lines_processed": 1,
+        "ops": {
+            "dps_updates": [],
+            "damage_events": [],
+            "immunity_records": [],
+            "attack_events": [],
+            "death_snippets": [],
+        },
+        "parser_state": {"target_ac": {}, "target_saves": {}, "target_attack_bonus": {}},
+    })
+    monkeypatch.setattr("app.utils.parse_file_to_ops", parse_mock)
+
+    result_queue = _CaptureQueue()
+    import_worker_process(
+        file_paths=["a.txt"],
+        parse_immunity=False,
+        abort_event=_AbortEvent(False),
+        result_queue=result_queue,
+        death_character_name="Foo Bar",
+        death_fallback_line="Custom fallback",
+    )
+
+    _args, kwargs = parse_mock.call_args
+    assert kwargs["death_character_name"] == "Foo Bar"
+    assert kwargs["death_fallback_line"] == "Custom fallback"

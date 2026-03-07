@@ -92,7 +92,7 @@ class DeathSnippetPanel(ttk.Frame):
 
     def setup_ui(self) -> None:
         config_frame = ttk.Frame(self)
-        config_frame.pack(fill="x", padx=(10, 10), pady=(8, 0))
+        config_frame.pack(fill="x", padx=(10, 10), pady=(6, 0))
 
         character_row = ttk.Frame(config_frame)
         character_row.pack(fill="x", pady=(0, 6))
@@ -103,7 +103,7 @@ class DeathSnippetPanel(ttk.Frame):
         self.character_name_entry.bind("<FocusOut>", self._on_character_name_focus_out)
 
         fallback_row = ttk.Frame(config_frame)
-        fallback_row.pack(fill="x", pady=(0, 10))
+        fallback_row.pack(fill="x", pady=(0, 6))
         ttk.Label(fallback_row, text="Fallback Death Line:").pack(side="left", padx=(0, 5))
         self.fallback_death_line_entry = ttk.Entry(
             fallback_row,

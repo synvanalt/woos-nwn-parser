@@ -244,3 +244,50 @@ class TestLoadAndParseWorkflow:
 
         app.parser.set_death_character_name.assert_called_once_with("Woo Wildrock")
         app.parser.set_death_fallback_line.assert_called_once_with("Your God refuses to hear your prayers!")
+
+    def test_start_import_worker_passes_death_settings_to_worker(self, monkeypatch) -> None:
+        app = _make_app_shell()
+        app._start_import_worker = WoosNwnParserApp._start_import_worker.__get__(app, WoosNwnParserApp)
+        app.parser = Mock()
+        app.parser.parse_immunity = True
+        app.parser.death_character_name = "Woo Wildrock"
+        app.parser.death_fallback_line = "Custom fallback"
+
+        class _FakeProcess:
+            def __init__(self, target, args, daemon) -> None:
+                self.target = target
+                self.args = args
+                self.daemon = daemon
+                self.started = False
+
+            def start(self) -> None:
+                self.started = True
+
+        class _FakeContext:
+            def __init__(self) -> None:
+                self.process = None
+                self.event = object()
+                self.queue = object()
+
+            def Event(self):
+                return self.event
+
+            def Queue(self):
+                return self.queue
+
+            def Process(self, target, args, daemon):
+                self.process = _FakeProcess(target=target, args=args, daemon=daemon)
+                return self.process
+
+        fake_ctx = _FakeContext()
+        monkeypatch.setattr(main_window_module.mp, "get_context", lambda _name: fake_ctx)
+
+        app._start_import_worker([main_window_module.Path("alpha.txt")])
+
+        assert app.import_abort_flag is fake_ctx.event
+        assert app.import_result_queue is fake_ctx.queue
+        assert app.import_process is fake_ctx.process
+        assert fake_ctx.process is not None
+        assert fake_ctx.process.started is True
+        assert fake_ctx.process.args[4] == "Woo Wildrock"
+        assert fake_ctx.process.args[5] == "Custom fallback"

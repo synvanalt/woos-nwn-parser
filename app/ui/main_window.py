@@ -332,7 +332,14 @@ class WoosNwnParserApp:
         self.import_result_queue = ctx.Queue()
         self.import_process = ctx.Process(
             target=import_worker_process,
-            args=(file_paths, bool(self.parser.parse_immunity), self.import_abort_flag, self.import_result_queue),
+            args=(
+                file_paths,
+                bool(self.parser.parse_immunity),
+                self.import_abort_flag,
+                self.import_result_queue,
+                self.parser.death_character_name,
+                self.parser.death_fallback_line,
+            ),
             daemon=True,
         )
         self.import_process.start()
