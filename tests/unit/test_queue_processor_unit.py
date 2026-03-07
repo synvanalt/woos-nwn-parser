@@ -789,6 +789,28 @@ class TestCallbacks:
         assert emitted['type'] == 'death_snippet'
         assert emitted['target'] == 'Woo Wildrock'
 
+    def test_on_character_identified_called(self, queue_processor: QueueProcessor) -> None:
+        """Test that character-identified callback is called for identity events."""
+        data_queue = queue.Queue()
+        identity_event = {
+            "type": "death_character_identified",
+            "character_name": "Woo Wildrock",
+            "timestamp": datetime.now(),
+        }
+        data_queue.put(identity_event)
+
+        on_character_identified = Mock()
+        queue_processor.process_queue(
+            data_queue,
+            Mock(), Mock(), Mock(), Mock(),
+            on_character_identified=on_character_identified,
+        )
+
+        on_character_identified.assert_called_once()
+        emitted = on_character_identified.call_args[0][0]
+        assert emitted["type"] == "death_character_identified"
+        assert emitted["character_name"] == "Woo Wildrock"
+
 
 class TestErrorHandling:
     """Test suite for error handling."""

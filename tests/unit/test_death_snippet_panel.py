@@ -12,6 +12,8 @@ class _FakeText:
         self.tag_configs = {}
         self.inserts = []
         self.config = {}
+        self.yview_start = 0.0
+        self.top_index = "1.0"
 
     def delete(self, *_args) -> None:
         self.content = ""
@@ -38,6 +40,20 @@ class _FakeText:
 
     def xview(self, *_args) -> None:
         return None
+
+    def yview(self, *_args):
+        if _args:
+            self.top_index = str(_args[0])
+            return None
+        return (self.yview_start, min(1.0, self.yview_start + 0.2))
+
+    def yview_moveto(self, fraction: float) -> None:
+        self.yview_start = float(fraction)
+
+    def index(self, expr: str) -> str:
+        if expr == "@0,0":
+            return self.top_index
+        return "1.0"
 
 
 class _FakeBoolVar:
@@ -193,8 +209,8 @@ class TestDeathSnippetPanel:
         panel.add_death_event(newer)
 
         assert panel.killed_by_combo.values == (
-            "14:55:23 HYDROXIS",
-            "14:30:00 hydroXis",
+            "[14:55:23] HYDROXIS",
+            "[14:30:00] hydroXis",
         )
         assert panel.killed_by_combo.current() == 0
         assert "HYDROXIS killed Woo Wildrock" in panel.text.content
@@ -435,3 +451,30 @@ class TestDeathSnippetPanel:
 
         assert panel._last_render_key is None
         assert "rerendered" in panel.text.content
+
+    def test_on_line_wrap_toggled_preserves_vertical_scroll_position(self) -> None:
+        panel = self._make_panel()
+        panel.text.yview_start = 0.42
+        panel.text.index = lambda _expr: (_ for _ in ()).throw(AttributeError("no index"))
+
+        def _simulate_render_jump_to_bottom() -> None:
+            panel.text.yview_start = 1.0
+
+        panel.render_selected_event = _simulate_render_jump_to_bottom
+        panel._on_line_wrap_toggled()
+
+        assert panel.text.yview_start == 0.42
+
+    def test_on_line_wrap_toggled_restores_top_visible_index_first(self) -> None:
+        panel = self._make_panel()
+        panel.text.top_index = "17.0"
+        panel.text.yview_start = 0.31
+
+        def _simulate_render_jump_to_bottom() -> None:
+            panel.text.top_index = "200.0"
+            panel.text.yview_start = 1.0
+
+        panel.render_selected_event = _simulate_render_jump_to_bottom
+        panel._on_line_wrap_toggled()
+
+        assert panel.text.top_index == "17.0"

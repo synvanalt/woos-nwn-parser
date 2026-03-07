@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 7, 2026 (post Death Snippets line-wrap toggle + horizontal scrollbar behavior updates)
+**Last Updated:** March 7, 2026 (post Death Snippets server-agnostic identification + UX/focus/scroll-preservation updates)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -q tests -p no:cacheprovider`
-- Result: **520 tests collected**
+- Result: **534 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 33 modules, 471 tests
+- `tests/unit/`: 33 modules, 485 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 41 test modules, 520 tests
+- Total: 41 test modules, 534 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -25,7 +25,7 @@ Notes:
 ### Unit (`tests/unit`)
 - `test_bump_version_script.py` (6)
 - `test_models.py` (52)
-- `test_parser.py` (61)
+- `test_parser.py` (66)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
 - `test_storage.py` (40)
@@ -33,7 +33,7 @@ Notes:
 - `test_utils.py` (37)
 - `test_monitor.py` (19)
 - `test_monitor_debug_mode.py` (9)
-- `test_queue_processor_unit.py` (28)
+- `test_queue_processor_unit.py` (29)
 - `test_queue_processor_batched.py` (9)
 - `test_queue_processor.py` (10)
 - `test_dps_service.py` (13)
@@ -45,8 +45,8 @@ Notes:
 - `test_immunity_panel_incremental.py` (3)
 - `test_target_stats_panel_incremental.py` (3)
 - `test_ui_optimizations.py` (18)
-- `test_death_snippet_panel.py` (22)
-- `test_main_window_load_parse.py` (8)
+- `test_death_snippet_panel.py` (24)
+- `test_main_window_load_parse.py` (11)
 - `test_main_window_monitoring_switch.py` (5)
 - `test_main_window_debug_tab_unlock.py` (5)
 - `test_main_window_orchestration.py` (9)
@@ -54,7 +54,7 @@ Notes:
 - `test_queue_processor_resilience.py` (5)
 - `test_sorted_treeview_edge_cases.py` (7)
 - `test_storage_edge_branches.py` (8)
-- `test_utils_worker_pipeline.py` (4)
+- `test_utils_worker_pipeline.py` (7)
 
 ### Integration (`tests/integration`)
 - `test_parser_storage_integration.py` (13)

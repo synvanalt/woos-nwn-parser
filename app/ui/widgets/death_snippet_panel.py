@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, font
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from ...constants import DAMAGE_TYPE_PALETTE
 from ..formatters import damage_type_to_color
@@ -38,6 +38,9 @@ class DeathSnippetPanel(ttk.Frame):
 
     EMPTY_DROPDOWN_PLACEHOLDER = "Hurray! You have not died (yet)"
     EMPTY_TEXT_PLACEHOLDER = "Last 100 character-related log lines before death will appear here"
+    CHARACTER_NAME_HINT = 'Whisper "wooparseme" in-game to auto-identify your character'
+    DEFAULT_FALLBACK_DEATH_LINE = "Your God refuses to hear your prayers!"
+    CONFIG_LABEL_WIDTH = 14
     KILLED_NAME_COLOR = "#98FEFF"
     OPPONENT_NAME_COLOR = "#CD98CC"
     _DAMAGE_KEYWORDS, _PAIR_PATTERNS, _TYPE_PATTERNS = _compile_damage_patterns()
@@ -65,13 +68,20 @@ class DeathSnippetPanel(ttk.Frame):
 
     def __init__(self, parent: ttk.Notebook) -> None:
         super().__init__(parent, padding="10")
+        self._notebook = parent
         self.death_events: list[Dict[str, Any]] = []
         self._event_sequence: int = 0
         self.killed_by_var = tk.StringVar(value=self.EMPTY_DROPDOWN_PLACEHOLDER)
+        self.character_name_var = tk.StringVar(value="")
+        self.fallback_death_line_var = tk.StringVar(value=self.DEFAULT_FALLBACK_DEATH_LINE)
         self.line_wrap_var = tk.BooleanVar(value=True)
         self._text_tags_by_color: Dict[str, str] = {}
         self._last_render_key: Optional[tuple] = None
         self._name_pattern_cache: Dict[str, re.Pattern[str]] = {}
+        self._character_hint_active = False
+        self._suppress_identity_callbacks = False
+        self._on_character_name_changed: Optional[Callable[[str], None]] = None
+        self._on_fallback_line_changed: Optional[Callable[[str], None]] = None
 
         try:
             self.theme_font = font.nametofont("SunValleyBodyFont")
@@ -79,18 +89,58 @@ class DeathSnippetPanel(ttk.Frame):
             self.theme_font = font.Font(family="Courier", size=10)
 
         self.setup_ui()
+        self._notebook.bind("<<NotebookTabChanged>>", self._on_notebook_tab_changed, add=True)
         self._set_combo_values()
         self._show_placeholder()
 
     def setup_ui(self) -> None:
+        config_frame = ttk.Frame(self)
+        config_frame.pack(fill="x", padx=(10, 10), pady=(0, 0))
+
+        character_row = ttk.Frame(config_frame)
+        character_row.pack(fill="x", pady=(0, 7))
+        ttk.Label(
+            character_row,
+            text="Character Name:",
+            width=self.CONFIG_LABEL_WIDTH,
+            anchor="w",
+        ).pack(side="left", padx=(0, 5))
+        self.character_name_entry = ttk.Entry(
+            character_row,
+            textvariable=self.character_name_var,
+        )
+        self.character_name_entry.pack(side="left", fill="x", expand=True)
+        self.character_name_entry.bind("<FocusIn>", self._on_character_name_focus_in)
+        self.character_name_entry.bind("<FocusOut>", self._on_character_name_focus_out)
+
+        fallback_row = ttk.Frame(config_frame)
+        fallback_row.pack(fill="x", pady=(0, 7))
+        ttk.Label(
+            fallback_row,
+            text="Fallback Log Line:",
+            width=self.CONFIG_LABEL_WIDTH,
+            anchor="w",
+        ).pack(side="left", padx=(0, 5))
+        self.fallback_death_line_entry = ttk.Entry(
+            fallback_row,
+            textvariable=self.fallback_death_line_var,
+        )
+        self.fallback_death_line_entry.pack(side="left", fill="x", expand=True)
+        self._set_fallback_entry_foreground("gray")
+
         selector_frame = ttk.Frame(self)
-        selector_frame.pack(fill="x", padx=(10, 10), pady=(8, 10))
+        selector_frame.pack(fill="x", padx=(10, 10), pady=(0, 10))
 
         def _on_death_selected(_event: tk.Event) -> None:
             _event.widget.selection_clear()
             self.render_selected_event()
 
-        ttk.Label(selector_frame, text="Killed by:").pack(side="left", padx=(0, 5))
+        ttk.Label(
+            selector_frame,
+            text="Killed by:",
+            width=self.CONFIG_LABEL_WIDTH,
+            anchor="w",
+        ).pack(side="left", padx=(0, 5))
         self.killed_by_combo = ttk.Combobox(
             selector_frame,
             state="disabled",
@@ -125,12 +175,177 @@ class DeathSnippetPanel(ttk.Frame):
         vscroll.grid(row=0, column=1, sticky="ns")
         vscroll.config(command=self.text.yview)
         self._apply_line_wrap_setting()
+        self._enable_character_name_hint_if_empty()
+        self.character_name_var.trace_add("write", self._on_character_name_text_changed)
+        self.fallback_death_line_var.trace_add("write", self._on_fallback_line_text_changed)
+
+    def _on_notebook_tab_changed(self, _event: tk.Event) -> None:
+        """Set default focus to selector dropdown when entering this panel."""
+        if not hasattr(self, "_notebook"):
+            return
+        try:
+            selected_tab = self._notebook.nametowidget(self._notebook.select())
+        except tk.TclError:
+            return
+        if selected_tab is not self:
+            return
+        try:
+            self.killed_by_combo.focus_set()
+        except tk.TclError:
+            pass
+
+    @staticmethod
+    def _normalize_name(value: str) -> str:
+        """Normalize user-entered character names."""
+        return " ".join(value.strip().split())
+
+    def configure_identity_callbacks(
+        self,
+        *,
+        on_character_name_changed: Optional[Callable[[str], None]] = None,
+        on_fallback_line_changed: Optional[Callable[[str], None]] = None,
+    ) -> None:
+        """Configure callbacks for identity/fallback entry changes."""
+        self._on_character_name_changed = on_character_name_changed
+        self._on_fallback_line_changed = on_fallback_line_changed
+
+    def _set_character_entry_foreground(self, color: str) -> None:
+        """Set the character name entry foreground with ttk/tk compatibility."""
+        if not hasattr(self, "character_name_entry"):
+            return
+        try:
+            self.character_name_entry.configure(foreground=color)
+        except tk.TclError:
+            pass
+
+    def _set_fallback_entry_foreground(self, color: str) -> None:
+        """Set the fallback line entry foreground with ttk/tk compatibility."""
+        if not hasattr(self, "fallback_death_line_entry"):
+            return
+        try:
+            self.fallback_death_line_entry.configure(foreground=color)
+        except tk.TclError:
+            pass
+
+    def _set_combo_text_foreground(self, color: str) -> None:
+        """Set dropdown text color with ttk/tk compatibility."""
+        if not hasattr(self, "killed_by_combo"):
+            return
+        try:
+            self.killed_by_combo.configure(foreground=color)
+        except tk.TclError:
+            pass
+
+    def _enable_character_name_hint_if_empty(self) -> None:
+        """Show hint text in character name entry when value is empty."""
+        if self._normalize_name(self.character_name_var.get()):
+            return
+        self._suppress_identity_callbacks = True
+        self._character_hint_active = True
+        self.character_name_var.set(self.CHARACTER_NAME_HINT)
+        self._set_character_entry_foreground("gray")
+        self._suppress_identity_callbacks = False
+
+    def _on_character_name_focus_in(self, _event: tk.Event) -> None:
+        """Clear hint text on focus-in for direct editing."""
+        if not self._character_hint_active:
+            return
+        self._suppress_identity_callbacks = True
+        self.character_name_var.set("")
+        self._character_hint_active = False
+        self._set_character_entry_foreground("")
+        self._suppress_identity_callbacks = False
+
+    def _on_character_name_focus_out(self, _event: tk.Event) -> None:
+        """Restore hint text if user leaves the field empty."""
+        if self._normalize_name(self.character_name_var.get()):
+            return
+        self._enable_character_name_hint_if_empty()
+        self._notify_character_name_changed()
+
+    def _on_character_name_text_changed(self, *_args) -> None:
+        """Handle character name text edits."""
+        if self._suppress_identity_callbacks:
+            return
+        if self._character_hint_active and self.character_name_var.get() != self.CHARACTER_NAME_HINT:
+            self._character_hint_active = False
+            self._set_character_entry_foreground("")
+        self._notify_character_name_changed()
+
+    def _on_fallback_line_text_changed(self, *_args) -> None:
+        """Handle fallback death-line text edits."""
+        if self._suppress_identity_callbacks:
+            return
+        if self._on_fallback_line_changed is not None:
+            self._on_fallback_line_changed(self.get_fallback_death_line())
+
+    def _notify_character_name_changed(self) -> None:
+        """Notify controller callback with normalized character name."""
+        if self._on_character_name_changed is None:
+            return
+        self._on_character_name_changed(self.get_character_name())
+
+    def get_character_name(self) -> str:
+        """Return normalized character name, excluding hint text."""
+        if self._character_hint_active:
+            return ""
+        return self._normalize_name(self.character_name_var.get())
+
+    def set_character_name(self, name: str) -> None:
+        """Set character name field value and notify callback."""
+        normalized = self._normalize_name(name)
+        self._suppress_identity_callbacks = True
+        if normalized:
+            self._character_hint_active = False
+            self.character_name_var.set(normalized)
+            self._set_character_entry_foreground("")
+        else:
+            self.character_name_var.set("")
+            self._enable_character_name_hint_if_empty()
+        self._suppress_identity_callbacks = False
+        self._notify_character_name_changed()
+
+    def get_fallback_death_line(self) -> str:
+        """Return fallback death-line text."""
+        return self.fallback_death_line_var.get().strip()
+
+    def set_fallback_death_line(self, line: str) -> None:
+        """Set fallback death-line field value and notify callback."""
+        self._suppress_identity_callbacks = True
+        self.fallback_death_line_var.set(line.strip())
+        self._suppress_identity_callbacks = False
+        if self._on_fallback_line_changed is not None:
+            self._on_fallback_line_changed(self.get_fallback_death_line())
 
     def _on_line_wrap_toggled(self) -> None:
         """Apply line-wrap behavior from the toggle state."""
+        top_visible_index: Optional[str] = None
+        yview_start: Optional[float] = None
+        try:
+            top_visible_index = str(self.text.index("@0,0"))
+        except (AttributeError, tk.TclError):
+            top_visible_index = None
+        try:
+            yview = self.text.yview()
+            if isinstance(yview, tuple) and yview:
+                yview_start = float(yview[0])
+        except (AttributeError, tk.TclError, ValueError, TypeError):
+            yview_start = None
+
         self._apply_line_wrap_setting()
         self._last_render_key = None
         self.render_selected_event()
+        if top_visible_index:
+            try:
+                self.text.yview(top_visible_index)
+                return
+            except (AttributeError, tk.TclError):
+                pass
+        if yview_start is not None:
+            try:
+                self.text.yview_moveto(yview_start)
+            except (AttributeError, tk.TclError):
+                pass
 
     def _apply_line_wrap_setting(self) -> None:
         """Configure text wrapping and horizontal scrollbar visibility."""
@@ -205,16 +420,18 @@ class DeathSnippetPanel(ttk.Frame):
         if not killer:
             killer = "Unknown"
 
-        return f"{timestamp_text} {killer}"
+        return f"[{timestamp_text}] {killer}"
 
     def _set_combo_values(self) -> None:
         """Refresh combobox values from current death events."""
         values = [self._format_dropdown_value(event) for event in self.death_events]
         self.killed_by_combo["values"] = values
         if values:
+            self._set_combo_text_foreground("")
             self.killed_by_combo.configure(state="readonly")
         else:
             # Set display text before disabling to ensure it remains visible.
+            self._set_combo_text_foreground("gray")
             self.killed_by_combo.configure(state="normal")
             self.killed_by_var.set(self.EMPTY_DROPDOWN_PLACEHOLDER)
             self.killed_by_combo.configure(state="disabled")
@@ -376,11 +593,6 @@ class DeathSnippetPanel(ttk.Frame):
                 occupied.append((start, end))
 
         return sorted(spans, key=lambda item: (item[0], item[1]))
-
-    @classmethod
-    def _normalize_name(cls, value: str) -> str:
-        """Trim and normalize a name string."""
-        return " ".join(value.strip().split())
 
     @classmethod
     def _extract_opponent_names(

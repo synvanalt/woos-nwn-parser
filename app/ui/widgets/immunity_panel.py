@@ -54,7 +54,7 @@ class ImmunityPanel(ttk.Frame):
         """Setup the panel UI components."""
         # Target selector with Parse Immunities checkbox
         selector_frame = ttk.Frame(self)
-        selector_frame.pack(fill="x", padx=(10, 10), pady=(8, 10))
+        selector_frame.pack(fill="x", padx=(10, 10), pady=(0, 10))
 
         # Switcher to toggle parsing of immunity numbers
         self.parse_immunity_var = tk.BooleanVar(value=False)

@@ -728,3 +728,61 @@ class TestDeathSnippetParsing:
         assert "Orc attacks Ann" in snippet_joined
         assert "Orc attacks Anna" not in snippet_joined
 
+    def test_whisper_identifies_character_name_and_emits_event(self, parser: LogParser) -> None:
+        result = parser.parse_line(
+            "[CHAT WINDOW TEXT] [Sat Mar  7 17:53:39] Woo Wildrock: [Whisper] wooparseme"
+        )
+
+        assert result is not None
+        assert result["type"] == "death_character_identified"
+        assert result["character_name"] == "Woo Wildrock"
+        assert parser.death_character_name == "Woo Wildrock"
+
+    def test_whisper_token_matching_is_case_insensitive(self, parser: LogParser) -> None:
+        result = parser.parse_line(
+            "[CHAT WINDOW TEXT] [Sat Mar  7 17:53:39] Woo Wildrock: [Whisper] WoOPaRsEmE"
+        )
+        assert result is not None
+        assert result["type"] == "death_character_identified"
+        assert result["character_name"] == "Woo Wildrock"
+
+    def test_character_known_uses_killed_line_and_ignores_fallback(self, parser: LogParser) -> None:
+        parser.set_death_character_name("Woo Wildrock")
+        parser.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:34] HYDROXYS attacks Woo Wildrock: *hit*: (10 + 60 = 70)"
+        )
+        death_event = parser.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] HYDROXYS killed Woo Wildrock"
+        )
+
+        assert death_event is not None
+        assert death_event["type"] == "death_snippet"
+        assert death_event["target"] == "Woo Wildrock"
+        assert death_event["killer"] == "HYDROXYS"
+        assert death_event["lines"][-1].endswith("HYDROXYS killed Woo Wildrock")
+
+        fallback_event = parser.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:37] Your God refuses to hear your prayers!"
+        )
+        assert fallback_event is None
+
+    def test_character_known_requires_case_sensitive_target_match(self, parser: LogParser) -> None:
+        parser.set_death_character_name("Woo Wildrock")
+        result = parser.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] HYDROXYS killed woo wildrock"
+        )
+        assert result is None
+
+    def test_fallback_line_can_be_customized(self, parser: LogParser) -> None:
+        parser.set_death_fallback_line("You have fallen.")
+        parser.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:34] HYDROXYS killed Woo Wildrock"
+        )
+        result = parser.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] You have fallen."
+        )
+
+        assert result is not None
+        assert result["type"] == "death_snippet"
+        assert result["target"] == "Woo Wildrock"
+

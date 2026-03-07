@@ -44,7 +44,7 @@ class DebugConsolePanel(ttk.Frame):
         """Setup the panel UI components."""
         # Debug output switcher
         debug_controls_frame = ttk.Frame(self)
-        debug_controls_frame.pack(fill="x", padx=(10, 10), pady=(8, 10))
+        debug_controls_frame.pack(fill="x", padx=(10, 10), pady=(0, 10))
 
         # Debug Switcher to enable/disable debug output
         ttk.Checkbutton(

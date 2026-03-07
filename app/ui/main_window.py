@@ -175,6 +175,12 @@ class WoosNwnParserApp:
         # Tab 4: Death Snippets Panel
         self.death_snippet_panel = DeathSnippetPanel(self.notebook)
         self.notebook.add(self.death_snippet_panel, text="Death Snippets")
+        self.death_snippet_panel.configure_identity_callbacks(
+            on_character_name_changed=self._on_death_character_name_changed,
+            on_fallback_line_changed=self._on_death_fallback_line_changed,
+        )
+        self.parser.set_death_character_name(self.death_snippet_panel.get_character_name())
+        self.parser.set_death_fallback_line(self.death_snippet_panel.get_fallback_death_line())
 
         # Tab 5: Debug Console Panel (using DebugConsolePanel widget)
         self.debug_panel = DebugConsolePanel(self.notebook)
@@ -326,7 +332,14 @@ class WoosNwnParserApp:
         self.import_result_queue = ctx.Queue()
         self.import_process = ctx.Process(
             target=import_worker_process,
-            args=(file_paths, bool(self.parser.parse_immunity), self.import_abort_flag, self.import_result_queue),
+            args=(
+                file_paths,
+                bool(self.parser.parse_immunity),
+                self.import_abort_flag,
+                self.import_result_queue,
+                self.parser.death_character_name,
+                self.parser.death_fallback_line,
+            ),
             daemon=True,
         )
         self.import_process.start()
@@ -850,6 +863,7 @@ class WoosNwnParserApp:
             on_damage_dealt=self._on_damage_dealt,
             on_death_snippet=self._on_death_snippet,
             debug_enabled=self.debug_panel.get_debug_enabled(),
+            on_character_identified=self._on_death_character_identified,
         )
 
         # Schedule next check
@@ -887,6 +901,21 @@ class WoosNwnParserApp:
     def _on_death_snippet(self, event: Dict[str, Any]) -> None:
         """Callback from queue processor when a death snippet is produced."""
         self.death_snippet_panel.add_death_event(event)
+
+    def _on_death_character_identified(self, event: Dict[str, Any]) -> None:
+        """Callback when parser auto-identifies player character via whisper token."""
+        character_name = str(event.get("character_name", "")).strip()
+        if not character_name:
+            return
+        self.death_snippet_panel.set_character_name(character_name)
+
+    def _on_death_character_name_changed(self, name: str) -> None:
+        """Apply UI character-name changes to parser death detection."""
+        self.parser.set_death_character_name(name)
+
+    def _on_death_fallback_line_changed(self, line: str) -> None:
+        """Apply UI fallback line changes to parser death detection."""
+        self.parser.set_death_fallback_line(line)
 
     def on_closing(self) -> None:
         """Handle application closing."""

@@ -3,17 +3,17 @@
 ## [Unreleased]
 
 ### Changed
+- Death Snippets now support server-agnostic death detection:
+  - Auto-identify the player's character from game whisper chat: `[Whisper] wooparseme` (can also be entered manually)
+  - When character is known, deaths are tracked via `<Opponent> killed <CharacterName>` (exact match)
+  - When character name is empty, deaths are tracked via the fallback log line entry (exact match)
 - Death Snippets UX: `Killed by:` dropdown now drives snippet selection (newest first)
-- Death Snippets now color character names by role:
-  - Killed character name is highlighted in `#98FEFF` across all snippet lines
-  - Opponent names (killer and other hostile actors targeting the killed character) are highlighted in `#CD98CC`
+- Death Snippets now color character and opponents names, as well as damage types and values
 - Death Snippets panel now includes a `Line Wrap` checkbox (default ON) to toggle wrapped vs. unwrapped log-line display
 
 ### Fixed
-- Death Snippets damage-type coloring now uses context-gated matching to avoid false positives in spell names:
-  - Keeps coloring in `Damage Immunity absorbs ... of <Type>`, `X damages Y: ... (<breakdown>)`, and `Save vs. <Type>` lines
-  - Prevents coloring tokens inside spell names on `SPELL RESIST` lines (for example `Acid Fog`, `Wall of Fire`)
 - Death Snippets no-wrap horizontal scrollbar now appears reliably and allows scrolling fully to the right regardless of which lines are currently in view
+- Death Snippets wrap toggle now preserves the current viewing position when switching line-wrap mode (no forced jump to bottom)
 - Treeview numeric sorting now treats `"-"` and empty values as lower than `0` in both sort directions (ascending: top, descending: bottom)
 - Target Stats sorting for `AC` now uses the numeric component for prefixed values (for example `~`, `≤`, `>`) and uses the upper bound for ranges (for example `48-65` sorts by `65`)
 - `SortedTreeview` now uses consistent numeric parsing between `sort_column()` and `_is_already_sorted()`, eliminating inconsistent reorder behavior after refreshes
@@ -169,4 +169,5 @@
 - Hit rate statistics
 - AB, AC, Saves per target
 - Damage immunities per target
+
 

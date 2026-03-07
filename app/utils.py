@@ -279,11 +279,15 @@ def parse_file_to_ops(
     file_path: str,
     *,
     parse_immunity: bool = False,
+    death_character_name: str = "",
+    death_fallback_line: str = LogParser.DEFAULT_DEATH_FALLBACK_LINE,
     should_abort: Optional[Callable[[], bool]] = None,
 ) -> Dict:
     """Parse a log file and return operation payloads (no datastore mutation)."""
     try:
         parser = LogParser(parse_immunity=parse_immunity)
+        parser.set_death_character_name(death_character_name)
+        parser.set_death_fallback_line(death_fallback_line)
         lines_processed = 0
         last_damage_dealt = {}
 
@@ -413,6 +417,8 @@ def import_worker_process(
     parse_immunity: bool,
     abort_event,
     result_queue,
+    death_character_name: str = "",
+    death_fallback_line: str = LogParser.DEFAULT_DEATH_FALLBACK_LINE,
 ) -> None:
     """Process target for multiprocessing import pipeline."""
     total_files = len(file_paths)
@@ -432,6 +438,8 @@ def import_worker_process(
         result = parse_file_to_ops(
             file_path,
             parse_immunity=parse_immunity,
+            death_character_name=death_character_name,
+            death_fallback_line=death_fallback_line,
             should_abort=abort_event.is_set,
         )
 
