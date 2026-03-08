@@ -389,6 +389,35 @@ class TestAttackParsing:
         assert parser.target_ac['Target'].min_hit == 50
         assert parser.target_ac['Target'].get_ac_estimate() == "≤50"
 
+    def test_parse_target_concealed_without_outcome_is_ignored(self, parser: LogParser) -> None:
+        """No-outcome target-concealed lines should not emit attacks or affect stats."""
+        line = (
+            "[CHAT WINDOW TEXT] [Sat Oct 18 21:12:56] Attack Of Opportunity : Flurry of Blows : "
+            "Woo Whirlwind attacks Cerberus : *target concealed: 50%* : (3 + 17 = 20)"
+        )
+        result = parser.parse_line(line)
+
+        assert result is None
+        assert 'Cerberus' not in parser.target_ac
+        assert 'Woo Whirlwind' not in parser.target_attack_bonus
+
+    def test_parse_target_concealed_with_explicit_outcome(self, parser: LogParser) -> None:
+        """Target-concealed lines with explicit outcome should parse as attacks."""
+        line = (
+            "[CHAT WINDOW TEXT] [Sat Oct 18 21:12:56] Attack Of Opportunity : Flurry of Blows : "
+            "Woo Whirlwind attacks Cerberus : *target concealed: 50%* : "
+            "(19 + 17 = 36) : *critical hit*"
+        )
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result['type'] == 'attack_hit_critical'
+        assert result['attacker'] == 'Woo Whirlwind'
+        assert result['target'] == 'Cerberus'
+        assert result['roll'] == 19
+        assert result['bonus'] == '17'
+        assert result['total'] == 36
+
     def test_parse_concealment_real_world_scenario(self, parser: LogParser) -> None:
         """Test real-world scenario from user's logs.
 

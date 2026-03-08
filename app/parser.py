@@ -347,6 +347,76 @@ class LogParser:
 
         return damage_types
 
+    @staticmethod
+    def _normalize_attack_attacker_name(raw_attacker: str) -> str:
+        """Strip attack prefix chains and keep only the attacker segment."""
+        attacker = raw_attacker.strip()
+        if " : " in attacker:
+            attacker = attacker.rsplit(" : ", 1)[-1].strip()
+        return attacker
+
+    def _parse_attack_conceal_fast(self, s: str) -> tuple[Optional[Dict[str, Any]], bool]:
+        """Fast-path parser for conceal lines.
+
+        Returns:
+            (parsed_attack, should_fallback_regex)
+            - parsed_attack: Parsed dict with attacker/target/outcome/roll/bonus/total when successful.
+            - should_fallback_regex: Whether to try the legacy regex when fast-path doesn't parse.
+        """
+        if " attacks " not in s or "*target concealed:" not in s:
+            return None, True
+
+        try:
+            left, right = s.split(" attacks ", 1)
+            target_part, rest = right.split(" : *target concealed:", 1)
+
+            roll_seg_start = rest.find("(")
+            roll_seg_end = rest.find(")", roll_seg_start + 1)
+            if roll_seg_start < 0 or roll_seg_end < 0:
+                return None, True
+
+            roll_expr = rest[roll_seg_start + 1:roll_seg_end]
+            roll_s, rem = roll_expr.split("+", 1)
+            bonus_s, total_s = rem.split("=", 1)
+
+            attacker = self._normalize_attack_attacker_name(left)
+            target = target_part.strip()
+            roll = int(roll_s.strip())
+            bonus = int(bonus_s.strip())
+            total = int(total_s.strip())
+
+            # Keep existing behavior: conceal lines without an explicit final
+            # outcome token are ignored and should not affect hit/miss stats.
+            tail = rest[roll_seg_end + 1:].strip()
+            if not tail:
+                return None, False
+            if tail.startswith(":"):
+                tail = tail[1:].strip()
+            if not tail:
+                return None, False
+            if not tail.startswith("*"):
+                return None, True
+
+            end_star = tail.find("*", 1)
+            if end_star < 0:
+                return None, True
+
+            outcome = tail[1:end_star].strip().lower()
+            allowed_outcomes = {"hit", "critical hit", "miss", "parried", "resisted"}
+            if outcome not in allowed_outcomes:
+                return None, True
+
+            return {
+                "attacker": attacker,
+                "target": target,
+                "outcome": outcome,
+                "roll": roll,
+                "bonus": str(bonus),
+                "total": total,
+            }, False
+        except Exception:
+            return None, True
+
     def parse_line(self, line: str) -> Optional[Dict]:
         """Parse a single log line and extract relevant data.
 
@@ -501,9 +571,11 @@ class LogParser:
 
         # Check for attack rolls to estimate AC. Most lines are plain hit/miss entries,
         # so route to the narrowest plausible regex first.
+        attack_fast_data: Optional[Dict[str, Any]] = None
         if self._attack_marker in stripped_line:
             if self._target_concealed_marker in stripped_line:
-                attack_match = self.patterns['attack_conceal'].search(stripped_line)
+                attack_fast_data, should_fallback = self._parse_attack_conceal_fast(stripped_line)
+                attack_match = patterns['attack_conceal'].search(stripped_line) if should_fallback else None
             elif (
                 self._threat_roll_marker in stripped_line or
                 self._attacker_miss_chance_marker in stripped_line
@@ -514,15 +586,29 @@ class LogParser:
         else:
             attack_match = None
 
-        if attack_match:
+        if attack_fast_data is not None:
+            attacker = attack_fast_data['attacker']
+            target = attack_fast_data['target']
+            outcome = attack_fast_data['outcome']
+            roll_str = str(attack_fast_data['roll'])
+            total_str = str(attack_fast_data['total'])
+            bonus_str = attack_fast_data['bonus']
+        elif attack_match:
             attacker = attack_match.group('attacker').strip()
             target = attack_match.group('target').strip()
             outcome = attack_match.group('outcome').lower() if 'outcome' in attack_match.groupdict() else ''
-
-            # Parse roll results
             roll_str = attack_match.group('roll')
             total_str = attack_match.group('total')
+            bonus_str = attack_match.group('bonus')
+        else:
+            roll_str = None
+            total_str = None
+            bonus_str = None
+            outcome = ''
+            attacker = ''
+            target = ''
 
+        if attack_fast_data is not None or attack_match:
             # Handle outcomes including special miss chance
             # outcome can only be: hit, critical hit, miss, parried, resisted, or attacker miss chance
             is_hit = 'hit' in outcome
@@ -535,7 +621,6 @@ class LogParser:
                 total = int(total_str)
                 was_nat1 = roll == 1
                 was_nat20 = roll == 20
-                bonus_str = attack_match.group('bonus')
                 bonus = int(bonus_str) if bonus_str else None
 
                 # Track AC for all attacks against targets (for AC estimation)
@@ -574,7 +659,7 @@ class LogParser:
                         'attacker': attacker,
                         'target': target,
                         'roll': roll,
-                        'bonus': attack_match.group('bonus'),
+                        'bonus': bonus_str,
                         'total': total,
                         'was_nat1': was_nat1,
                         'timestamp': get_timestamp()
