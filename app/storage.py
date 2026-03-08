@@ -18,11 +18,17 @@ class DataStore:
     All data is stored in memory and lost when the app closes (session-only).
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        max_events_history: int = 200000,
+        max_attacks_history: int = 200000,
+    ) -> None:
         """Initialize the data store."""
         self.events: List[DamageEvent] = []
         self.attacks: List[AttackEvent] = []
         self.lock = threading.RLock()
+        self.max_events_history = max(1, int(max_events_history))
+        self.max_attacks_history = max(1, int(max_attacks_history))
         # Version counter for change detection (incremented on data modifications)
         self._version: int = 0
         # DPS tracking: character_name -> {'damage': total, 'first_timestamp': datetime, 'last_timestamp': datetime, 'damage_by_type': {type: amount}}
@@ -59,6 +65,18 @@ class DataStore:
         self._all_damage_types_cache: set[str] = set()
         self._target_stats_cache: Dict[str, Dict[str, int]] = {}
 
+    def _trim_damage_history(self) -> None:
+        """Bound retained raw damage-event history."""
+        overflow = len(self.events) - self.max_events_history
+        if overflow > 0:
+            del self.events[:overflow]
+
+    def _trim_attack_history(self) -> None:
+        """Bound retained raw attack-event history."""
+        overflow = len(self.attacks) - self.max_attacks_history
+        if overflow > 0:
+            del self.attacks[:overflow]
+
     @property
     def version(self) -> int:
         """Get the current data version for change detection.
@@ -94,6 +112,7 @@ class DataStore:
                 total=total
             )
             self.attacks.append(event)
+            self._trim_attack_history()
             # Update attack indices for O(1) lookups
             if attacker not in self._attacks_by_attacker:
                 self._attacks_by_attacker[attacker] = []
@@ -149,6 +168,7 @@ class DataStore:
                 timestamp=timestamp
             )
             self.events.append(event)
+            self._trim_damage_history()
             self._all_damage_types_cache.add(damage_type)
             # Update targets cache (O(1) set add)
             self._targets_cache.add(target)

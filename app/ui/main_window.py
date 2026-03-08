@@ -75,6 +75,7 @@ class WoosNwnParserApp:
         self._targets_dirty = False
         self._immunity_dirty_targets: set[str] = set()
         self._queue_tick_ms = 50
+        self._queue_has_backlog = False
 
         # Debug mode
         self.debug_mode = False
@@ -417,8 +418,8 @@ class WoosNwnParserApp:
 
     def _apply_pending_payloads_incremental(self) -> None:
         """Apply completed-file payloads in small slices on the Tk thread."""
-        budget = 500
-        while budget > 0 and self._pending_file_payloads:
+        deadline = time.perf_counter() + 0.008
+        while time.perf_counter() < deadline and self._pending_file_payloads:
             item = self._pending_file_payloads[0]
             ops = item['ops']
             progress = item['progress']
@@ -431,7 +432,6 @@ class WoosNwnParserApp:
                     attacker, total_damage, timestamp, damage_types = dps[idx]
                     self.data_store.update_dps_data(attacker, total_damage, timestamp, damage_types)
                     progress['idx'] += 1
-                    budget -= 1
                     continue
                 progress['stage'] = 'damage'
                 progress['idx'] = 0
@@ -443,7 +443,6 @@ class WoosNwnParserApp:
                     target, damage_type, immunity, total_damage, attacker, timestamp = damage_events[idx]
                     self.data_store.insert_damage_event(target, damage_type, immunity, total_damage, attacker, timestamp)
                     progress['idx'] += 1
-                    budget -= 1
                     continue
                 progress['stage'] = 'immunity'
                 progress['idx'] = 0
@@ -455,7 +454,6 @@ class WoosNwnParserApp:
                     target, damage_type, immunity_points, damage_amount = immunities[idx]
                     self.data_store.record_immunity(target, damage_type, immunity_points, damage_amount)
                     progress['idx'] += 1
-                    budget -= 1
                     continue
                 progress['stage'] = 'attack'
                 progress['idx'] = 0
@@ -467,7 +465,6 @@ class WoosNwnParserApp:
                     attacker, target, outcome, roll, bonus, total = attacks[idx]
                     self.data_store.insert_attack_event(attacker, target, outcome, roll, bonus, total)
                     progress['idx'] += 1
-                    budget -= 1
                     continue
                 progress['stage'] = 'death_snippet'
                 progress['idx'] = 0
@@ -479,7 +476,6 @@ class WoosNwnParserApp:
                     event = death_snippets[idx]
                     self.death_snippet_panel.add_death_event(event)
                     progress['idx'] += 1
-                    budget -= 1
                     continue
                 progress['stage'] = 'merge_state'
                 progress['idx'] = 0
@@ -490,7 +486,6 @@ class WoosNwnParserApp:
                     self._merge_parser_state(item['parser_state'])
                 item['state_merged'] = True
                 self._pending_file_payloads.popleft()
-                budget -= 1
                 continue
 
             if stage == 'merge_state' and item['state_merged']:
@@ -1002,9 +997,19 @@ class WoosNwnParserApp:
         process_kwargs = {
             "on_log_message": self.log_debug,
             "debug_enabled": self.debug_panel.get_debug_enabled(),
-            "max_events": 2000,
-            "max_time_ms": 12.0,
+            "max_events": 1200,
+            "max_time_ms": 10.0,
         }
+        try:
+            backlog_hint = int(self.data_queue.qsize())
+        except (NotImplementedError, AttributeError):
+            backlog_hint = 0
+        if backlog_hint >= 10000:
+            process_kwargs["max_events"] = 5000
+            process_kwargs["max_time_ms"] = 16.0
+        elif backlog_hint >= 2000:
+            process_kwargs["max_events"] = 3000
+            process_kwargs["max_time_ms"] = 14.0
         process_fn = self.queue_processor.process_queue
         if hasattr(process_fn, "mock_calls"):
             # Test harness compatibility only.
@@ -1078,6 +1083,7 @@ class WoosNwnParserApp:
         # Schedule next check
         backlog_value = getattr(result, "has_backlog", False)
         has_backlog = backlog_value if isinstance(backlog_value, bool) else False
+        self._queue_has_backlog = has_backlog
         default_tick = getattr(self, "_queue_tick_ms", 100)
         next_tick = 10 if has_backlog else default_tick
         self.root.after(next_tick, self.process_queue)
@@ -1086,7 +1092,8 @@ class WoosNwnParserApp:
         """Schedule a batched UI refresh for heavy panels."""
         if getattr(self, "_refresh_job", None) is not None:
             return
-        self._refresh_job = self.root.after(180, self._run_coalesced_refresh)
+        delay_ms = 240 if bool(getattr(self, "_queue_has_backlog", False)) else 180
+        self._refresh_job = self.root.after(delay_ms, self._run_coalesced_refresh)
 
     def _run_coalesced_refresh(self) -> None:
         """Execute one coalesced refresh pass for expensive widgets."""
