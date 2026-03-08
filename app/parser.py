@@ -7,7 +7,7 @@ extracting damage, attack, immunity, and save information.
 import re
 from collections import deque
 from datetime import datetime
-from typing import Any, Deque, Dict, Optional, Pattern
+from typing import Any, Deque, Dict, Iterable, Iterator, Optional, Pattern
 
 from .models import EnemyAC, EnemySaves, TargetAttackBonus
 
@@ -184,7 +184,7 @@ class LogParser:
     def _collect_death_snippet_lines(
         self,
         *,
-        history: list[str],
+        candidates_reversed: Iterable[str],
         target_name: str,
         trigger_line: Optional[str] = None,
     ) -> Optional[list[str]]:
@@ -194,7 +194,7 @@ class LogParser:
 
         name_pattern = self._get_name_token_pattern(target_name)
         snippet_reversed = []
-        for candidate in reversed(history):
+        for candidate in candidates_reversed:
             if name_pattern.search(candidate):
                 snippet_reversed.append(candidate)
                 if len(snippet_reversed) >= self.death_snippet_max_lines:
@@ -208,6 +208,15 @@ class LogParser:
             snippet_lines.append(trigger_line)
         return snippet_lines
 
+    def _iter_recent_log_lines_reversed(self, skip_latest: int = 0) -> Iterator[str]:
+        """Yield recent log lines from newest to oldest, optionally skipping newest lines."""
+        lines = iter(reversed(self.recent_log_lines))
+        for _ in range(max(0, skip_latest)):
+            if next(lines, None) is None:
+                return
+        for candidate in lines:
+            yield candidate
+
     def _build_death_snippet_event_from_fallback(
         self,
         fallback_line: str,
@@ -218,10 +227,9 @@ class LogParser:
             return None
 
         # Exclude current prayer line; scan recent history backward for nearest kill line.
-        history = list(self.recent_log_lines)[:-1]
         killed_match = None
         scanned = 0
-        for candidate in reversed(history):
+        for candidate in self._iter_recent_log_lines_reversed(skip_latest=1):
             if scanned >= self.death_lookup_killed_lookback_lines:
                 break
             scanned += 1
@@ -239,7 +247,7 @@ class LogParser:
             return None
 
         snippet_lines = self._collect_death_snippet_lines(
-            history=history,
+            candidates_reversed=self._iter_recent_log_lines_reversed(skip_latest=1),
             target_name=dead_target,
             trigger_line=fallback_line,
         )
@@ -262,9 +270,8 @@ class LogParser:
         timestamp: datetime,
     ) -> Optional[Dict[str, Any]]:
         """Build death snippet event using current killed line as trigger."""
-        history = list(self.recent_log_lines)
         snippet_lines = self._collect_death_snippet_lines(
-            history=history,
+            candidates_reversed=reversed(self.recent_log_lines),
             target_name=target,
         )
         if not snippet_lines:
