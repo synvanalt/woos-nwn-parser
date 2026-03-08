@@ -992,9 +992,9 @@ class WoosNwnParserApp:
 
         self.log_debug(f"First timestamp mode changed to: {new_mode_display}")
 
-        # Only refresh DPS display if still monitoring
-        if self.is_monitoring:
-            self.dps_panel.refresh()
+        # Always refresh DPS display so manual imports (paused monitoring)
+        # immediately reflect the selected first timestamp mode.
+        self.dps_panel.refresh()
 
     def _on_target_filter_changed(self, event: tk.Event) -> None:
         """Handle target filter change from combobox.

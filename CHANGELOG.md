@@ -11,6 +11,7 @@
 ### Fixed
 - Fixed stale DataStore index retention that could cause avoidable long-session slowdowns
 - Fixed stale-immunity cleanup timing when processed-event batches jump across cleanup boundaries
+- Fixed DPS panel not refreshing after changing `First Timestamp` while monitoring is paused
 
 
 ## [1.4.0] - 2026-03-07
