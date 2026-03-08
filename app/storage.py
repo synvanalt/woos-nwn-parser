@@ -44,14 +44,8 @@ class DataStore:
         self._damage_dealers_cache: set = set()
         self._damage_taken_by_target: Dict[str, int] = {}
         self._attack_stats_by_attacker: Dict[str, Dict[str, int]] = {}
+        self._attack_stats_by_target: Dict[str, Dict[str, int]] = {}
         self._attack_stats_by_attacker_target: Dict[Tuple[str, str], Dict[str, int]] = {}
-        # Attack indices for O(1) lookups
-        self._attacks_by_attacker: Dict[str, List[AttackEvent]] = {}
-        self._attacks_by_target: Dict[str, List[AttackEvent]] = {}
-        self._attacks_by_attacker_target: Dict[Tuple[str, str], List[AttackEvent]] = {}
-        # Damage event indices for O(1) lookups
-        self._events_by_target: Dict[str, List[DamageEvent]] = {}
-        self._events_by_attacker_target: Dict[Tuple[str, str], List[DamageEvent]] = {}
         self._damage_summary_by_target: Dict[str, Dict[str, Dict[str, int]]] = {}
         self._damage_dealers_by_target: Dict[str, set[str]] = {}
         self._dps_by_attacker_target: Dict[Tuple[str, str], Dict] = {}
@@ -121,35 +115,28 @@ class DataStore:
             )
             self.attacks.append(event)
             self._trim_attack_history()
-            # Update attack indices for O(1) lookups
-            if attacker not in self._attacks_by_attacker:
-                self._attacks_by_attacker[attacker] = []
-            self._attacks_by_attacker[attacker].append(event)
-
-            if target not in self._attacks_by_target:
-                self._attacks_by_target[target] = []
-            self._attacks_by_target[target].append(event)
-
             key = (attacker, target)
-            if key not in self._attacks_by_attacker_target:
-                self._attacks_by_attacker_target[key] = []
-            self._attacks_by_attacker_target[key].append(event)
-
             if attacker not in self._attack_stats_by_attacker:
                 self._attack_stats_by_attacker[attacker] = {'hits': 0, 'crits': 0, 'misses': 0}
 
             attacker_stats = self._attack_stats_by_attacker[attacker]
+            target_stats = self._attack_stats_by_target.setdefault(
+                target, {'hits': 0, 'crits': 0, 'misses': 0}
+            )
             attacker_target_stats = self._attack_stats_by_attacker_target.setdefault(
                 key, {'hits': 0, 'crits': 0, 'misses': 0}
             )
             if outcome == 'hit':
                 attacker_stats['hits'] += 1
+                target_stats['hits'] += 1
                 attacker_target_stats['hits'] += 1
             elif outcome == 'critical_hit':
                 attacker_stats['crits'] += 1
+                target_stats['crits'] += 1
                 attacker_target_stats['crits'] += 1
             elif outcome == 'miss':
                 attacker_stats['misses'] += 1
+                target_stats['misses'] += 1
                 attacker_target_stats['misses'] += 1
 
             self._record_target_attack_roll_locked(
@@ -239,16 +226,9 @@ class DataStore:
                 if target not in self._damage_dealers_by_target:
                     self._damage_dealers_by_target[target] = set()
                 self._damage_dealers_by_target[target].add(attacker)
-            # Update event indices for O(1) lookups
-            if target not in self._events_by_target:
-                self._events_by_target[target] = []
-            self._events_by_target[target].append(event)
 
             if attacker:
                 key = (attacker, target)
-                if key not in self._events_by_attacker_target:
-                    self._events_by_attacker_target[key] = []
-                self._events_by_attacker_target[key].append(event)
                 summary = self._dps_by_attacker_target.get(key)
                 if summary is None:
                     self._dps_by_attacker_target[key] = {
@@ -619,13 +599,8 @@ class DataStore:
             Tuple of (total_hits, total_damage, total_absorbed) or None
         """
         with self.lock:
-            # Use indexed events for O(1) lookup
-            target_events = self._events_by_target.get(target, [])
-            if not target_events:
-                return None
-
             stats = self._target_stats_cache.get(target)
-            if stats is None:
+            if stats is None or stats['total_hits'] == 0:
                 return None
             return (
                 int(stats['total_hits']),
@@ -644,22 +619,14 @@ class DataStore:
             Dict with keys 'attacks', 'hits', 'crits', 'misses', 'hit_rate' or None
         """
         with self.lock:
-            # Use indexed attacks for O(1) lookup
-            indexed_attacks = self._attacks_by_attacker_target.get((attacker, target), [])
-            if not indexed_attacks:
+            stats = self._attack_stats_by_attacker_target.get((attacker, target))
+            if not stats:
                 return None
 
-            # Single-pass counting
-            hits = crits = misses = 0
-            for a in indexed_attacks:
-                if a.outcome == 'hit':
-                    hits += 1
-                elif a.outcome == 'critical_hit':
-                    crits += 1
-                elif a.outcome == 'miss':
-                    misses += 1
-
-            total_attacks = len(indexed_attacks)
+            hits = int(stats['hits'])
+            crits = int(stats['crits'])
+            misses = int(stats['misses'])
+            total_attacks = hits + crits + misses
 
             # Calculate hit rate as (hits + crits) / (hits + crits + misses)
             successful = hits + crits
@@ -685,22 +652,14 @@ class DataStore:
             Dict with keys 'attacks', 'hits', 'crits', 'misses', 'hit_rate' or None
         """
         with self.lock:
-            # Use indexed attacks for O(1) lookup
-            indexed_attacks = self._attacks_by_target.get(target, [])
-            if not indexed_attacks:
+            stats = self._attack_stats_by_target.get(target)
+            if not stats:
                 return None
 
-            # Single-pass counting
-            hits = crits = misses = 0
-            for a in indexed_attacks:
-                if a.outcome == 'hit':
-                    hits += 1
-                elif a.outcome == 'critical_hit':
-                    crits += 1
-                elif a.outcome == 'miss':
-                    misses += 1
-
-            total_attacks = len(indexed_attacks)
+            hits = int(stats['hits'])
+            crits = int(stats['crits'])
+            misses = int(stats['misses'])
+            total_attacks = hits + crits + misses
 
             # Calculate hit rate as (hits + crits) / (hits + crits + misses)
             successful = hits + crits
@@ -974,13 +933,8 @@ class DataStore:
             self._all_damage_types_cache.clear()
             self._damage_taken_by_target.clear()
             self._attack_stats_by_attacker.clear()
+            self._attack_stats_by_target.clear()
             self._attack_stats_by_attacker_target.clear()
-            # Clear indices
-            self._attacks_by_attacker.clear()
-            self._attacks_by_target.clear()
-            self._attacks_by_attacker_target.clear()
-            self._events_by_target.clear()
-            self._events_by_attacker_target.clear()
             self._damage_summary_by_target.clear()
             self._damage_dealers_by_target.clear()
             self._dps_by_attacker_target.clear()

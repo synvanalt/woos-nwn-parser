@@ -1,7 +1,4 @@
-"""Unit tests for storage.py index optimizations.
-
-Tests the new attack/event indices added for O(1) lookups.
-"""
+"""Unit tests for storage.py aggregate index optimizations."""
 
 import pytest
 from datetime import datetime, timedelta
@@ -10,10 +7,10 @@ from app.storage import DataStore
 
 
 class TestAttackIndices:
-    """Test suite for attack indexing optimizations."""
+    """Test suite for attack aggregate indexing optimizations."""
 
     def test_attacks_by_attacker_index(self) -> None:
-        """Test that attacks are correctly indexed by attacker."""
+        """Test that attacks are correctly aggregated by attacker."""
         store = DataStore()
 
         # Insert attacks
@@ -21,14 +18,14 @@ class TestAttackIndices:
         store.insert_attack_event("Woo", "Orc", "miss", 8, 10, 18)
         store.insert_attack_event("Ally", "Goblin", "hit", 12, 8, 20)
 
-        # Verify index is populated
-        assert "Woo" in store._attacks_by_attacker
-        assert "Ally" in store._attacks_by_attacker
-        assert len(store._attacks_by_attacker["Woo"]) == 2
-        assert len(store._attacks_by_attacker["Ally"]) == 1
+        # Verify aggregate index is populated
+        assert "Woo" in store._attack_stats_by_attacker
+        assert "Ally" in store._attack_stats_by_attacker
+        assert store._attack_stats_by_attacker["Woo"] == {"hits": 1, "crits": 0, "misses": 1}
+        assert store._attack_stats_by_attacker["Ally"] == {"hits": 1, "crits": 0, "misses": 0}
 
     def test_attacks_by_target_index(self) -> None:
-        """Test that attacks are correctly indexed by target."""
+        """Test that attacks are correctly aggregated by target."""
         store = DataStore()
 
         # Insert attacks
@@ -36,14 +33,14 @@ class TestAttackIndices:
         store.insert_attack_event("Ally", "Goblin", "hit")
         store.insert_attack_event("Woo", "Orc", "miss")
 
-        # Verify index is populated
-        assert "Goblin" in store._attacks_by_target
-        assert "Orc" in store._attacks_by_target
-        assert len(store._attacks_by_target["Goblin"]) == 2
-        assert len(store._attacks_by_target["Orc"]) == 1
+        # Verify aggregate index is populated
+        assert "Goblin" in store._attack_stats_by_target
+        assert "Orc" in store._attack_stats_by_target
+        assert store._attack_stats_by_target["Goblin"] == {"hits": 2, "crits": 0, "misses": 0}
+        assert store._attack_stats_by_target["Orc"] == {"hits": 0, "crits": 0, "misses": 1}
 
     def test_attacks_by_attacker_target_index(self) -> None:
-        """Test that attacks are correctly indexed by (attacker, target) tuple."""
+        """Test that attacks are correctly aggregated by (attacker, target)."""
         store = DataStore()
 
         # Insert attacks
@@ -52,12 +49,16 @@ class TestAttackIndices:
         store.insert_attack_event("Woo", "Orc", "miss")
         store.insert_attack_event("Ally", "Goblin", "critical_hit")
 
-        # Verify index is populated
-        assert ("Woo", "Goblin") in store._attacks_by_attacker_target
-        assert ("Woo", "Orc") in store._attacks_by_attacker_target
-        assert ("Ally", "Goblin") in store._attacks_by_attacker_target
-        assert len(store._attacks_by_attacker_target[("Woo", "Goblin")]) == 2
-        assert len(store._attacks_by_attacker_target[("Woo", "Orc")]) == 1
+        # Verify aggregate index is populated
+        assert ("Woo", "Goblin") in store._attack_stats_by_attacker_target
+        assert ("Woo", "Orc") in store._attack_stats_by_attacker_target
+        assert ("Ally", "Goblin") in store._attack_stats_by_attacker_target
+        assert store._attack_stats_by_attacker_target[("Woo", "Goblin")] == {
+            "hits": 2, "crits": 0, "misses": 0
+        }
+        assert store._attack_stats_by_attacker_target[("Woo", "Orc")] == {
+            "hits": 0, "crits": 0, "misses": 1
+        }
 
     def test_get_attack_stats_uses_index(self) -> None:
         """Test that get_attack_stats benefits from indexing."""
@@ -84,25 +85,26 @@ class TestAttackIndices:
         store.insert_damage_event("Goblin", "Physical", 0, 50, "Woo")
 
         # Verify indices populated
-        assert len(store._attacks_by_attacker) > 0
+        assert len(store._attack_stats_by_attacker) > 0
+        assert len(store._attack_stats_by_target) > 0
         assert len(store._targets_cache) > 0
 
         # Clear all data
         store.clear_all_data()
 
         # Verify indices cleared
-        assert len(store._attacks_by_attacker) == 0
-        assert len(store._attacks_by_target) == 0
-        assert len(store._attacks_by_attacker_target) == 0
+        assert len(store._attack_stats_by_attacker) == 0
+        assert len(store._attack_stats_by_target) == 0
+        assert len(store._attack_stats_by_attacker_target) == 0
         assert len(store._targets_cache) == 0
         assert len(store._damage_dealers_cache) == 0
 
 
 class TestEventIndices:
-    """Test suite for event indexing optimizations."""
+    """Test suite for event aggregate indexing optimizations."""
 
     def test_events_by_target_index(self) -> None:
-        """Test that damage events are correctly indexed by target."""
+        """Test that damage events are correctly aggregated by target."""
         store = DataStore()
         now = datetime.now()
 
@@ -111,14 +113,20 @@ class TestEventIndices:
         store.insert_damage_event("Goblin", "Fire", 5, 45, "Woo", now)
         store.insert_damage_event("Orc", "Physical", 0, 30, "Ally", now)
 
-        # Verify index is populated
-        assert "Goblin" in store._events_by_target
-        assert "Orc" in store._events_by_target
-        assert len(store._events_by_target["Goblin"]) == 2
-        assert len(store._events_by_target["Orc"]) == 1
+        # Verify aggregate cache is populated
+        assert store._target_stats_cache["Goblin"] == {
+            "total_hits": 2,
+            "total_damage": 95,
+            "total_absorbed": 5,
+        }
+        assert store._target_stats_cache["Orc"] == {
+            "total_hits": 1,
+            "total_damage": 30,
+            "total_absorbed": 0,
+        }
 
     def test_events_by_attacker_target_index(self) -> None:
-        """Test that damage events are correctly indexed by (attacker, target)."""
+        """Test that damage events are correctly aggregated by (attacker, target)."""
         store = DataStore()
         now = datetime.now()
 
@@ -127,11 +135,11 @@ class TestEventIndices:
         store.insert_damage_event("Goblin", "Fire", 5, 45, "Woo", now)
         store.insert_damage_event("Goblin", "Cold", 0, 30, "Ally", now)
 
-        # Verify index is populated
-        assert ("Woo", "Goblin") in store._events_by_attacker_target
-        assert ("Ally", "Goblin") in store._events_by_attacker_target
-        assert len(store._events_by_attacker_target[("Woo", "Goblin")]) == 2
-        assert len(store._events_by_attacker_target[("Ally", "Goblin")]) == 1
+        # Verify attacker-target DPS summary is populated
+        assert ("Woo", "Goblin") in store._dps_by_attacker_target
+        assert ("Ally", "Goblin") in store._dps_by_attacker_target
+        assert store._dps_by_attacker_target[("Woo", "Goblin")]["total_damage"] == 95
+        assert store._dps_by_attacker_target[("Ally", "Goblin")]["total_damage"] == 30
 
     def test_get_target_stats_uses_index(self) -> None:
         """Test that get_target_stats benefits from indexing."""
@@ -323,7 +331,7 @@ class TestIndexPerformance:
         assert stats['total_attacks'] == 100  # Occurs at i = 0, 10, 20, ..., 990
 
     def test_indices_scale_with_data(self) -> None:
-        """Test that indices correctly scale with amount of data."""
+        """Test that aggregate indices correctly scale with amount of data."""
         store = DataStore()
         now = datetime.now()
 
@@ -337,13 +345,33 @@ class TestIndexPerformance:
             store.insert_attack_event(attacker, target, "hit")
             store.insert_damage_event(target, "Physical", 0, 10, attacker, now)
 
-        # Verify all indices populated correctly
-        assert len(store._attacks_by_target) == num_targets
-        assert len(store._attacks_by_attacker) == num_attackers
+        # Verify all aggregate indices populated correctly
+        assert len(store._attack_stats_by_target) == num_targets
+        assert len(store._attack_stats_by_attacker) == num_attackers
         assert len(store._targets_cache) == num_targets
         assert len(store._damage_dealers_cache) == num_attackers
 
         # Verify query still works efficiently
         targets = store.get_all_targets()
         assert len(targets) == num_targets
+
+    def test_raw_histories_trim_while_lifetime_aggregates_remain(self) -> None:
+        """Raw event/attack buffers should trim without affecting lifetime totals."""
+        store = DataStore(max_events_history=2, max_attacks_history=2)
+        now = datetime.now()
+
+        for i in range(5):
+            store.insert_attack_event("Woo", "Goblin", "hit")
+            store.insert_damage_event("Goblin", "Physical", 0, 10, "Woo", now + timedelta(seconds=i))
+
+        assert len(store.attacks) == 2
+        assert len(store.events) == 2
+
+        atk = store.get_attack_stats("Woo", "Goblin")
+        assert atk is not None
+        assert atk["total_attacks"] == 5
+        assert atk["hits"] == 5
+
+        target_stats = store.get_target_stats("Goblin")
+        assert target_stats == (5, 50, 0)
 
