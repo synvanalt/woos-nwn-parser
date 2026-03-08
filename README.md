@@ -25,7 +25,7 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 
 ### Core Functionality
 - **Real-time DPS Tracking** - Monitor damage output per second for all characters
-- **Target Statistics** - Track enemies AB (Attack Bonus), AC (Armor Class), and saves
+- **Target Statistics** - Track enemies AB (Attack Bonus), AC (Armor Class), and Saves
 - **Immunity Detection** - Automatically detect and calculate damage immunities
 - **Death Snippets** - View last events leading to your character's death
 - **Historic Log Analysis** - Analyze past combat logs for performance insights
@@ -41,6 +41,7 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 - **Automatic Truncation Detection** - Handles game restarts and log file resets
 - **Immunity Queuing** - Intelligent matching of damage and immunity events
 - **Responsive Monitoring Pipeline** - Log reading/parsing runs in the background to keep UI smooth during heavy combat
+- **Bounded Session Histories** - Raw event/attack history is capped to keep long sessions responsive while keeping lifetime aggregate totals
 - **Thread-Safe In-Memory Storage** - Concurrent data access without conflicts
 
 ## Quick Start
@@ -196,6 +197,7 @@ woos-nwn-parser/
 **DataStore** (`storage.py`)
 - Thread-safe in-memory session storage
 - Tracks damage events, attacks, DPS data, and immunities
+- Owns target-stat aggregation (AC/AB/Saves)
 - Provides query methods for UI components
 
 **LogDirectoryMonitor** (`monitor.py`)

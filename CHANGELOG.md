@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Improved long-session responsiveness while keeping combat totals accurate across the session
+- DPS damage-type breakdown updates are more efficient during active fights and target filtering
+- Death snippet lookup on large logs is more efficient during backward scans
+- `Load & Parse` import now checks abort requests more frequently and reports progress in steady intervals
+
+### Fixed
+- Fixed stale DataStore index retention that could cause avoidable long-session slowdowns
+- Fixed stale-immunity cleanup timing when processed-event batches jump across cleanup boundaries
+
+
 ## [1.4.0] - 2026-03-07
 
 ### Changed
