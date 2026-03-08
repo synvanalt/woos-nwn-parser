@@ -240,8 +240,8 @@ class TestParseAndImportFile:
         immunity_info = database.get_immunity_for_target_and_type("Goblin", "Fire")
         assert immunity_info['max_immunity'] == 10
 
-    def test_parse_large_file_in_chunks(self, temp_log_dir: Path) -> None:
-        """Test parsing large file processes in chunks."""
+    def test_parse_large_file_streaming(self, temp_log_dir: Path) -> None:
+        """Test parsing a large file via streaming iteration."""
         log_file = temp_log_dir / "large.txt"
 
         # Create a file with many lines
@@ -259,30 +259,37 @@ class TestParseAndImportFile:
         assert result['success'] is True
         assert result['lines_processed'] == 15000
 
-    def test_parse_can_abort_mid_file(self, real_combat_log: Path) -> None:
+    def test_parse_can_abort_mid_file(self, temp_log_dir: Path) -> None:
         """Test parsing aborts and returns partial progress."""
+        log_file = temp_log_dir / "abort-large.txt"
+        lines = [
+            f"[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Target{i}: 50 (50 Physical)\n"
+            for i in range(3000)
+        ]
+        log_file.write_text("".join(lines))
+
         parser = LogParser()
         database = DataStore()
         checks = {'count': 0}
 
         def should_abort() -> bool:
             checks['count'] += 1
-            return checks['count'] > 800
+            return checks['count'] > 1
 
         result = parse_and_import_file(
-            str(real_combat_log),
+            str(log_file),
             parser,
             database,
             should_abort=should_abort,
         )
 
-        total_lines = sum(1 for _ in real_combat_log.open('r', encoding='utf-8', errors='ignore'))
+        total_lines = sum(1 for _ in log_file.open('r', encoding='utf-8', errors='ignore'))
         assert result['success'] is True
         assert result['aborted'] is True
         assert 0 <= result['lines_processed'] < total_lines
 
     def test_parse_reports_progress_callback(self) -> None:
-        """Test parser reports cumulative progress after chunks."""
+        """Test parser reports cumulative progress incrementally."""
         log_file = Path(__file__).resolve().parents[1] / "fixtures" / "real_deadwyrm_offhand_crit_mix.txt"
 
         parser = LogParser()

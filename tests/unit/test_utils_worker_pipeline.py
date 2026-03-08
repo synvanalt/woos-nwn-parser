@@ -86,25 +86,23 @@ def test_parse_file_to_ops_disables_fallback_when_character_name_known(monkeypat
 
 
 def test_parse_file_to_ops_can_abort_mid_file(monkeypatch) -> None:
-    log_data = "\n".join([
-        "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 50 (50 Physical)",
-        "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:01] Woo damages Goblin: 60 (60 Physical)",
-        "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:02] Woo damages Goblin: 70 (70 Physical)",
-        "",
-    ])
+    log_data = "".join(
+        "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 50 (50 Physical)\n"
+        for _ in range(3000)
+    )
     monkeypatch.setattr("builtins.open", lambda *args, **kwargs: io.StringIO(log_data))
 
     checks = {"count": 0}
 
     def should_abort() -> bool:
         checks["count"] += 1
-        return checks["count"] > 4
+        return checks["count"] > 1
 
     result = parse_file_to_ops("ignored.txt", parse_immunity=False, should_abort=should_abort)
 
     assert result["success"] is True
     assert result["aborted"] is True
-    assert 0 < result["lines_processed"] <= 3
+    assert 0 < result["lines_processed"] < 3000
 
 
 def test_import_worker_process_emits_file_error_and_continues(monkeypatch) -> None:
