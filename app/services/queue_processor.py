@@ -160,18 +160,27 @@ class QueueProcessor:
             'critical_hit',
         ):
             result = self._handle_attack_batched(data, on_log_message, debug_enabled)
+        elif event_type == 'epic_dodge':
+            target = data.get('target')
+            if target:
+                self.data_store.mark_target_epic_dodge(target)
+                result['target'] = target
+            if debug_enabled:
+                on_log_message(f"EPIC DODGE: {target}", 'debug')
         elif event_type == 'death_snippet':
             result['death_event'] = data
         elif event_type == 'death_character_identified':
             result['character_identified'] = data
         elif event_type == 'save':
-            # Save events are parsed but not processed further (used for save bonus tracking in parser)
+            target = data.get('target')
+            save_type = data.get('save_type')
+            bonus = data.get('bonus')
+            if target and save_type and bonus is not None:
+                self.data_store.record_target_save(target, str(save_type), int(bonus))
+                result['target'] = target
             if debug_enabled:
-                target = data.get('target', 'Unknown')
-                save_type = data.get('save_type', 'Unknown')
-                bonus = data.get('bonus', 0)
                 on_log_message(
-                    f"⚕️ SAVE: {target} ({save_type.title()} {bonus})",
+                    f"⚕️ SAVE: {target or 'Unknown'} ({str(save_type or 'Unknown').title()} {bonus or 0})",
                     'debug'
                 )
         else:
@@ -347,6 +356,9 @@ class QueueProcessor:
             data.get('roll'),
             data.get('bonus'),
             data.get('total'),
+            was_nat1=bool(data.get('was_nat1', False)),
+            was_nat20=bool(data.get('was_nat20', False)),
+            is_concealment=bool(data.get('is_concealment', False)),
         )
 
         if debug_enabled:

@@ -244,7 +244,10 @@ def parse_and_import_file(
                             'hit',
                             parsed_data.get('roll'),
                             parsed_data.get('bonus'),
-                            parsed_data.get('total')
+                            parsed_data.get('total'),
+                            was_nat1=bool(parsed_data.get('was_nat1', False)),
+                            was_nat20=bool(parsed_data.get('was_nat20', False)),
+                            is_concealment=bool(parsed_data.get('is_concealment', False)),
                         )
                     elif parsed_data['type'] == 'attack_hit_critical':
                         database.insert_attack_event(
@@ -253,7 +256,10 @@ def parse_and_import_file(
                             'critical_hit',
                             parsed_data.get('roll'),
                             parsed_data.get('bonus'),
-                            parsed_data.get('total')
+                            parsed_data.get('total'),
+                            was_nat1=bool(parsed_data.get('was_nat1', False)),
+                            was_nat20=bool(parsed_data.get('was_nat20', False)),
+                            is_concealment=bool(parsed_data.get('is_concealment', False)),
                         )
                     elif parsed_data['type'] == 'attack_miss':
                         database.insert_attack_event(
@@ -262,8 +268,19 @@ def parse_and_import_file(
                             'miss',
                             parsed_data.get('roll'),
                             parsed_data.get('bonus'),
-                            parsed_data.get('total')
+                            parsed_data.get('total'),
+                            was_nat1=bool(parsed_data.get('was_nat1', False)),
+                            was_nat20=bool(parsed_data.get('was_nat20', False)),
+                            is_concealment=bool(parsed_data.get('is_concealment', False)),
                         )
+                    elif parsed_data['type'] == 'save':
+                        database.record_target_save(
+                            parsed_data['target'],
+                            parsed_data['save_type'],
+                            parsed_data['bonus'],
+                        )
+                    elif parsed_data['type'] == 'epic_dodge':
+                        database.mark_target_epic_dodge(parsed_data['target'])
 
                 if progress_callback and (lines_processed % PROGRESS_REPORT_EVERY_LINES) == 0:
                     progress_callback(lines_processed)
@@ -307,6 +324,8 @@ def parse_file_to_ops(
         damage_events = []
         immunity_records = []
         attack_events = []
+        save_events = []
+        epic_dodge_targets = []
         death_snippets = []
 
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -370,6 +389,9 @@ def parse_file_to_ops(
                         parsed_data.get('roll'),
                         parsed_data.get('bonus'),
                         parsed_data.get('total'),
+                        False,
+                        bool(parsed_data.get('was_nat20', False)),
+                        bool(parsed_data.get('is_concealment', False)),
                     ))
                 elif parsed_data['type'] == 'attack_hit_critical':
                     attack_events.append((
@@ -379,6 +401,9 @@ def parse_file_to_ops(
                         parsed_data.get('roll'),
                         parsed_data.get('bonus'),
                         parsed_data.get('total'),
+                        False,
+                        bool(parsed_data.get('was_nat20', False)),
+                        bool(parsed_data.get('is_concealment', False)),
                     ))
                 elif parsed_data['type'] == 'attack_miss':
                     attack_events.append((
@@ -388,7 +413,18 @@ def parse_file_to_ops(
                         parsed_data.get('roll'),
                         parsed_data.get('bonus'),
                         parsed_data.get('total'),
+                        bool(parsed_data.get('was_nat1', False)),
+                        False,
+                        bool(parsed_data.get('is_concealment', False)),
                     ))
+                elif parsed_data['type'] == 'save':
+                    save_events.append((
+                        parsed_data.get('target'),
+                        parsed_data.get('save_type'),
+                        parsed_data.get('bonus'),
+                    ))
+                elif parsed_data['type'] == 'epic_dodge':
+                    epic_dodge_targets.append(parsed_data.get('target'))
                 elif parsed_data['type'] == 'death_snippet':
                     death_snippets.append({
                         'target': parsed_data.get('target', ''),
@@ -408,13 +444,11 @@ def parse_file_to_ops(
                 'damage_events': damage_events,
                 'immunity_records': immunity_records,
                 'attack_events': attack_events,
+                'save_events': save_events,
+                'epic_dodge_targets': epic_dodge_targets,
                 'death_snippets': death_snippets,
             },
-            'parser_state': {
-                'target_ac': parser.target_ac,
-                'target_saves': parser.target_saves,
-                'target_attack_bonus': parser.target_attack_bonus,
-            },
+            'parser_state': {},
         }
     except Exception as e:
         return {
@@ -480,6 +514,8 @@ def import_worker_process(
         damage_chunks = _slice_chunks(ops.get('damage_events', []), chunk_size)
         immunity_chunks = _slice_chunks(ops.get('immunity_records', []), chunk_size)
         attack_chunks = _slice_chunks(ops.get('attack_events', []), chunk_size)
+        save_chunks = _slice_chunks(ops.get('save_events', []), chunk_size)
+        epic_dodge_chunks = _slice_chunks(ops.get('epic_dodge_targets', []), chunk_size)
         death_chunks = _slice_chunks(ops.get('death_snippets', []), chunk_size)
 
         max_chunk_count = max(
@@ -487,6 +523,8 @@ def import_worker_process(
             len(damage_chunks),
             len(immunity_chunks),
             len(attack_chunks),
+            len(save_chunks),
+            len(epic_dodge_chunks),
             len(death_chunks),
             0,
         )
@@ -502,6 +540,8 @@ def import_worker_process(
                     'damage_events': damage_chunks[chunk_idx] if chunk_idx < len(damage_chunks) else [],
                     'immunity_records': immunity_chunks[chunk_idx] if chunk_idx < len(immunity_chunks) else [],
                     'attack_events': attack_chunks[chunk_idx] if chunk_idx < len(attack_chunks) else [],
+                    'save_events': save_chunks[chunk_idx] if chunk_idx < len(save_chunks) else [],
+                    'epic_dodge_targets': epic_dodge_chunks[chunk_idx] if chunk_idx < len(epic_dodge_chunks) else [],
                     'death_snippets': death_chunks[chunk_idx] if chunk_idx < len(death_chunks) else [],
                 },
             })
@@ -511,7 +551,7 @@ def import_worker_process(
             'index': index,
             'total_files': total_files,
             'file_name': file_name,
-            'parser_state': result['parser_state'],
+            'parser_state': result.get('parser_state', {}),
         })
 
     result_queue.put({'event': 'done'})

@@ -574,7 +574,11 @@ class LogParser:
                 if target not in self.target_ac:
                     self.target_ac[target] = EnemyAC(name=target)
                 self.target_ac[target].mark_epic_dodge()
-                return None
+                return {
+                    'type': 'epic_dodge',
+                    'target': target,
+                    'timestamp': get_timestamp(),
+                }
 
         # Check for attack rolls to estimate AC. Most lines are plain hit/miss entries,
         # so route to the narrowest plausible regex first.
@@ -658,6 +662,8 @@ class LogParser:
                         'roll': roll,
                         'bonus': bonus_str,
                         'total': total,
+                        'was_nat20': was_nat20,
+                        'is_concealment': is_concealment,
                         'timestamp': get_timestamp()
                     }
                 elif is_miss:
@@ -669,6 +675,7 @@ class LogParser:
                         'bonus': bonus_str,
                         'total': total,
                         'was_nat1': was_nat1,
+                        'is_concealment': is_concealment,
                         'timestamp': get_timestamp()
                     }
 

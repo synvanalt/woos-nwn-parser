@@ -457,15 +457,19 @@ class TestEpicDodgeParsing:
         line = "[CHAT WINDOW TEXT] [Fri Feb 13 11:34:03] Epic Undead Monk : Epic Dodge : Attack evaded"
         result = parser.parse_line(line)
 
-        assert result is None
+        assert result is not None
+        assert result["type"] == "epic_dodge"
+        assert result["target"] == "Epic Undead Monk"
         assert 'Epic Undead Monk' in parser.target_ac
         assert parser.target_ac['Epic Undead Monk'].has_epic_dodge is True
 
-    def test_parse_epic_dodge_does_not_emit_event(self, parser: LogParser) -> None:
-        """Test Epic Dodge line is state-only and does not emit queue events."""
+    def test_parse_epic_dodge_emits_event(self, parser: LogParser) -> None:
+        """Test Epic Dodge line emits a queue event for downstream consumers."""
         line = "Epic Undead Monk : Epic Dodge : Attack evaded"
         result = parser.parse_line(line)
-        assert result is None
+        assert result is not None
+        assert result["type"] == "epic_dodge"
+        assert result["target"] == "Epic Undead Monk"
 
     def test_parse_epic_dodge_preserves_target_name(self, parser: LogParser) -> None:
         """Test Epic Dodge parsing preserves complex target names."""

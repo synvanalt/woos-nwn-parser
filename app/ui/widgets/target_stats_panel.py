@@ -7,7 +7,6 @@ statistics including AC, AB, and save values.
 from tkinter import ttk
 
 from ...storage import DataStore
-from ...parser import LogParser
 from .sorted_treeview import SortedTreeview
 
 
@@ -25,14 +24,14 @@ class TargetStatsPanel(ttk.Frame):
         self,
         parent: ttk.Notebook,
         data_store: DataStore,
-        parser: LogParser = None,
+        parser=None,
     ) -> None:
         """Initialize the target stats panel.
 
         Args:
             parent: Parent notebook widget
             data_store: Reference to the data store
-            parser: Reference to the log parser (optional)
+            parser: Legacy argument (unused); retained for compatibility
         """
         super().__init__(parent, padding="10")
         self.data_store = data_store
@@ -73,7 +72,7 @@ class TargetStatsPanel(ttk.Frame):
 
     def refresh(self) -> None:
         """Refresh the target stats display with current data."""
-        summary_data = self.data_store.get_all_targets_summary(self.parser)
+        summary_data = self.data_store.get_all_targets_summary()
         new_rows = {
             item["target"]: (
                 item["target"],

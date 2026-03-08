@@ -10,8 +10,6 @@ from threading import Thread
 import time
 
 from app.storage import DataStore
-from app.parser import LogParser
-from app.models import EnemyAC, EnemySaves
 
 
 class TestDataStoreInitialization:
@@ -512,20 +510,15 @@ class TestTargetSummary:
 
     def test_get_all_targets_summary(self, data_store: DataStore) -> None:
         """Test getting summary for all targets."""
-        parser = LogParser()
-
         # Add some data
         data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
         data_store.insert_damage_event("Orc", "Cold", 0, 40, "Rogue")
 
-        # Add parser data
-        parser.target_ac["Goblin"] = EnemyAC(name="Goblin")
-        parser.target_ac["Goblin"].record_hit(20)
+        # Add target stats directly to DataStore-owned structures
+        data_store.record_target_attack_roll("Woo", "Goblin", "hit", 15, 5, 20)
+        data_store.record_target_save("Orc", "fort", 5)
 
-        parser.target_saves["Orc"] = EnemySaves(name="Orc")
-        parser.target_saves["Orc"].update_save('fort', 5)
-
-        summary = data_store.get_all_targets_summary(parser)
+        summary = data_store.get_all_targets_summary()
 
         assert len(summary) == 2
         targets = [s["target"] for s in summary]
@@ -534,15 +527,13 @@ class TestTargetSummary:
 
     def test_get_all_targets_summary_includes_damage_taken(self, data_store: DataStore) -> None:
         """Test that summary includes total damage taken by each target."""
-        parser = LogParser()
-
         # Add multiple damage events against same target from different attackers
         data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
         data_store.insert_damage_event("Goblin", "Cold", 0, 30, "Rogue")
         data_store.insert_damage_event("Goblin", "Physical", 0, 20, "Woo")
         data_store.insert_damage_event("Orc", "Fire", 0, 100, "Woo")
 
-        summary = data_store.get_all_targets_summary(parser)
+        summary = data_store.get_all_targets_summary()
 
         # Find Goblin and Orc in the summary
         goblin_summary = next(s for s in summary if s["target"] == "Goblin")
@@ -555,18 +546,50 @@ class TestTargetSummary:
 
     def test_get_all_targets_summary_damage_taken_zero_when_no_damage(self, data_store: DataStore) -> None:
         """Test that damage_taken is 0 when target has no damage events."""
-        parser = LogParser()
-
         # Insert an attack event but no damage event for target
         data_store.insert_attack_event("Woo", "Goblin", "miss")
 
         # Manually add target via damage event with 0 damage to get it in the list
         data_store.insert_damage_event("Goblin", "Physical", 0, 0, "Woo")
 
-        summary = data_store.get_all_targets_summary(parser)
+        summary = data_store.get_all_targets_summary()
 
         goblin_summary = next(s for s in summary if s["target"] == "Goblin")
         assert goblin_summary["damage_taken"] == "0"
+
+    def test_get_all_targets_summary_uses_datastore_owned_ac_ab_save(self, data_store: DataStore) -> None:
+        """Test summary values are sourced from DataStore target stat state."""
+        data_store.insert_damage_event("Goblin", "Physical", 0, 10, "Woo")
+        data_store.record_target_attack_roll("Goblin", "Woo", "hit", 14, 8, 22)
+        data_store.record_target_attack_roll("Woo", "Goblin", "miss", 10, 20, 30)
+        data_store.record_target_attack_roll("Woo", "Goblin", "hit", 11, 20, 31)
+        data_store.mark_target_epic_dodge("Goblin")
+        data_store.record_target_save("Goblin", "fort", 5)
+
+        summary = data_store.get_all_targets_summary()
+        goblin_summary = next(s for s in summary if s["target"] == "Goblin")
+
+        assert goblin_summary["ab"] == "8"
+        assert goblin_summary["ac"] == "~31"
+        assert goblin_summary["fortitude"] == "5"
+
+    def test_concealment_miss_does_not_affect_ac_estimate(self, data_store: DataStore) -> None:
+        """Test concealment misses are excluded from AC inference in DataStore."""
+        data_store.insert_damage_event("Boss", "Physical", 0, 1, "Woo")
+        data_store.record_target_attack_roll("Woo", "Boss", "hit", 11, 20, 31)
+        data_store.record_target_attack_roll(
+            "Woo",
+            "Boss",
+            "miss",
+            19,
+            20,
+            39,
+            is_concealment=True,
+        )
+
+        summary = data_store.get_all_targets_summary()
+        boss_summary = next(s for s in summary if s["target"] == "Boss")
+        assert boss_summary["ac"] == "≤31"
 
 
 class TestThreadSafety:

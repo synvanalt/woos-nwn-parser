@@ -8,7 +8,7 @@ import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
-from .models import AttackEvent, DamageEvent
+from .models import AttackEvent, DamageEvent, EnemyAC, EnemySaves, TargetAttackBonus
 
 
 class DataStore:
@@ -64,6 +64,9 @@ class DataStore:
         self._earliest_timestamp: Optional[datetime] = None
         self._all_damage_types_cache: set[str] = set()
         self._target_stats_cache: Dict[str, Dict[str, int]] = {}
+        self._target_ac_by_name: Dict[str, EnemyAC] = {}
+        self._target_saves_by_name: Dict[str, EnemySaves] = {}
+        self._target_attack_bonus_by_name: Dict[str, TargetAttackBonus] = {}
 
     def _trim_damage_history(self) -> None:
         """Bound retained raw damage-event history."""
@@ -90,7 +93,9 @@ class DataStore:
         return self._version
 
     def insert_attack_event(self, attacker: str, target: str, outcome: str, roll: Optional[int] = None,
-                           bonus: Optional[int] = None, total: Optional[int] = None) -> None:
+                           bonus: Optional[int] = None, total: Optional[int] = None,
+                           was_nat1: bool = False, was_nat20: bool = False,
+                           is_concealment: bool = False) -> None:
         """Insert an attack event into the in-memory store.
 
         Args:
@@ -100,6 +105,9 @@ class DataStore:
             roll: The d20 roll value
             bonus: Attack bonus
             total: Total attack roll (roll + bonus)
+            was_nat1: Whether this was a natural 1
+            was_nat20: Whether this was a natural 20
+            is_concealment: Whether this miss was concealment-based
         """
         with self.lock:
             self._version += 1
@@ -143,6 +151,50 @@ class DataStore:
             elif outcome == 'miss':
                 attacker_stats['misses'] += 1
                 attacker_target_stats['misses'] += 1
+
+            self._record_target_attack_roll_locked(
+                attacker=attacker,
+                target=target,
+                outcome=outcome,
+                bonus=bonus,
+                total=total,
+                was_nat1=was_nat1,
+                was_nat20=was_nat20,
+                is_concealment=is_concealment,
+            )
+
+    def _record_target_attack_roll_locked(
+        self,
+        *,
+        attacker: str,
+        target: str,
+        outcome: str,
+        bonus: Optional[int],
+        total: Optional[int],
+        was_nat1: bool,
+        was_nat20: bool,
+        is_concealment: bool,
+    ) -> None:
+        """Update target AC/AB indices from an attack while lock is held."""
+        if target:
+            self._targets_cache.add(target)
+
+        if target and total is not None and not is_concealment:
+            ac = self._target_ac_by_name.get(target)
+            if ac is None:
+                ac = EnemyAC(name=target)
+                self._target_ac_by_name[target] = ac
+            if outcome in ('hit', 'critical_hit'):
+                ac.record_hit(int(total), was_nat20=was_nat20)
+            elif outcome == 'miss':
+                ac.record_miss(int(total), was_nat1=was_nat1)
+
+        if attacker and bonus is not None:
+            tab = self._target_attack_bonus_by_name.get(attacker)
+            if tab is None:
+                tab = TargetAttackBonus(name=attacker)
+                self._target_attack_bonus_by_name[attacker] = tab
+            tab.record_bonus(int(bonus))
 
     def insert_damage_event(self, target: str, damage_type: str, immunity: int, total_damage: int, attacker: str = "", timestamp: Optional[datetime] = None) -> None:
         """Insert a damage event into the in-memory store.
@@ -846,6 +898,66 @@ class DataStore:
 
             return min(first_timestamps)
 
+    def record_target_attack_roll(
+        self,
+        attacker: str,
+        target: str,
+        outcome: str,
+        roll: Optional[int],
+        bonus: Optional[int],
+        total: Optional[int],
+        was_nat1: bool = False,
+        was_nat20: bool = False,
+        is_concealment: bool = False,
+    ) -> None:
+        """Record attack-derived AC/AB target stats.
+
+        Args:
+            attacker: Name of the attacking character
+            target: Name of the target
+            outcome: Attack outcome ('hit', 'critical_hit', or 'miss')
+            roll: d20 roll value
+            bonus: Attack bonus value
+            total: Attack total (roll + bonus)
+            was_nat1: Whether the attack roll was a natural 1
+            was_nat20: Whether the attack roll was a natural 20
+            is_concealment: Whether this miss was concealment-based
+        """
+        with self.lock:
+            self._version += 1
+            self._record_target_attack_roll_locked(
+                attacker=attacker,
+                target=target,
+                outcome=outcome,
+                bonus=bonus,
+                total=total,
+                was_nat1=was_nat1,
+                was_nat20=was_nat20,
+                is_concealment=is_concealment,
+            )
+
+    def record_target_save(self, target: str, save_key: str, bonus: int) -> None:
+        """Record save-derived target stats."""
+        with self.lock:
+            self._version += 1
+            self._targets_cache.add(target)
+            saves = self._target_saves_by_name.get(target)
+            if saves is None:
+                saves = EnemySaves(name=target)
+                self._target_saves_by_name[target] = saves
+            saves.update_save(save_key, int(bonus))
+
+    def mark_target_epic_dodge(self, target: str) -> None:
+        """Mark a target as having Epic Dodge for AC display confidence."""
+        with self.lock:
+            self._version += 1
+            self._targets_cache.add(target)
+            ac = self._target_ac_by_name.get(target)
+            if ac is None:
+                ac = EnemyAC(name=target)
+                self._target_ac_by_name[target] = ac
+            ac.mark_epic_dodge()
+
 
     def clear_all_data(self) -> None:
         """Clear all data from the store."""
@@ -877,6 +989,9 @@ class DataStore:
             self._dps_breakdown_token_by_attacker_target.clear()
             self._dps_breakdown_dirty_attacker_target.clear()
             self._target_stats_cache.clear()
+            self._target_ac_by_name.clear()
+            self._target_saves_by_name.clear()
+            self._target_attack_bonus_by_name.clear()
 
     def close(self) -> None:
         """Close the data store (no-op for in-memory store)."""
@@ -948,11 +1063,8 @@ class DataStore:
 
             return result
 
-    def get_all_targets_summary(self, parser: "LogParser") -> List[Dict]:  # type: ignore
+    def get_all_targets_summary(self, parser: object = None) -> List[Dict]:
         """Get summary data for all targets with attack bonus, AC, and saves.
-
-        Args:
-            parser: LogParser instance with target_ac, target_saves, and target_attack_bonus data
 
         Returns:
             List of dicts with keys: target, ab, ac, fortitude, reflex, will, damage_taken,
@@ -963,22 +1075,22 @@ class DataStore:
             summary = []
 
             for target in targets:
-                # Get AB from parser
+                # Get AB from DataStore-owned attack bonus state
                 ab_display = "-"
-                if target in parser.target_attack_bonus:
-                    ab_display = parser.target_attack_bonus[target].get_bonus_display()
+                if target in self._target_attack_bonus_by_name:
+                    ab_display = self._target_attack_bonus_by_name[target].get_bonus_display()
 
-                # Get AC from parser
+                # Get AC from DataStore-owned AC estimation state
                 ac_display = "-"
-                if target in parser.target_ac:
-                    ac_display = parser.target_ac[target].get_ac_estimate()
+                if target in self._target_ac_by_name:
+                    ac_display = self._target_ac_by_name[target].get_ac_estimate()
 
-                # Get saves from parser
+                # Get saves from DataStore-owned save estimation state
                 fort_display = "-"
                 ref_display = "-"
                 will_display = "-"
-                if target in parser.target_saves:
-                    saves = parser.target_saves[target]
+                if target in self._target_saves_by_name:
+                    saves = self._target_saves_by_name[target]
                     fort_display = str(saves.fortitude) if saves.fortitude is not None else "-"
                     ref_display = str(saves.reflex) if saves.reflex is not None else "-"
                     will_display = str(saves.will) if saves.will is not None else "-"

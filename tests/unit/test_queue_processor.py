@@ -137,7 +137,10 @@ class TestQueueProcessor(unittest.TestCase):
             'hit',
             10,
             5,
-            15
+            15,
+            was_nat1=False,
+            was_nat20=False,
+            is_concealment=False,
         )
 
     def test_cleanup_stale_immunities(self) -> None:
@@ -185,7 +188,10 @@ class TestQueueProcessor(unittest.TestCase):
             'critical_hit',
             20,
             5,
-            25
+            25,
+            was_nat1=False,
+            was_nat20=False,
+            is_concealment=False,
         )
 
     def test_damage_buffer_state(self) -> None:
