@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List
 
+from app.settings import get_settings_path
 from app.parser import LogParser
 from app.storage import DataStore
 from app.monitor import LogDirectoryMonitor
@@ -34,6 +35,17 @@ def cleanup_tkinter():
         gc.collect()
     except (ImportError, Exception):
         pass  # Tkinter not available or already cleaned up
+
+
+@pytest.fixture(scope="function", autouse=True)
+def cleanup_persisted_app_settings():
+    """Delete persisted user settings after each test to avoid cross-test leakage."""
+    yield
+    settings_path = get_settings_path()
+    try:
+        settings_path.unlink()
+    except (FileNotFoundError, OSError):
+        pass
 
 
 @pytest.fixture(scope="session")
