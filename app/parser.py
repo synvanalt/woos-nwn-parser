@@ -146,73 +146,6 @@ class LogParser:
             self.death_fallback_line
         )
 
-    def _parse_attack_conceal_fast(self, stripped_line: str) -> Optional[Dict[str, str | int]]:
-        """Fast parser for concealment attack lines; returns None on non-match."""
-        marker = " attacks "
-        attacks_idx = stripped_line.find(marker)
-        if attacks_idx == -1:
-            return None
-
-        left = stripped_line[:attacks_idx]
-        right = stripped_line[attacks_idx + len(marker):]
-
-        target_marker = " : *target concealed:"
-        target_idx = right.find(target_marker)
-        if target_idx == -1:
-            return None
-
-        attacker = left.rsplit(" : ", 1)[-1].strip()
-        target = right[:target_idx].strip()
-        if not attacker or not target:
-            return None
-
-        tail = right[target_idx + len(target_marker):].strip()
-        conceal_end = tail.find("%*")
-        if conceal_end == -1:
-            return None
-
-        after_conceal = tail[conceal_end + 2:].strip()
-        if after_conceal.startswith(":"):
-            after_conceal = after_conceal[1:].strip()
-
-        if not after_conceal.startswith("("):
-            return None
-        close_idx = after_conceal.find(")")
-        if close_idx == -1:
-            return None
-
-        expression = after_conceal[1:close_idx]
-        post_expr = after_conceal[close_idx + 1:].strip()
-        if post_expr.startswith(":"):
-            post_expr = post_expr[1:].strip()
-        if not (post_expr.startswith("*") and post_expr.endswith("*")):
-            return None
-
-        outcome = post_expr[1:-1].strip().lower()
-        if outcome not in {"hit", "miss", "critical hit", "parried", "resisted"}:
-            return None
-
-        if "=" not in expression or "+" not in expression:
-            return None
-        left_expr, total_expr = expression.split("=", 1)
-        roll_expr, bonus_expr = left_expr.split("+", 1)
-
-        try:
-            roll = int(roll_expr.strip())
-            bonus = int(bonus_expr.strip())
-            total = int(total_expr.strip())
-        except ValueError:
-            return None
-
-        return {
-            "attacker": attacker,
-            "target": target,
-            "roll": roll,
-            "bonus": bonus,
-            "total": total,
-            "outcome": outcome,
-        }
-
     @staticmethod
     def _normalize_name(value: str) -> str:
         """Trim and normalize a character name string."""
@@ -568,11 +501,9 @@ class LogParser:
 
         # Check for attack rolls to estimate AC. Most lines are plain hit/miss entries,
         # so route to the narrowest plausible regex first.
-        attack_fast: Optional[Dict[str, str | int]] = None
         if self._attack_marker in stripped_line:
             if self._target_concealed_marker in stripped_line:
-                attack_fast = self._parse_attack_conceal_fast(stripped_line)
-                attack_match = None if attack_fast is not None else self.patterns['attack_conceal'].search(stripped_line)
+                attack_match = self.patterns['attack_conceal'].search(stripped_line)
             elif (
                 self._threat_roll_marker in stripped_line or
                 self._attacker_miss_chance_marker in stripped_line
@@ -583,27 +514,14 @@ class LogParser:
         else:
             attack_match = None
 
-        if attack_match or attack_fast:
-            if attack_fast:
-                attacker = str(attack_fast['attacker']).strip()
-                target = str(attack_fast['target']).strip()
-                outcome = str(attack_fast['outcome']).lower()
-                roll = int(attack_fast['roll'])
-                total = int(attack_fast['total'])
-                bonus = int(attack_fast['bonus'])
-                roll_str = str(roll)
-                total_str = str(total)
-                bonus_str = str(bonus)
-            else:
-                assert attack_match is not None
-                attacker = attack_match.group('attacker').strip()
-                target = attack_match.group('target').strip()
-                outcome = attack_match.group('outcome').lower()
+        if attack_match:
+            attacker = attack_match.group('attacker').strip()
+            target = attack_match.group('target').strip()
+            outcome = attack_match.group('outcome').lower() if 'outcome' in attack_match.groupdict() else ''
 
-                # Parse roll results
-                roll_str = attack_match.group('roll')
-                total_str = attack_match.group('total')
-                bonus_str = attack_match.group('bonus')
+            # Parse roll results
+            roll_str = attack_match.group('roll')
+            total_str = attack_match.group('total')
 
             # Handle outcomes including special miss chance
             # outcome can only be: hit, critical hit, miss, parried, resisted, or attacker miss chance
@@ -613,12 +531,12 @@ class LogParser:
             is_concealment = 'attacker miss chance' in outcome
 
             if roll_str and total_str:
-                if not attack_fast:
-                    roll = int(roll_str)
-                    total = int(total_str)
+                roll = int(roll_str)
+                total = int(total_str)
                 was_nat1 = roll == 1
                 was_nat20 = roll == 20
-                bonus = int(bonus_str) if bonus_str is not None else None
+                bonus_str = attack_match.group('bonus')
+                bonus = int(bonus_str) if bonus_str else None
 
                 # Track AC for all attacks against targets (for AC estimation)
                 # EXCEPT concealment misses which don't reveal AC information
@@ -656,7 +574,7 @@ class LogParser:
                         'attacker': attacker,
                         'target': target,
                         'roll': roll,
-                        'bonus': bonus_str,
+                        'bonus': attack_match.group('bonus'),
                         'total': total,
                         'was_nat1': was_nat1,
                         'timestamp': get_timestamp()
