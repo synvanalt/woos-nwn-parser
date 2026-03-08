@@ -66,6 +66,7 @@ class TestQueueProcessorInitialization:
         assert len(processor.pending_immunity_queue) == 0
         assert len(processor.immunity_pct_cache) == 0
         assert processor.parsed_event_count == 0
+        assert processor.next_immunity_cleanup_event_count == 100
 
 
 class TestEventRouting:
@@ -556,6 +557,17 @@ class TestImmunityQueuing:
 class TestCleanupMethods:
     """Test suite for cleanup methods."""
 
+    @staticmethod
+    def _make_damage_event(target: str) -> dict:
+        return {
+            'type': 'damage_dealt',
+            'attacker': 'Woo',
+            'target': target,
+            'total_damage': 50,
+            'timestamp': datetime.now(),
+            'damage_types': {'Physical': 50},
+        }
+
     def test_cleanup_stale_immunities(self, queue_processor: QueueProcessor) -> None:
         """Test that old immunity entries are cleaned up."""
         # Add old immunity entries
@@ -649,6 +661,80 @@ class TestCleanupMethods:
         assert 'Fire' in queue_processor.pending_immunity_queue['Dragon']
         assert len(queue_processor.pending_immunity_queue['Dragon']['Fire']) == 1
         assert queue_processor.pending_immunity_queue['Dragon']['Fire'][0]['immunity'] == 20
+
+    def test_cleanup_triggered_when_threshold_crossed(
+        self, queue_processor: QueueProcessor, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cleanup should trigger when a batch crosses a boundary (e.g., 99 -> 101)."""
+        data_queue = queue.Queue()
+        data_queue.put(self._make_damage_event('CrossingTarget1'))
+        data_queue.put(self._make_damage_event('CrossingTarget2'))
+
+        queue_processor.parsed_event_count = 99
+        queue_processor.next_immunity_cleanup_event_count = 100
+
+        cleanup_mock = Mock()
+        monkeypatch.setattr(queue_processor, 'cleanup_stale_immunities', cleanup_mock)
+
+        _process(queue_processor, data_queue, Mock(), Mock(), Mock(), Mock())
+
+        cleanup_mock.assert_called_once_with(max_age_seconds=5.0)
+        assert queue_processor.parsed_event_count == 101
+        assert queue_processor.next_immunity_cleanup_event_count == 200
+
+    def test_cleanup_triggered_once_on_large_batch_jump(
+        self, queue_processor: QueueProcessor, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cleanup should run once per queue pass and advance checkpoint past large jumps."""
+        data_queue = queue.Queue()
+        for idx in range(250):
+            data_queue.put(self._make_damage_event(f'JumpTarget{idx}'))
+
+        queue_processor.parsed_event_count = 90
+        queue_processor.next_immunity_cleanup_event_count = 100
+
+        cleanup_mock = Mock()
+        monkeypatch.setattr(queue_processor, 'cleanup_stale_immunities', cleanup_mock)
+
+        _process(queue_processor, data_queue, Mock(), Mock(), Mock(), Mock())
+
+        cleanup_mock.assert_called_once_with(max_age_seconds=5.0)
+        assert queue_processor.parsed_event_count == 340
+        assert queue_processor.next_immunity_cleanup_event_count == 400
+
+    def test_cleanup_triggered_on_exact_boundary(
+        self, queue_processor: QueueProcessor, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cleanup should still trigger when exactly landing on the boundary."""
+        data_queue = queue.Queue()
+        for idx in range(100):
+            data_queue.put(self._make_damage_event(f'ExactTarget{idx}'))
+
+        cleanup_mock = Mock()
+        monkeypatch.setattr(queue_processor, 'cleanup_stale_immunities', cleanup_mock)
+
+        _process(queue_processor, data_queue, Mock(), Mock(), Mock(), Mock())
+
+        cleanup_mock.assert_called_once_with(max_age_seconds=5.0)
+        assert queue_processor.parsed_event_count == 100
+        assert queue_processor.next_immunity_cleanup_event_count == 200
+
+    def test_cleanup_not_triggered_on_empty_batch(
+        self, queue_processor: QueueProcessor, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cleanup should not run when no events were processed."""
+        data_queue = queue.Queue()
+        queue_processor.parsed_event_count = 99
+        queue_processor.next_immunity_cleanup_event_count = 100
+
+        cleanup_mock = Mock()
+        monkeypatch.setattr(queue_processor, 'cleanup_stale_immunities', cleanup_mock)
+
+        _process(queue_processor, data_queue, Mock(), Mock(), Mock(), Mock())
+
+        cleanup_mock.assert_not_called()
+        assert queue_processor.parsed_event_count == 99
+        assert queue_processor.next_immunity_cleanup_event_count == 100
 
 
 class TestDPSTracking:

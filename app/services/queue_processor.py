@@ -53,6 +53,7 @@ class QueueProcessor:
         self.pending_immunity_queue: Dict[str, Dict[str, list]] = {}
         self.immunity_pct_cache: Dict[str, Dict[str, Any]] = {}
         self.parsed_event_count = 0
+        self.next_immunity_cleanup_event_count = 100
 
     def process_queue(
         self,
@@ -113,10 +114,15 @@ class QueueProcessor:
 
         result.has_backlog = not data_queue.empty()
 
-        # Periodic cleanup of stale immunity entries (every 100 events)
+        # Periodic cleanup of stale immunity entries (every 100 processed events)
         self.parsed_event_count += result.events_processed
-        if result.events_processed > 0 and self.parsed_event_count % 100 == 0:
+        if (
+            result.events_processed > 0
+            and self.parsed_event_count >= self.next_immunity_cleanup_event_count
+        ):
             self.cleanup_stale_immunities(max_age_seconds=5.0)
+            while self.next_immunity_cleanup_event_count <= self.parsed_event_count:
+                self.next_immunity_cleanup_event_count += 100
 
         return result
 
