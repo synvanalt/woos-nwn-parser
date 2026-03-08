@@ -276,13 +276,14 @@ class TestParseAndImportFile:
             should_abort=should_abort,
         )
 
+        total_lines = sum(1 for _ in real_combat_log.open('r', encoding='utf-8', errors='ignore'))
         assert result['success'] is True
         assert result['aborted'] is True
-        assert 0 <= result['lines_processed'] < 4129
+        assert 0 <= result['lines_processed'] < total_lines
 
     def test_parse_reports_progress_callback(self) -> None:
         """Test parser reports cumulative progress after chunks."""
-        log_file = Path(__file__).resolve().parents[1] / "fixtures" / "nwclientLog2.txt"
+        log_file = Path(__file__).resolve().parents[1] / "fixtures" / "real_deadwyrm_offhand_crit_mix.txt"
 
         parser = LogParser()
         database = DataStore()

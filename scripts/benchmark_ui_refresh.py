@@ -23,8 +23,9 @@ from app.utils import parse_and_import_file
 
 
 DEFAULT_FIXTURES = (
-    Path("tests/fixtures/nwclientLog1.txt"),
-    Path("tests/fixtures/nwclientLog2.txt"),
+    Path("tests/fixtures/real_flurry_conceal_epicdodge.txt"),
+    Path("tests/fixtures/real_deadwyrm_offhand_crit_mix.txt"),
+    Path("tests/fixtures/real_tod_risen_save_dense.txt"),
 )
 
 

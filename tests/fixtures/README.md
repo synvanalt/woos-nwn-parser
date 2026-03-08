@@ -1,62 +1,38 @@
 # Test Fixtures
 
-This directory contains test data files for the test suite.
+This directory contains real and synthetic NWN log fixtures used by tests and benchmarks.
 
 ## Files
 
-### nwclientLog1.txt
-- **Size:** 405KB (4145 lines)
-- **Type:** Real NWN combat log file
-- **Purpose:** Available for integration/performance testing
+### real_flurry_conceal_epicdodge.txt
+- **Purpose:** Dense mixed-combat coverage (flurry, concealment, threat-roll variants, death fallback snippet)
 
-This is a real combat log file extracted from Neverwinter Nights gameplay. It contains:
-- Multiple combat encounters
-- Various damage types (Physical, Fire, Cold, Acid, Electrical, Sonic, etc.)
-- Damage immunity events
-- Attack rolls (hits, misses, critical hits)
-- Saving throws (Fortitude, Reflex, Will)
-- Multiple characters and targets
+### real_deadwyrm_offhand_crit_mix.txt
+- **Purpose:** High-volume mixed boss encounters with off-hand attacks, high critical traffic, and broad event diversity
 
-### nwclientLog2.txt
-- **Size:** 2.1MB (21772 lines)
-- **Type:** Real NWN combat log file
-- **Purpose:** Large-scale integration/performance testing and parser edge coverage
+### real_tod_risen_save_dense.txt
+- **Purpose:** Save-heavy scenario with strong immunity/attack mix and Epic Dodge examples
 
-This is a larger real combat log file extracted from Neverwinter Nights gameplay. It contains:
-- High-volume combat event traffic
-- Damage immunity, resistance, and reduction absorb lines
-- Attack and damage lines across many targets
-- Saving throws, deaths, and mixed non-combat chat/system lines
-- Useful stress cases for import worker and parser filtering behavior
+### synthetic_parser_variety_matrix.txt
+- **Type:** Synthetic curated fixture assembled from representative lines across different logs
+- **Purpose:** Compact edge-case matrix for parser variety coverage in one file
+- **Note:** `Pure` immunity absorb lines were not found in corpus, so this fixture includes `Pure` damage but not a `Pure` immunity line
 
 ## Using Test Fixtures
 
-Test fixtures are automatically made available through `conftest.py`:
+Shared fixtures from `tests/conftest.py`:
+- `real_combat_log` -> `real_flurry_conceal_epicdodge.txt`
+- `real_combat_log2` -> `real_deadwyrm_offhand_crit_mix.txt`
+- `real_combat_log3` -> `real_tod_risen_save_dense.txt`
+- `synthetic_combat_log` -> `synthetic_parser_variety_matrix.txt`
+
+Example:
 
 ```python
 def test_with_real_log(real_combat_log: Path):
-    """Example test using the real combat log fixture."""
     parser = LogParser()
-    
-    with open(real_combat_log, 'r') as f:
+    with open(real_combat_log, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
-            result = parser.parse_line(line)
-            # ... test logic
+            parser.parse_line(line)
 ```
-
-```python
-def test_with_larger_real_log(real_combat_log2: Path):
-    """Example test using the larger real combat log fixture."""
-    assert real_combat_log2.name == "nwclientLog2.txt"
-```
-
-## Adding New Fixtures
-
-When adding new test data files:
-
-1. Place files in this `fixtures/` directory
-2. Add a fixture in `conftest.py` to expose it
-3. Document the fixture in `TEST_SUITE_SUMMARY.md`
-4. Keep fixture files under 1MB when possible
-5. Use descriptive names (e.g., `combat_with_immunities.txt`)
 

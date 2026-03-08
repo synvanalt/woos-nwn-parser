@@ -206,30 +206,50 @@ def sample_combat_session(temp_log_dir: Path) -> Path:
 
 @pytest.fixture
 def real_combat_log() -> Path:
-    """Path to real NWN combat log file for integration/performance testing.
+    """Path to real NWN combat log fixture for integration/performance testing.
 
-    This is a real 4145-line combat log file (405KB) that can be used for:
+    This fixture can be used for:
     - Integration testing with real-world data
     - Performance testing with larger files
     - Validation of parser against actual game output
 
     Returns:
-        Path to fixtures/nwclientLog1.txt
+        Path to fixtures/real_flurry_conceal_epicdodge.txt
     """
-    return Path(__file__).parent / "fixtures" / "nwclientLog1.txt"
+    return Path(__file__).parent / "fixtures" / "real_flurry_conceal_epicdodge.txt"
 
 
 @pytest.fixture
 def real_combat_log2() -> Path:
-    """Path to larger NWN combat log file for integration/performance testing.
+    """Path to larger NWN combat log fixture for integration/performance testing.
 
-    This is a real 21772-line combat log file (~2.1MB) that can be used for:
+    This fixture can be used for:
     - Large-file import performance testing
     - Parser regression coverage with dense immunity/resistance/reduction events
     - Worker/queue stress testing with mixed combat and chat lines
 
     Returns:
-        Path to fixtures/nwclientLog2.txt
+        Path to fixtures/real_deadwyrm_offhand_crit_mix.txt
     """
-    return Path(__file__).parent / "fixtures" / "nwclientLog2.txt"
+    return Path(__file__).parent / "fixtures" / "real_deadwyrm_offhand_crit_mix.txt"
+
+
+@pytest.fixture
+def real_combat_log3() -> Path:
+    """Path to save-heavy NWN combat fixture for integration/performance testing.
+
+    Returns:
+        Path to fixtures/real_tod_risen_save_dense.txt
+    """
+    return Path(__file__).parent / "fixtures" / "real_tod_risen_save_dense.txt"
+
+
+@pytest.fixture
+def synthetic_combat_log() -> Path:
+    """Path to synthetic parser-variety fixture.
+
+    Returns:
+        Path to fixtures/synthetic_parser_variety_matrix.txt
+    """
+    return Path(__file__).parent / "fixtures" / "synthetic_parser_variety_matrix.txt"
 
