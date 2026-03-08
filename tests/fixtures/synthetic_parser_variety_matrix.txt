@@ -1,0 +1,39 @@
+[CHAT WINDOW TEXT] [Thu Jan 09 00:00:00] SYSTEM MESSAGE: synthetic fixture start
+I [20:05:52] (exolog.cpp:299:Emit): The date is 2025-05-23 +0300 Jerusalem Daylight Time
+nwsync: reconfigured successfully
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:20] Woo Wenatrix attacks MISTRESS DANAVA : *hit* : (8 + 64 = 72)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:18] Woo Wenatrix attacks MISTRESS DANAVA : *miss* : (1 + 57 = 58)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:32] Burning Flame attacks Dark Elvith II : *critical hit* : (20 + 56 = 76 : Threat Roll: 19 + 56 = 75)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:18] Woo Wenatrix attacks MISTRESS DANAVA : *hit* : (18 + 62 = 80 : Threat Roll: 13 + 62 = 75)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:21] Expertise : Joanna 'de Vries attacks MISTRESS DANAVA : *target concealed: 50%* : (3 + 58 = 61)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:02:28] Expertise : Papa Tao attacks MISTRESS DANAVA : *attacker miss chance: 50%* : (12 + 58 = 70)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:33] Off Hand : Burning Flame attacks Dark Elvith II : *hit* : (19 + 53 = 72 : Threat Roll: 3 + 53 = 56)
+[CHAT WINDOW TEXT] [Fri May 23 20:10:11] Flurry of Blows : Woo Whirlwind attacks Medusa Sand Witch : *critical hit* : (16 + 67 = 83 : Threat Roll: 13 + 67 = 80)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:20] Attack Of Opportunity : Improved Expertise : Arma Aerman attacks MISTRESS DANAVA : *miss* : (3 + 53 = 56)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:19] MISTRESS DANAVA : Fortitude Save vs. Negative Energy : *success* : (3 + 45 = 48 vs. DC: 36)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:31] Woo Wenatrix : Reflex Save vs. Fire : *success* : (9 + 62 = 71 vs. DC: 40)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:02:01] Burning Flame : Will Save : *success* : (20 + 17 = 37 vs. DC: 39)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:18] Papa Tao damages MISTRESS DANAVA: 78 (70 Physical 8 Negative Energy)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:19] MISTRESS DANAVA : Damage Immunity absorbs 15 point(s) of Physical
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:19] Woo Wenatrix damages MISTRESS DANAVA: 0 (0 Fire)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:19] MISTRESS DANAVA : Damage Immunity absorbs 13 point(s) of Fire
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:19] Papa Tao damages MISTRESS DANAVA: 28 (28 Cold)
+[CHAT WINDOW TEXT] [Mon Aug 26 19:19:05] Valdamir Giant : Damage Immunity absorbs 5 point(s) of Cold
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:19] Dark Elvith II damages MISTRESS DANAVA: 42 (42 Acid)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:03:35] Woo Wenatrix : Damage Immunity absorbs 26 point(s) of Acid
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:24] MISTRESS DANAVA damages Papa Tao: 7 (7 Electrical)
+[CHAT WINDOW TEXT] [Fri May 23 20:16:07] Woo Whirlwind : Damage Immunity absorbs 1 point(s) of Electrical
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:32] Woo Wenatrix damages Burning Flame: 40 (40 Sonic)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:02:34] MISTRESS DANAVA : Damage Immunity absorbs 4 point(s) of Sonic
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:19] POR Trap - Danava - I damages Joanna 'de Vries: 55 (55 Divine)
+[CHAT WINDOW TEXT] [Fri May 23 20:44:46] DEAD HIGH PRIESTESS ALURA : Damage Immunity absorbs 1 point(s) of Divine
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:19] Woo Wenatrix damages MISTRESS DANAVA: 69 (35 Physical 18 Magical 0 Fire 16 Negative Energy)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:13:04] Woo Wenatrix : Damage Immunity absorbs 31 point(s) of Magical
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:30] MISTRESS DANAVA damages Papa Tao: 51 (21 Physical 6 Magical 9 Divine 0 Fire 0 Negative Energy 15 Pure)
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:56] Joanna 'de Vries damages MISTRESS DANAVA: 45 (30 Physical 9 Magical 6 Positive Energy)
+[CHAT WINDOW TEXT] [Sun Apr 13 14:07:13] LORD SAUROG : Damage Immunity absorbs 1 point(s) of Positive Energy
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:19] MISTRESS DANAVA : Damage Immunity absorbs 5 point(s) of Negative Energy
+[CHAT WINDOW TEXT] [Sat Aug 17 18:10:21] PYROSYS LORD OF ELEMENTS : Epic Dodge : Attack evaded
+[CHAT WINDOW TEXT] [Tue Aug 27 12:01:35] Dark Elvith II killed Burning Flame
+[CHAT WINDOW TEXT] [Fri May 23 20:24:16] Your God refuses to hear your prayers!
+[CHAT WINDOW TEXT] [Thu Jan 09 23:59:59] SYSTEM MESSAGE: synthetic fixture end

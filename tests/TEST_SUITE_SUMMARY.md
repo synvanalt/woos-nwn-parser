@@ -1,6 +1,6 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 7, 2026 (post settings-persistence coverage update)
+**Last Updated:** March 8, 2026 (fixture set refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
@@ -109,13 +109,17 @@ Current shared fixtures include:
 - `temp_log_dir`
 - `sample_log_lines`
 - `sample_combat_session`
-- `real_combat_log` -> `tests/fixtures/nwclientLog1.txt`
-- `real_combat_log2` -> `tests/fixtures/nwclientLog2.txt`
+- `real_combat_log` -> `tests/fixtures/real_flurry_conceal_epicdodge.txt`
+- `real_combat_log2` -> `tests/fixtures/real_deadwyrm_offhand_crit_mix.txt`
+- `real_combat_log3` -> `tests/fixtures/real_tod_risen_save_dense.txt`
+- `synthetic_combat_log` -> `tests/fixtures/synthetic_parser_variety_matrix.txt`
 
 ## Fixture Files (`tests/fixtures`)
 
-- `nwclientLog1.txt` (~405 KB, 4,145 lines)
-- `nwclientLog2.txt` (~2.1 MB, 21,772 lines)
+- `real_flurry_conceal_epicdodge.txt` (~1.2 MB)
+- `real_deadwyrm_offhand_crit_mix.txt` (~2.4 MB)
+- `real_tod_risen_save_dense.txt` (~1.5 MB)
+- `synthetic_parser_variety_matrix.txt` (compact synthetic edge-case matrix)
 
 See `tests/fixtures/README.md` for detailed fixture notes.
 
@@ -159,4 +163,4 @@ When adding or moving tests:
 1. Keep file names as `test_*.py` to ensure pytest discovery.
 2. Place tests in `unit/`, `integration/`, or `e2e/` based on scope.
 3. Update this summary and `tests/fixtures/README.md` when fixtures or shared fixtures change.
-4. For performance-related parser/storage changes, run `python scripts/benchmark_baseline.py` with both fixture logs and report before/after medians.
+4. For performance-related parser/storage changes, run `python scripts/benchmark_baseline.py` with the default real fixtures and report before/after medians.
