@@ -213,6 +213,40 @@ class TestDPSCalculations:
         assert breakdown[0]["total_damage"] == 60
         assert breakdown[1]["damage_type"] == "Physical"
 
+    def test_get_dps_breakdowns_by_type_bulk(self, data_store: DataStore) -> None:
+        """Test bulk DPS breakdown retrieval for multiple characters."""
+        ts = datetime.now()
+        data_store.update_dps_data("Woo", 100, ts, {"Fire": 60, "Physical": 40})
+        data_store.update_dps_data("Rogue", 50, ts, {"Cold": 50})
+        data_store.last_damage_timestamp = ts + timedelta(seconds=10)
+
+        breakdowns = data_store.get_dps_breakdowns_by_type(
+            ["Woo", "Rogue"],
+            time_tracking_mode="per_character",
+        )
+
+        assert set(breakdowns.keys()) == {"Woo", "Rogue"}
+        assert breakdowns["Woo"][0]["damage_type"] == "Fire"
+        assert breakdowns["Woo"][0]["total_damage"] == 60
+        assert breakdowns["Rogue"] == [
+            {"damage_type": "Cold", "total_damage": 50, "dps": 5.0}
+        ]
+
+    def test_get_dps_breakdowns_by_type_bulk_missing_character(self, data_store: DataStore) -> None:
+        """Missing characters should return empty breakdown lists in bulk calls."""
+        ts = datetime.now()
+        data_store.update_dps_data("Woo", 100, ts, {"Fire": 100})
+        data_store.last_damage_timestamp = ts + timedelta(seconds=5)
+
+        breakdowns = data_store.get_dps_breakdowns_by_type(
+            ["Woo", "Mage"],
+            time_tracking_mode="per_character",
+        )
+
+        assert "Woo" in breakdowns
+        assert "Mage" in breakdowns
+        assert breakdowns["Mage"] == []
+
 
 class TestTargetFiltering:
     """Test suite for target-specific queries."""
@@ -301,6 +335,28 @@ class TestTargetFiltering:
             {'damage_type': 'Fire', 'total_damage': 50, 'dps': 50.0},
             {'damage_type': 'Physical', 'total_damage': 30, 'dps': 30.0},
         ]
+
+    def test_get_dps_breakdowns_by_type_bulk_for_target(self, data_store: DataStore) -> None:
+        """Test bulk target-filtered breakdown retrieval from cached summaries."""
+        ts = datetime.now()
+        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo", ts)
+        data_store.insert_damage_event("Goblin", "Physical", 0, 30, "Woo", ts)
+        data_store.insert_damage_event("Goblin", "Cold", 0, 40, "Rogue", ts)
+
+        breakdowns = data_store.get_dps_breakdowns_by_type(
+            ["Woo", "Rogue", "Mage"],
+            target="Goblin",
+            time_tracking_mode="per_character",
+        )
+
+        assert breakdowns["Woo"] == [
+            {'damage_type': 'Fire', 'total_damage': 50, 'dps': 50.0},
+            {'damage_type': 'Physical', 'total_damage': 30, 'dps': 30.0},
+        ]
+        assert breakdowns["Rogue"] == [
+            {'damage_type': 'Cold', 'total_damage': 40, 'dps': 40.0}
+        ]
+        assert breakdowns["Mage"] == []
 
 
 class TestAttackStats:

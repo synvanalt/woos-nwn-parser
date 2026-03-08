@@ -63,10 +63,12 @@ class TestIncrementalRefresh:
             }
         ])
 
-        dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[
-            {'damage_type': 'Physical', 'total_damage': 300, 'dps': 30.0},
-            {'damage_type': 'Fire', 'total_damage': 200, 'dps': 20.0}
-        ])
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={
+            'Woo': [
+                {'damage_type': 'Physical', 'total_damage': 300, 'dps': 30.0},
+                {'damage_type': 'Fire', 'total_damage': 200, 'dps': 20.0},
+            ]
+        })
 
         # First refresh should populate cache
         dps_panel.refresh()
@@ -92,9 +94,9 @@ class TestIncrementalRefresh:
         }]
 
         dps_panel.dps_service.get_dps_display_data = Mock(return_value=initial_data)
-        dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[
-            {'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}
-        ])
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={
+            'Woo': [{'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}]
+        })
 
         # First refresh
         dps_panel.refresh()
@@ -110,9 +112,9 @@ class TestIncrementalRefresh:
         }]
 
         dps_panel.dps_service.get_dps_display_data = Mock(return_value=updated_data)
-        dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[
-            {'damage_type': 'Physical', 'total_damage': 600, 'dps': 60.0}
-        ])
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={
+            'Woo': [{'damage_type': 'Physical', 'total_damage': 600, 'dps': 60.0}]
+        })
 
         # Second refresh should use incremental update
         dps_panel.refresh()
@@ -136,7 +138,7 @@ class TestIncrementalRefresh:
                 'hit_rate': 75.0
             }
         ])
-        dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[])
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={})
 
         # First refresh
         dps_panel.refresh()
@@ -187,7 +189,7 @@ class TestIncrementalRefresh:
                 'hit_rate': 80.0
             }
         ])
-        dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[])
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={})
 
         # First refresh
         dps_panel.refresh()
@@ -224,9 +226,9 @@ class TestIncrementalRefresh:
                 'hit_rate': 75.0
             }
         ])
-        dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[
-            {'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}
-        ])
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={
+            'Woo': [{'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}]
+        })
 
         # First refresh
         dps_panel.refresh()
@@ -242,10 +244,12 @@ class TestIncrementalRefresh:
                 'breakdown_token': (('Fire', 200), ('Physical', 300)),
             }
         ])
-        dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[
-            {'damage_type': 'Physical', 'total_damage': 300, 'dps': 30.0},
-            {'damage_type': 'Fire', 'total_damage': 200, 'dps': 20.0}
-        ])
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={
+            'Woo': [
+                {'damage_type': 'Physical', 'total_damage': 300, 'dps': 30.0},
+                {'damage_type': 'Fire', 'total_damage': 200, 'dps': 20.0},
+            ]
+        })
 
         # Second refresh should handle new damage type
         dps_panel.refresh()
@@ -284,7 +288,7 @@ class TestIncrementalRefresh:
         }]
 
         dps_panel.dps_service.get_dps_display_data = Mock(return_value=data)
-        dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[])
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={})
 
         # First refresh
         dps_panel.refresh()
@@ -308,17 +312,17 @@ class TestIncrementalRefresh:
         }]
 
         dps_panel.dps_service.get_dps_display_data = Mock(return_value=data)
-        dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[
-            {'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}
-        ])
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={
+            'Woo': [{'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}]
+        })
 
         dps_panel.refresh()
-        assert dps_panel.dps_service.get_damage_type_breakdown.call_count == 1
+        assert dps_panel.dps_service.get_damage_type_breakdowns.call_count == 1
 
-        dps_panel.dps_service.get_damage_type_breakdown.reset_mock()
+        dps_panel.dps_service.get_damage_type_breakdowns.reset_mock()
         dps_panel.refresh()
 
-        dps_panel.dps_service.get_damage_type_breakdown.assert_not_called()
+        dps_panel.dps_service.get_damage_type_breakdowns.assert_not_called()
 
     def test_refresh_rebuilds_when_view_key_changes(self, dps_panel) -> None:
         """Changing target filter or mode should force a safe full refresh."""
@@ -332,9 +336,9 @@ class TestIncrementalRefresh:
                 'breakdown_token': (('Physical', 500),),
             }
         ])
-        dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[
-            {'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}
-        ])
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={
+            'Woo': [{'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}]
+        })
 
         dps_panel.refresh()
         initial_item_id = dps_panel._item_ids['Woo']
@@ -364,7 +368,7 @@ class TestRefreshSelectionPreservation:
                 'hit_rate': 75.0
             }
         ])
-        dps_panel.dps_service.get_damage_type_breakdown = Mock(return_value=[])
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={})
 
         # First refresh
         dps_panel.refresh()

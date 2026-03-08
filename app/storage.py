@@ -399,54 +399,12 @@ class DataStore:
         Returns:
             List of dicts with keys: damage_type, total_damage, dps
         """
-        with self.lock:
-            if character not in self.dps_data:
-                return []
-
-            character_data = self.dps_data[character]
-
-            if time_tracking_mode == "global":
-                # Global mode: use global start time and global last damage timestamp
-                if global_start_time is None:
-                    # If global_start_time not set, use first character's first timestamp
-                    if not self.dps_data:
-                        return []
-                    global_start_time = min(data['first_timestamp'] for data in self.dps_data.values())
-
-                # Use the global last damage timestamp (same as per_character mode)
-                if self.last_damage_timestamp is None:
-                    return []
-
-                time_delta = self.last_damage_timestamp - global_start_time
-                time_seconds = max(time_delta.total_seconds(), 1)
-            else:
-                # Per-character mode: use character's first timestamp and global last timestamp
-                if self.last_damage_timestamp is None:
-                    return []
-
-                first_ts = character_data['first_timestamp']
-                last_ts = self.last_damage_timestamp
-
-                # Calculate time elapsed in seconds
-                time_delta = last_ts - first_ts
-                time_seconds = max(time_delta.total_seconds(), 1)
-
-            # Get damage by type from tracked data
-            damage_by_type = character_data.get('damage_by_type', {})
-
-            # Convert to list of dicts with DPS calculations
-            breakdown = []
-            for damage_type, total_dmg in damage_by_type.items():
-                dps = total_dmg / time_seconds
-                breakdown.append({
-                    'damage_type': damage_type,
-                    'total_damage': total_dmg,
-                    'dps': dps
-                })
-
-            # Sort by total damage descending
-            breakdown.sort(key=lambda x: x['total_damage'], reverse=True)
-            return breakdown
+        return self.get_dps_breakdowns_by_type(
+            [character],
+            target=None,
+            time_tracking_mode=time_tracking_mode,
+            global_start_time=global_start_time,
+        ).get(character, [])
 
     def get_dps_breakdown_by_type_for_target(self, character: str, target: str, time_tracking_mode: str = "per_character", global_start_time: Optional[datetime] = None) -> List[Dict]:
         """Get DPS breakdown by damage type for a specific character against a specific target.
@@ -460,40 +418,104 @@ class DataStore:
         Returns:
             List of dicts with keys: damage_type, total_damage, dps
         """
-        with self.lock:
-            summary = self._dps_by_attacker_target.get((character, target))
-            if summary is None or summary['total_damage'] == 0:
-                return []
+        return self.get_dps_breakdowns_by_type(
+            [character],
+            target=target,
+            time_tracking_mode=time_tracking_mode,
+            global_start_time=global_start_time,
+        ).get(character, [])
 
-            # Calculate time delta based on mode
+    def _build_dps_breakdown_rows(
+        self,
+        damage_by_type: Dict[str, int],
+        time_seconds: float,
+    ) -> List[Dict]:
+        """Build sorted breakdown rows for one damage map."""
+        breakdown = []
+        for damage_type, total_dmg in damage_by_type.items():
+            breakdown.append({
+                'damage_type': damage_type,
+                'total_damage': total_dmg,
+                'dps': total_dmg / time_seconds,
+            })
+
+        breakdown.sort(key=lambda x: x['total_damage'], reverse=True)
+        return breakdown
+
+    def get_dps_breakdowns_by_type(
+        self,
+        characters: List[str],
+        target: Optional[str] = None,
+        time_tracking_mode: str = "per_character",
+        global_start_time: Optional[datetime] = None,
+    ) -> Dict[str, List[Dict]]:
+        """Get DPS breakdowns by damage type for multiple characters in one lock pass."""
+        with self.lock:
+            unique_characters = list(dict.fromkeys(characters))
+            result: Dict[str, List[Dict]] = {character: [] for character in unique_characters}
+            if not unique_characters:
+                return result
+
+            global_time_seconds: Optional[float] = None
             if time_tracking_mode == "global":
                 if global_start_time is None:
-                    global_start_time = min(data['first_timestamp'] for data in self.dps_data.values()) if self.dps_data else datetime.now()
+                    if not self.dps_data:
+                        if target is None:
+                            return result
+                        global_start_time = datetime.now()
+                    else:
+                        global_start_time = min(
+                            data['first_timestamp'] for data in self.dps_data.values()
+                        )
 
-                # Use the global last damage timestamp (same as per_character mode)
                 if self.last_damage_timestamp is None:
-                    return []
+                    return result
 
-                time_delta = self.last_damage_timestamp - global_start_time
-                time_seconds = max(time_delta.total_seconds(), 1)
-            else:
-                # Per-character mode: use character's first and last attack on this target
-                time_delta = summary['last_timestamp'] - summary['first_timestamp']
-                time_seconds = max(time_delta.total_seconds(), 1)
+                global_time_seconds = max(
+                    (self.last_damage_timestamp - global_start_time).total_seconds(),
+                    1,
+                )
 
-            # Convert to list of dicts with DPS calculations
-            breakdown = []
-            for damage_type, total_dmg in summary['damage_by_type'].items():
-                dps = total_dmg / time_seconds
-                breakdown.append({
-                    'damage_type': damage_type,
-                    'total_damage': total_dmg,
-                    'dps': dps
-                })
+            for character in unique_characters:
+                if target is None:
+                    character_data = self.dps_data.get(character)
+                    if character_data is None:
+                        continue
 
-            # Sort by total damage descending
-            breakdown.sort(key=lambda x: x['total_damage'], reverse=True)
-            return breakdown
+                    if time_tracking_mode == "global":
+                        time_seconds = global_time_seconds
+                    else:
+                        if self.last_damage_timestamp is None:
+                            continue
+                        time_seconds = max(
+                            (self.last_damage_timestamp - character_data['first_timestamp']).total_seconds(),
+                            1,
+                        )
+
+                    result[character] = self._build_dps_breakdown_rows(
+                        character_data.get('damage_by_type', {}),
+                        time_seconds or 1,
+                    )
+                    continue
+
+                summary = self._dps_by_attacker_target.get((character, target))
+                if summary is None or summary['total_damage'] == 0:
+                    continue
+
+                if time_tracking_mode == "global":
+                    time_seconds = global_time_seconds
+                else:
+                    time_seconds = max(
+                        (summary['last_timestamp'] - summary['first_timestamp']).total_seconds(),
+                        1,
+                    )
+
+                result[character] = self._build_dps_breakdown_rows(
+                    summary['damage_by_type'],
+                    time_seconds or 1,
+                )
+
+            return result
 
     def get_target_resists(self, target: str) -> List[Tuple[str, int, int, int]]:
         """Get aggregated resist data for a specific target.

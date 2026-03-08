@@ -6,6 +6,7 @@ with time tracking modes and target filtering.
 
 import tkinter as tk
 from tkinter import ttk
+from typing import Iterable
 
 from ...storage import DataStore
 from ...services import DPSCalculationService
@@ -189,14 +190,21 @@ class DPSPanel(ttk.Frame):
 
         self._cached_view_key = view_key
 
-    def _build_breakdown_cache(self, characters, selected_target: str) -> dict:
+    def _build_breakdown_cache(self, characters: Iterable[str], selected_target: str) -> dict:
         """Build breakdown cache entries only for the requested characters."""
+        requested_characters = list(characters)
+        if not requested_characters:
+            return {}
+
+        breakdowns_by_character = self.dps_service.get_damage_type_breakdowns(
+            requested_characters,
+            selected_target,
+        )
         breakdown_cache = {}
-        for character in characters:
-            breakdown = self.dps_service.get_damage_type_breakdown(character, selected_target)
+        for character in requested_characters:
             breakdown_cache[character] = [
                 (d["damage_type"], d["total_damage"], d["dps"])
-                for d in breakdown
+                for d in breakdowns_by_character.get(character, [])
             ]
         return breakdown_cache
 
