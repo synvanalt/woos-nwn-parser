@@ -110,32 +110,56 @@ class TestDPSCalculationService(unittest.TestCase):
 
     def test_get_damage_type_breakdown_all_targets(self) -> None:
         """Test getting damage type breakdown for all targets."""
-        mock_breakdown = [
-            {'damage_type': 'Fire', 'total_damage': 500, 'dps': 5.0},
-            {'damage_type': 'Cold', 'total_damage': 300, 'dps': 3.0},
-        ]
-
-        self.data_store.get_dps_breakdown_by_type.return_value = mock_breakdown
+        self.data_store.get_dps_breakdowns_by_type.return_value = {
+            'Mage1': [
+                {'damage_type': 'Fire', 'total_damage': 500, 'dps': 5.0},
+                {'damage_type': 'Cold', 'total_damage': 300, 'dps': 3.0},
+            ]
+        }
 
         result = self.service.get_damage_type_breakdown('Mage1', target_filter='All')
 
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]['damage_type'], 'Fire')
         self.assertEqual(result[1]['damage_type'], 'Cold')
+        self.data_store.get_dps_breakdowns_by_type.assert_called_with(
+            ['Mage1'],
+            target=None,
+            time_tracking_mode='per_character',
+            global_start_time=None
+        )
 
     def test_get_damage_type_breakdown_specific_target(self) -> None:
         """Test getting damage type breakdown for specific target."""
-        mock_breakdown = [
-            {'damage_type': 'Fire', 'total_damage': 500, 'dps': 5.0},
-        ]
-
-        self.data_store.get_dps_breakdown_by_type_for_target.return_value = mock_breakdown
+        self.data_store.get_dps_breakdowns_by_type.return_value = {
+            'Mage1': [{'damage_type': 'Fire', 'total_damage': 500, 'dps': 5.0}]
+        }
 
         result = self.service.get_damage_type_breakdown('Mage1', target_filter='Dragon')
 
-        self.data_store.get_dps_breakdown_by_type_for_target.assert_called_with(
-            'Mage1',
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['damage_type'], 'Fire')
+        self.data_store.get_dps_breakdowns_by_type.assert_called_with(
+            ['Mage1'],
             target='Dragon',
+            time_tracking_mode='per_character',
+            global_start_time=None
+        )
+
+    def test_get_damage_type_breakdowns_bulk_all_targets(self) -> None:
+        """Test bulk damage type breakdown routing for all targets."""
+        self.data_store.get_dps_breakdowns_by_type.return_value = {
+            'Mage1': [{'damage_type': 'Fire', 'total_damage': 500, 'dps': 5.0}],
+            'Rogue1': [{'damage_type': 'Physical', 'total_damage': 300, 'dps': 3.0}],
+        }
+
+        result = self.service.get_damage_type_breakdowns(['Mage1', 'Rogue1'], target_filter='All')
+
+        self.assertIn('Mage1', result)
+        self.assertIn('Rogue1', result)
+        self.data_store.get_dps_breakdowns_by_type.assert_called_with(
+            ['Mage1', 'Rogue1'],
+            target=None,
             time_tracking_mode='per_character',
             global_start_time=None
         )

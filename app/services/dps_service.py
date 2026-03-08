@@ -120,18 +120,29 @@ class DPSCalculationService:
             - total_damage: Total damage of this type
             - dps: DPS of this damage type
         """
+        return self.get_damage_type_breakdowns(
+            [character],
+            target_filter=target_filter,
+        ).get(character, [])
+
+    def get_damage_type_breakdowns(
+        self,
+        characters: List[str],
+        target_filter: str = "All",
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Get damage type breakdowns for multiple characters in one store call."""
         if target_filter == "All":
-            return self.data_store.get_dps_breakdown_by_type(
-                character,
+            return self.data_store.get_dps_breakdowns_by_type(
+                characters,
+                target=None,
                 time_tracking_mode=self.time_tracking_mode,
                 global_start_time=self.global_start_time,
             )
-        else:
-            return self.data_store.get_dps_breakdown_by_type_for_target(
-                character,
-                target=target_filter,
-                time_tracking_mode=self.time_tracking_mode,
-                global_start_time=self.global_start_time,
-            )
+        return self.data_store.get_dps_breakdowns_by_type(
+            characters,
+            target=target_filter,
+            time_tracking_mode=self.time_tracking_mode,
+            global_start_time=self.global_start_time,
+        )
 
 

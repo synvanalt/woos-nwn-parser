@@ -8,7 +8,7 @@ import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
-from .models import AttackEvent, DamageEvent
+from .models import AttackEvent, DamageEvent, EnemyAC, EnemySaves, TargetAttackBonus
 
 
 class DataStore:
@@ -18,11 +18,17 @@ class DataStore:
     All data is stored in memory and lost when the app closes (session-only).
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        max_events_history: int = 200000,
+        max_attacks_history: int = 200000,
+    ) -> None:
         """Initialize the data store."""
         self.events: List[DamageEvent] = []
         self.attacks: List[AttackEvent] = []
         self.lock = threading.RLock()
+        self.max_events_history = max(1, int(max_events_history))
+        self.max_attacks_history = max(1, int(max_attacks_history))
         # Version counter for change detection (incremented on data modifications)
         self._version: int = 0
         # DPS tracking: character_name -> {'damage': total, 'first_timestamp': datetime, 'last_timestamp': datetime, 'damage_by_type': {type: amount}}
@@ -38,14 +44,8 @@ class DataStore:
         self._damage_dealers_cache: set = set()
         self._damage_taken_by_target: Dict[str, int] = {}
         self._attack_stats_by_attacker: Dict[str, Dict[str, int]] = {}
+        self._attack_stats_by_target: Dict[str, Dict[str, int]] = {}
         self._attack_stats_by_attacker_target: Dict[Tuple[str, str], Dict[str, int]] = {}
-        # Attack indices for O(1) lookups
-        self._attacks_by_attacker: Dict[str, List[AttackEvent]] = {}
-        self._attacks_by_target: Dict[str, List[AttackEvent]] = {}
-        self._attacks_by_attacker_target: Dict[Tuple[str, str], List[AttackEvent]] = {}
-        # Damage event indices for O(1) lookups
-        self._events_by_target: Dict[str, List[DamageEvent]] = {}
-        self._events_by_attacker_target: Dict[Tuple[str, str], List[DamageEvent]] = {}
         self._damage_summary_by_target: Dict[str, Dict[str, Dict[str, int]]] = {}
         self._damage_dealers_by_target: Dict[str, set[str]] = {}
         self._dps_by_attacker_target: Dict[Tuple[str, str], Dict] = {}
@@ -58,6 +58,21 @@ class DataStore:
         self._earliest_timestamp: Optional[datetime] = None
         self._all_damage_types_cache: set[str] = set()
         self._target_stats_cache: Dict[str, Dict[str, int]] = {}
+        self._target_ac_by_name: Dict[str, EnemyAC] = {}
+        self._target_saves_by_name: Dict[str, EnemySaves] = {}
+        self._target_attack_bonus_by_name: Dict[str, TargetAttackBonus] = {}
+
+    def _trim_damage_history(self) -> None:
+        """Bound retained raw damage-event history."""
+        overflow = len(self.events) - self.max_events_history
+        if overflow > 0:
+            del self.events[:overflow]
+
+    def _trim_attack_history(self) -> None:
+        """Bound retained raw attack-event history."""
+        overflow = len(self.attacks) - self.max_attacks_history
+        if overflow > 0:
+            del self.attacks[:overflow]
 
     @property
     def version(self) -> int:
@@ -72,7 +87,9 @@ class DataStore:
         return self._version
 
     def insert_attack_event(self, attacker: str, target: str, outcome: str, roll: Optional[int] = None,
-                           bonus: Optional[int] = None, total: Optional[int] = None) -> None:
+                           bonus: Optional[int] = None, total: Optional[int] = None,
+                           was_nat1: bool = False, was_nat20: bool = False,
+                           is_concealment: bool = False) -> None:
         """Insert an attack event into the in-memory store.
 
         Args:
@@ -82,6 +99,9 @@ class DataStore:
             roll: The d20 roll value
             bonus: Attack bonus
             total: Total attack roll (roll + bonus)
+            was_nat1: Whether this was a natural 1
+            was_nat20: Whether this was a natural 20
+            is_concealment: Whether this miss was concealment-based
         """
         with self.lock:
             self._version += 1
@@ -94,36 +114,74 @@ class DataStore:
                 total=total
             )
             self.attacks.append(event)
-            # Update attack indices for O(1) lookups
-            if attacker not in self._attacks_by_attacker:
-                self._attacks_by_attacker[attacker] = []
-            self._attacks_by_attacker[attacker].append(event)
-
-            if target not in self._attacks_by_target:
-                self._attacks_by_target[target] = []
-            self._attacks_by_target[target].append(event)
-
+            self._trim_attack_history()
             key = (attacker, target)
-            if key not in self._attacks_by_attacker_target:
-                self._attacks_by_attacker_target[key] = []
-            self._attacks_by_attacker_target[key].append(event)
-
             if attacker not in self._attack_stats_by_attacker:
                 self._attack_stats_by_attacker[attacker] = {'hits': 0, 'crits': 0, 'misses': 0}
 
             attacker_stats = self._attack_stats_by_attacker[attacker]
+            target_stats = self._attack_stats_by_target.setdefault(
+                target, {'hits': 0, 'crits': 0, 'misses': 0}
+            )
             attacker_target_stats = self._attack_stats_by_attacker_target.setdefault(
                 key, {'hits': 0, 'crits': 0, 'misses': 0}
             )
             if outcome == 'hit':
                 attacker_stats['hits'] += 1
+                target_stats['hits'] += 1
                 attacker_target_stats['hits'] += 1
             elif outcome == 'critical_hit':
                 attacker_stats['crits'] += 1
+                target_stats['crits'] += 1
                 attacker_target_stats['crits'] += 1
             elif outcome == 'miss':
                 attacker_stats['misses'] += 1
+                target_stats['misses'] += 1
                 attacker_target_stats['misses'] += 1
+
+            self._record_target_attack_roll_locked(
+                attacker=attacker,
+                target=target,
+                outcome=outcome,
+                bonus=bonus,
+                total=total,
+                was_nat1=was_nat1,
+                was_nat20=was_nat20,
+                is_concealment=is_concealment,
+            )
+
+    def _record_target_attack_roll_locked(
+        self,
+        *,
+        attacker: str,
+        target: str,
+        outcome: str,
+        bonus: Optional[int],
+        total: Optional[int],
+        was_nat1: bool,
+        was_nat20: bool,
+        is_concealment: bool,
+    ) -> None:
+        """Update target AC/AB indices from an attack while lock is held."""
+        if target:
+            self._targets_cache.add(target)
+
+        if target and total is not None and not is_concealment:
+            ac = self._target_ac_by_name.get(target)
+            if ac is None:
+                ac = EnemyAC(name=target)
+                self._target_ac_by_name[target] = ac
+            if outcome in ('hit', 'critical_hit'):
+                ac.record_hit(int(total), was_nat20=was_nat20)
+            elif outcome == 'miss':
+                ac.record_miss(int(total), was_nat1=was_nat1)
+
+        if attacker and bonus is not None:
+            tab = self._target_attack_bonus_by_name.get(attacker)
+            if tab is None:
+                tab = TargetAttackBonus(name=attacker)
+                self._target_attack_bonus_by_name[attacker] = tab
+            tab.record_bonus(int(bonus))
 
     def insert_damage_event(self, target: str, damage_type: str, immunity: int, total_damage: int, attacker: str = "", timestamp: Optional[datetime] = None) -> None:
         """Insert a damage event into the in-memory store.
@@ -149,6 +207,7 @@ class DataStore:
                 timestamp=timestamp
             )
             self.events.append(event)
+            self._trim_damage_history()
             self._all_damage_types_cache.add(damage_type)
             # Update targets cache (O(1) set add)
             self._targets_cache.add(target)
@@ -167,16 +226,9 @@ class DataStore:
                 if target not in self._damage_dealers_by_target:
                     self._damage_dealers_by_target[target] = set()
                 self._damage_dealers_by_target[target].add(attacker)
-            # Update event indices for O(1) lookups
-            if target not in self._events_by_target:
-                self._events_by_target[target] = []
-            self._events_by_target[target].append(event)
 
             if attacker:
                 key = (attacker, target)
-                if key not in self._events_by_attacker_target:
-                    self._events_by_attacker_target[key] = []
-                self._events_by_attacker_target[key].append(event)
                 summary = self._dps_by_attacker_target.get(key)
                 if summary is None:
                     self._dps_by_attacker_target[key] = {
@@ -379,54 +431,12 @@ class DataStore:
         Returns:
             List of dicts with keys: damage_type, total_damage, dps
         """
-        with self.lock:
-            if character not in self.dps_data:
-                return []
-
-            character_data = self.dps_data[character]
-
-            if time_tracking_mode == "global":
-                # Global mode: use global start time and global last damage timestamp
-                if global_start_time is None:
-                    # If global_start_time not set, use first character's first timestamp
-                    if not self.dps_data:
-                        return []
-                    global_start_time = min(data['first_timestamp'] for data in self.dps_data.values())
-
-                # Use the global last damage timestamp (same as per_character mode)
-                if self.last_damage_timestamp is None:
-                    return []
-
-                time_delta = self.last_damage_timestamp - global_start_time
-                time_seconds = max(time_delta.total_seconds(), 1)
-            else:
-                # Per-character mode: use character's first timestamp and global last timestamp
-                if self.last_damage_timestamp is None:
-                    return []
-
-                first_ts = character_data['first_timestamp']
-                last_ts = self.last_damage_timestamp
-
-                # Calculate time elapsed in seconds
-                time_delta = last_ts - first_ts
-                time_seconds = max(time_delta.total_seconds(), 1)
-
-            # Get damage by type from tracked data
-            damage_by_type = character_data.get('damage_by_type', {})
-
-            # Convert to list of dicts with DPS calculations
-            breakdown = []
-            for damage_type, total_dmg in damage_by_type.items():
-                dps = total_dmg / time_seconds
-                breakdown.append({
-                    'damage_type': damage_type,
-                    'total_damage': total_dmg,
-                    'dps': dps
-                })
-
-            # Sort by total damage descending
-            breakdown.sort(key=lambda x: x['total_damage'], reverse=True)
-            return breakdown
+        return self.get_dps_breakdowns_by_type(
+            [character],
+            target=None,
+            time_tracking_mode=time_tracking_mode,
+            global_start_time=global_start_time,
+        ).get(character, [])
 
     def get_dps_breakdown_by_type_for_target(self, character: str, target: str, time_tracking_mode: str = "per_character", global_start_time: Optional[datetime] = None) -> List[Dict]:
         """Get DPS breakdown by damage type for a specific character against a specific target.
@@ -440,40 +450,104 @@ class DataStore:
         Returns:
             List of dicts with keys: damage_type, total_damage, dps
         """
-        with self.lock:
-            summary = self._dps_by_attacker_target.get((character, target))
-            if summary is None or summary['total_damage'] == 0:
-                return []
+        return self.get_dps_breakdowns_by_type(
+            [character],
+            target=target,
+            time_tracking_mode=time_tracking_mode,
+            global_start_time=global_start_time,
+        ).get(character, [])
 
-            # Calculate time delta based on mode
+    def _build_dps_breakdown_rows(
+        self,
+        damage_by_type: Dict[str, int],
+        time_seconds: float,
+    ) -> List[Dict]:
+        """Build sorted breakdown rows for one damage map."""
+        breakdown = []
+        for damage_type, total_dmg in damage_by_type.items():
+            breakdown.append({
+                'damage_type': damage_type,
+                'total_damage': total_dmg,
+                'dps': total_dmg / time_seconds,
+            })
+
+        breakdown.sort(key=lambda x: x['total_damage'], reverse=True)
+        return breakdown
+
+    def get_dps_breakdowns_by_type(
+        self,
+        characters: List[str],
+        target: Optional[str] = None,
+        time_tracking_mode: str = "per_character",
+        global_start_time: Optional[datetime] = None,
+    ) -> Dict[str, List[Dict]]:
+        """Get DPS breakdowns by damage type for multiple characters in one lock pass."""
+        with self.lock:
+            unique_characters = list(dict.fromkeys(characters))
+            result: Dict[str, List[Dict]] = {character: [] for character in unique_characters}
+            if not unique_characters:
+                return result
+
+            global_time_seconds: Optional[float] = None
             if time_tracking_mode == "global":
                 if global_start_time is None:
-                    global_start_time = min(data['first_timestamp'] for data in self.dps_data.values()) if self.dps_data else datetime.now()
+                    if not self.dps_data:
+                        if target is None:
+                            return result
+                        global_start_time = datetime.now()
+                    else:
+                        global_start_time = min(
+                            data['first_timestamp'] for data in self.dps_data.values()
+                        )
 
-                # Use the global last damage timestamp (same as per_character mode)
                 if self.last_damage_timestamp is None:
-                    return []
+                    return result
 
-                time_delta = self.last_damage_timestamp - global_start_time
-                time_seconds = max(time_delta.total_seconds(), 1)
-            else:
-                # Per-character mode: use character's first and last attack on this target
-                time_delta = summary['last_timestamp'] - summary['first_timestamp']
-                time_seconds = max(time_delta.total_seconds(), 1)
+                global_time_seconds = max(
+                    (self.last_damage_timestamp - global_start_time).total_seconds(),
+                    1,
+                )
 
-            # Convert to list of dicts with DPS calculations
-            breakdown = []
-            for damage_type, total_dmg in summary['damage_by_type'].items():
-                dps = total_dmg / time_seconds
-                breakdown.append({
-                    'damage_type': damage_type,
-                    'total_damage': total_dmg,
-                    'dps': dps
-                })
+            for character in unique_characters:
+                if target is None:
+                    character_data = self.dps_data.get(character)
+                    if character_data is None:
+                        continue
 
-            # Sort by total damage descending
-            breakdown.sort(key=lambda x: x['total_damage'], reverse=True)
-            return breakdown
+                    if time_tracking_mode == "global":
+                        time_seconds = global_time_seconds
+                    else:
+                        if self.last_damage_timestamp is None:
+                            continue
+                        time_seconds = max(
+                            (self.last_damage_timestamp - character_data['first_timestamp']).total_seconds(),
+                            1,
+                        )
+
+                    result[character] = self._build_dps_breakdown_rows(
+                        character_data.get('damage_by_type', {}),
+                        time_seconds or 1,
+                    )
+                    continue
+
+                summary = self._dps_by_attacker_target.get((character, target))
+                if summary is None or summary['total_damage'] == 0:
+                    continue
+
+                if time_tracking_mode == "global":
+                    time_seconds = global_time_seconds
+                else:
+                    time_seconds = max(
+                        (summary['last_timestamp'] - summary['first_timestamp']).total_seconds(),
+                        1,
+                    )
+
+                result[character] = self._build_dps_breakdown_rows(
+                    summary['damage_by_type'],
+                    time_seconds or 1,
+                )
+
+            return result
 
     def get_target_resists(self, target: str) -> List[Tuple[str, int, int, int]]:
         """Get aggregated resist data for a specific target.
@@ -525,13 +599,8 @@ class DataStore:
             Tuple of (total_hits, total_damage, total_absorbed) or None
         """
         with self.lock:
-            # Use indexed events for O(1) lookup
-            target_events = self._events_by_target.get(target, [])
-            if not target_events:
-                return None
-
             stats = self._target_stats_cache.get(target)
-            if stats is None:
+            if stats is None or stats['total_hits'] == 0:
                 return None
             return (
                 int(stats['total_hits']),
@@ -550,22 +619,14 @@ class DataStore:
             Dict with keys 'attacks', 'hits', 'crits', 'misses', 'hit_rate' or None
         """
         with self.lock:
-            # Use indexed attacks for O(1) lookup
-            indexed_attacks = self._attacks_by_attacker_target.get((attacker, target), [])
-            if not indexed_attacks:
+            stats = self._attack_stats_by_attacker_target.get((attacker, target))
+            if not stats:
                 return None
 
-            # Single-pass counting
-            hits = crits = misses = 0
-            for a in indexed_attacks:
-                if a.outcome == 'hit':
-                    hits += 1
-                elif a.outcome == 'critical_hit':
-                    crits += 1
-                elif a.outcome == 'miss':
-                    misses += 1
-
-            total_attacks = len(indexed_attacks)
+            hits = int(stats['hits'])
+            crits = int(stats['crits'])
+            misses = int(stats['misses'])
+            total_attacks = hits + crits + misses
 
             # Calculate hit rate as (hits + crits) / (hits + crits + misses)
             successful = hits + crits
@@ -591,22 +652,14 @@ class DataStore:
             Dict with keys 'attacks', 'hits', 'crits', 'misses', 'hit_rate' or None
         """
         with self.lock:
-            # Use indexed attacks for O(1) lookup
-            indexed_attacks = self._attacks_by_target.get(target, [])
-            if not indexed_attacks:
+            stats = self._attack_stats_by_target.get(target)
+            if not stats:
                 return None
 
-            # Single-pass counting
-            hits = crits = misses = 0
-            for a in indexed_attacks:
-                if a.outcome == 'hit':
-                    hits += 1
-                elif a.outcome == 'critical_hit':
-                    crits += 1
-                elif a.outcome == 'miss':
-                    misses += 1
-
-            total_attacks = len(indexed_attacks)
+            hits = int(stats['hits'])
+            crits = int(stats['crits'])
+            misses = int(stats['misses'])
+            total_attacks = hits + crits + misses
 
             # Calculate hit rate as (hits + crits) / (hits + crits + misses)
             successful = hits + crits
@@ -804,6 +857,66 @@ class DataStore:
 
             return min(first_timestamps)
 
+    def record_target_attack_roll(
+        self,
+        attacker: str,
+        target: str,
+        outcome: str,
+        roll: Optional[int],
+        bonus: Optional[int],
+        total: Optional[int],
+        was_nat1: bool = False,
+        was_nat20: bool = False,
+        is_concealment: bool = False,
+    ) -> None:
+        """Record attack-derived AC/AB target stats.
+
+        Args:
+            attacker: Name of the attacking character
+            target: Name of the target
+            outcome: Attack outcome ('hit', 'critical_hit', or 'miss')
+            roll: d20 roll value
+            bonus: Attack bonus value
+            total: Attack total (roll + bonus)
+            was_nat1: Whether the attack roll was a natural 1
+            was_nat20: Whether the attack roll was a natural 20
+            is_concealment: Whether this miss was concealment-based
+        """
+        with self.lock:
+            self._version += 1
+            self._record_target_attack_roll_locked(
+                attacker=attacker,
+                target=target,
+                outcome=outcome,
+                bonus=bonus,
+                total=total,
+                was_nat1=was_nat1,
+                was_nat20=was_nat20,
+                is_concealment=is_concealment,
+            )
+
+    def record_target_save(self, target: str, save_key: str, bonus: int) -> None:
+        """Record save-derived target stats."""
+        with self.lock:
+            self._version += 1
+            self._targets_cache.add(target)
+            saves = self._target_saves_by_name.get(target)
+            if saves is None:
+                saves = EnemySaves(name=target)
+                self._target_saves_by_name[target] = saves
+            saves.update_save(save_key, int(bonus))
+
+    def mark_target_epic_dodge(self, target: str) -> None:
+        """Mark a target as having Epic Dodge for AC display confidence."""
+        with self.lock:
+            self._version += 1
+            self._targets_cache.add(target)
+            ac = self._target_ac_by_name.get(target)
+            if ac is None:
+                ac = EnemyAC(name=target)
+                self._target_ac_by_name[target] = ac
+            ac.mark_epic_dodge()
+
 
     def clear_all_data(self) -> None:
         """Clear all data from the store."""
@@ -820,13 +933,8 @@ class DataStore:
             self._all_damage_types_cache.clear()
             self._damage_taken_by_target.clear()
             self._attack_stats_by_attacker.clear()
+            self._attack_stats_by_target.clear()
             self._attack_stats_by_attacker_target.clear()
-            # Clear indices
-            self._attacks_by_attacker.clear()
-            self._attacks_by_target.clear()
-            self._attacks_by_attacker_target.clear()
-            self._events_by_target.clear()
-            self._events_by_attacker_target.clear()
             self._damage_summary_by_target.clear()
             self._damage_dealers_by_target.clear()
             self._dps_by_attacker_target.clear()
@@ -835,6 +943,9 @@ class DataStore:
             self._dps_breakdown_token_by_attacker_target.clear()
             self._dps_breakdown_dirty_attacker_target.clear()
             self._target_stats_cache.clear()
+            self._target_ac_by_name.clear()
+            self._target_saves_by_name.clear()
+            self._target_attack_bonus_by_name.clear()
 
     def close(self) -> None:
         """Close the data store (no-op for in-memory store)."""
@@ -906,11 +1017,8 @@ class DataStore:
 
             return result
 
-    def get_all_targets_summary(self, parser: "LogParser") -> List[Dict]:  # type: ignore
+    def get_all_targets_summary(self, parser: object = None) -> List[Dict]:
         """Get summary data for all targets with attack bonus, AC, and saves.
-
-        Args:
-            parser: LogParser instance with target_ac, target_saves, and target_attack_bonus data
 
         Returns:
             List of dicts with keys: target, ab, ac, fortitude, reflex, will, damage_taken,
@@ -921,22 +1029,22 @@ class DataStore:
             summary = []
 
             for target in targets:
-                # Get AB from parser
+                # Get AB from DataStore-owned attack bonus state
                 ab_display = "-"
-                if target in parser.target_attack_bonus:
-                    ab_display = parser.target_attack_bonus[target].get_bonus_display()
+                if target in self._target_attack_bonus_by_name:
+                    ab_display = self._target_attack_bonus_by_name[target].get_bonus_display()
 
-                # Get AC from parser
+                # Get AC from DataStore-owned AC estimation state
                 ac_display = "-"
-                if target in parser.target_ac:
-                    ac_display = parser.target_ac[target].get_ac_estimate()
+                if target in self._target_ac_by_name:
+                    ac_display = self._target_ac_by_name[target].get_ac_estimate()
 
-                # Get saves from parser
+                # Get saves from DataStore-owned save estimation state
                 fort_display = "-"
                 ref_display = "-"
                 will_display = "-"
-                if target in parser.target_saves:
-                    saves = parser.target_saves[target]
+                if target in self._target_saves_by_name:
+                    saves = self._target_saves_by_name[target]
                     fort_display = str(saves.fortitude) if saves.fortitude is not None else "-"
                     ref_display = str(saves.reflex) if saves.reflex is not None else "-"
                     will_display = str(saves.will) if saves.will is not None else "-"

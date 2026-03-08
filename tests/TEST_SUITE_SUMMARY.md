@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 8, 2026 (fixture set refresh)
+**Last Updated:** March 9, 2026 (First Timestamp refresh regression tests)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **544 tests collected**
+- Result: **560 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 34 modules, 495 tests
+- `tests/unit/`: 34 modules, 511 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 42 test modules, 544 tests
+- Total: 42 test modules, 560 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -26,18 +26,18 @@ Notes:
 ### Unit (`tests/unit`)
 - `test_bump_version_script.py` (6)
 - `test_models.py` (52)
-- `test_parser.py` (66)
+- `test_parser.py` (68)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
-- `test_storage.py` (40)
-- `test_storage_indices.py` (19)
+- `test_storage.py` (45)
+- `test_storage_indices.py` (20)
 - `test_utils.py` (37)
 - `test_monitor.py` (19)
 - `test_monitor_debug_mode.py` (9)
-- `test_queue_processor_unit.py` (29)
+- `test_queue_processor_unit.py` (33)
 - `test_queue_processor_batched.py` (9)
 - `test_queue_processor.py` (10)
-- `test_dps_service.py` (13)
+- `test_dps_service.py` (14)
 - `test_formatters.py` (22)
 - `test_immunity_panel_additional.py` (5)
 - `test_immunity_panel_edge_cases.py` (6)
@@ -52,7 +52,7 @@ Notes:
 - `test_settings.py` (5)
 - `test_main_window_monitoring_switch.py` (5)
 - `test_main_window_debug_tab_unlock.py` (5)
-- `test_main_window_orchestration.py` (12)
+- `test_main_window_orchestration.py` (15)
 - `test_monitor_edge_cases.py` (4)
 - `test_queue_processor_resilience.py` (5)
 - `test_sorted_treeview_edge_cases.py` (7)

@@ -389,6 +389,35 @@ class TestAttackParsing:
         assert parser.target_ac['Target'].min_hit == 50
         assert parser.target_ac['Target'].get_ac_estimate() == "≤50"
 
+    def test_parse_target_concealed_without_outcome_is_ignored(self, parser: LogParser) -> None:
+        """No-outcome target-concealed lines should not emit attacks or affect stats."""
+        line = (
+            "[CHAT WINDOW TEXT] [Sat Oct 18 21:12:56] Attack Of Opportunity : Flurry of Blows : "
+            "Woo Whirlwind attacks Cerberus : *target concealed: 50%* : (3 + 17 = 20)"
+        )
+        result = parser.parse_line(line)
+
+        assert result is None
+        assert 'Cerberus' not in parser.target_ac
+        assert 'Woo Whirlwind' not in parser.target_attack_bonus
+
+    def test_parse_target_concealed_with_explicit_outcome(self, parser: LogParser) -> None:
+        """Target-concealed lines with explicit outcome should parse as attacks."""
+        line = (
+            "[CHAT WINDOW TEXT] [Sat Oct 18 21:12:56] Attack Of Opportunity : Flurry of Blows : "
+            "Woo Whirlwind attacks Cerberus : *target concealed: 50%* : "
+            "(19 + 17 = 36) : *critical hit*"
+        )
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result['type'] == 'attack_hit_critical'
+        assert result['attacker'] == 'Woo Whirlwind'
+        assert result['target'] == 'Cerberus'
+        assert result['roll'] == 19
+        assert result['bonus'] == '17'
+        assert result['total'] == 36
+
     def test_parse_concealment_real_world_scenario(self, parser: LogParser) -> None:
         """Test real-world scenario from user's logs.
 
@@ -428,15 +457,19 @@ class TestEpicDodgeParsing:
         line = "[CHAT WINDOW TEXT] [Fri Feb 13 11:34:03] Epic Undead Monk : Epic Dodge : Attack evaded"
         result = parser.parse_line(line)
 
-        assert result is None
+        assert result is not None
+        assert result["type"] == "epic_dodge"
+        assert result["target"] == "Epic Undead Monk"
         assert 'Epic Undead Monk' in parser.target_ac
         assert parser.target_ac['Epic Undead Monk'].has_epic_dodge is True
 
-    def test_parse_epic_dodge_does_not_emit_event(self, parser: LogParser) -> None:
-        """Test Epic Dodge line is state-only and does not emit queue events."""
+    def test_parse_epic_dodge_emits_event(self, parser: LogParser) -> None:
+        """Test Epic Dodge line emits a queue event for downstream consumers."""
         line = "Epic Undead Monk : Epic Dodge : Attack evaded"
         result = parser.parse_line(line)
-        assert result is None
+        assert result is not None
+        assert result["type"] == "epic_dodge"
+        assert result["target"] == "Epic Undead Monk"
 
     def test_parse_epic_dodge_preserves_target_name(self, parser: LogParser) -> None:
         """Test Epic Dodge parsing preserves complex target names."""

@@ -182,7 +182,7 @@ class WoosNwnParserApp:
         self.dps_panel.target_filter_combo.bind("<<ComboboxSelected>>", self._on_target_filter_changed)
 
         # Tab 2: Target Stats Panel (using TargetStatsPanel widget)
-        self.stats_panel = TargetStatsPanel(self.notebook, self.data_store, self.parser)
+        self.stats_panel = TargetStatsPanel(self.notebook, self.data_store)
         self.notebook.add(self.stats_panel, text="Target Stats")
 
         # Tab 3: Immunity Panel (using ImmunityPanel widget)
@@ -381,10 +381,8 @@ class WoosNwnParserApp:
             elif event_type == 'ops_chunk':
                 self._pending_file_payloads.append({
                     'ops': event.get('ops', {}),
-                    'parser_state': None,
                     'index': event.get('index', 0),
                     'progress': {'stage': 'dps', 'idx': 0},
-                    'state_merged': True,
                 })
                 if not self._is_applying_payload:
                     self._is_applying_payload = True
@@ -395,10 +393,8 @@ class WoosNwnParserApp:
                     self._import_status['files_completed'] = event.get('index', 0)
                 self._pending_file_payloads.append({
                     'ops': {},
-                    'parser_state': event.get('parser_state', {}),
                     'index': event.get('index', 0),
-                    'progress': {'stage': 'merge_state', 'idx': 0},
-                    'state_merged': False,
+                    'progress': {'stage': 'done', 'idx': 0},
                 })
                 if not self._is_applying_payload:
                     self._is_applying_payload = True
@@ -464,8 +460,44 @@ class WoosNwnParserApp:
             if stage == 'attack':
                 attacks = ops.get('attack_events', [])
                 if idx < len(attacks):
-                    attacker, target, outcome, roll, bonus, total = attacks[idx]
-                    self.data_store.insert_attack_event(attacker, target, outcome, roll, bonus, total)
+                    attacker, target, outcome, roll, bonus, total, was_nat1, was_nat20, is_concealment = attacks[idx]
+                    self.data_store.insert_attack_event(
+                        attacker,
+                        target,
+                        outcome,
+                        roll,
+                        bonus,
+                        total,
+                        was_nat1=was_nat1,
+                        was_nat20=was_nat20,
+                        is_concealment=is_concealment,
+                    )
+                    progress['idx'] += 1
+                    budget -= 1
+                    continue
+                progress['stage'] = 'save'
+                progress['idx'] = 0
+                continue
+
+            if stage == 'save':
+                saves = ops.get('save_events', [])
+                if idx < len(saves):
+                    target, save_type, bonus = saves[idx]
+                    if target and save_type and bonus is not None:
+                        self.data_store.record_target_save(target, save_type, bonus)
+                    progress['idx'] += 1
+                    budget -= 1
+                    continue
+                progress['stage'] = 'epic_dodge'
+                progress['idx'] = 0
+                continue
+
+            if stage == 'epic_dodge':
+                epic_dodge_targets = ops.get('epic_dodge_targets', [])
+                if idx < len(epic_dodge_targets):
+                    target = epic_dodge_targets[idx]
+                    if target:
+                        self.data_store.mark_target_epic_dodge(target)
                     progress['idx'] += 1
                     budget -= 1
                     continue
@@ -481,20 +513,13 @@ class WoosNwnParserApp:
                     progress['idx'] += 1
                     budget -= 1
                     continue
-                progress['stage'] = 'merge_state'
+                progress['stage'] = 'done'
                 progress['idx'] = 0
                 continue
 
-            if stage == 'merge_state' and not item['state_merged']:
-                if item.get('parser_state'):
-                    self._merge_parser_state(item['parser_state'])
-                item['state_merged'] = True
+            if stage == 'done':
                 self._pending_file_payloads.popleft()
                 budget -= 1
-                continue
-
-            if stage == 'merge_state' and item['state_merged']:
-                self._pending_file_payloads.popleft()
                 continue
 
         if self._pending_file_payloads:
@@ -504,7 +529,12 @@ class WoosNwnParserApp:
         self._is_applying_payload = False
 
     def _merge_parser_state(self, parser_state: Dict[str, Any]) -> None:
-        """Merge parser AC/save/AB state from worker into the main parser."""
+        """Compatibility shim for tests/legacy callers.
+
+        Runtime import flow no longer depends on parser_state; DataStore owns
+        target AC/AB/save aggregation. This method is retained to avoid breaking
+        callers that still provide worker parser snapshots.
+        """
         worker_target_ac = parser_state.get('target_ac', {})
         for target, src in worker_target_ac.items():
             dst = self.parser.target_ac.get(target)
@@ -882,9 +912,6 @@ class WoosNwnParserApp:
             self._immunity_dirty_targets.clear()
 
         self.data_store.clear_all_data()
-        self.parser.target_ac.clear()
-        self.parser.target_saves.clear()
-        self.parser.target_attack_bonus.clear()
 
         # Clear all UI trees
         self.immunity_panel.tree.delete(*self.immunity_panel.tree.get_children())
@@ -965,9 +992,9 @@ class WoosNwnParserApp:
 
         self.log_debug(f"First timestamp mode changed to: {new_mode_display}")
 
-        # Only refresh DPS display if still monitoring
-        if self.is_monitoring:
-            self.dps_panel.refresh()
+        # Always refresh DPS display so manual imports (paused monitoring)
+        # immediately reflect the selected first timestamp mode.
+        self.dps_panel.refresh()
 
     def _on_target_filter_changed(self, event: tk.Event) -> None:
         """Handle target filter change from combobox.

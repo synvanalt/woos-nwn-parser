@@ -273,3 +273,53 @@ def test_init_uses_persisted_settings_over_defaults(monkeypatch) -> None:
 
     assert app.log_directory == r"C:\persisted_logs"
     assert app._initial_death_fallback_line == "Persisted fallback"
+
+
+def test_time_tracking_mode_change_refreshes_when_not_monitoring(app_shell) -> None:
+    app_shell.is_monitoring = False
+    app_shell.dps_service = Mock()
+    app_shell.dps_service.time_tracking_mode = "per_character"
+    app_shell.dps_panel.time_tracking_var = Mock()
+    app_shell.dps_panel.time_tracking_var.get.return_value = "Global"
+
+    event = Mock()
+    event.widget = Mock()
+
+    app_shell._on_time_tracking_mode_changed(event)
+
+    event.widget.selection_clear.assert_called_once()
+    app_shell.dps_service.set_time_tracking_mode.assert_called_once_with("global")
+    app_shell.dps_panel.refresh.assert_called_once()
+
+
+def test_time_tracking_mode_change_noop_when_mode_unchanged(app_shell) -> None:
+    app_shell.dps_service = Mock()
+    app_shell.dps_service.time_tracking_mode = "global"
+    app_shell.dps_panel.time_tracking_var = Mock()
+    app_shell.dps_panel.time_tracking_var.get.return_value = "Global"
+
+    event = Mock()
+    event.widget = Mock()
+
+    app_shell._on_time_tracking_mode_changed(event)
+
+    event.widget.selection_clear.assert_called_once()
+    app_shell.dps_service.set_time_tracking_mode.assert_not_called()
+    app_shell.dps_panel.refresh.assert_not_called()
+
+
+def test_time_tracking_mode_change_refreshes_when_monitoring(app_shell) -> None:
+    app_shell.is_monitoring = True
+    app_shell.dps_service = Mock()
+    app_shell.dps_service.time_tracking_mode = "global"
+    app_shell.dps_panel.time_tracking_var = Mock()
+    app_shell.dps_panel.time_tracking_var.get.return_value = "Per Character"
+
+    event = Mock()
+    event.widget = Mock()
+
+    app_shell._on_time_tracking_mode_changed(event)
+
+    event.widget.selection_clear.assert_called_once()
+    app_shell.dps_service.set_time_tracking_mode.assert_called_once_with("per_character")
+    app_shell.dps_panel.refresh.assert_called_once()

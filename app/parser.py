@@ -7,7 +7,7 @@ extracting damage, attack, immunity, and save information.
 import re
 from collections import deque
 from datetime import datetime
-from typing import Any, Deque, Dict, Optional, Pattern
+from typing import Any, Deque, Dict, Iterable, Iterator, Optional, Pattern
 
 from .models import EnemyAC, EnemySaves, TargetAttackBonus
 
@@ -23,12 +23,18 @@ class LogParser:
     DEFAULT_DEATH_FALLBACK_LINE = "Your God refuses to hear your prayers!"
     DEATH_IDENTIFY_TOKEN = "wooparseme"
 
-    def __init__(self, player_name: Optional[str] = None, parse_immunity: bool = False) -> None:
+    def __init__(
+        self,
+        player_name: Optional[str] = None,
+        parse_immunity: bool = False,
+        max_recent_log_lines: int = 20000,
+    ) -> None:
         """Initialize the parser.
 
         Args:
             player_name: Name of the player character (used to filter attacks)
             parse_immunity: Whether to parse damage immunity lines
+            max_recent_log_lines: Maximum retained log lines for death snippet scans
         """
         self.player_name = player_name
         # Whether to attempt to parse damage immunity lines. Can be toggled at runtime
@@ -121,7 +127,8 @@ class LogParser:
         # Death snippet extraction state (bounded ring buffer for low-memory, low-overhead scanning)
         self.death_lookup_killed_lookback_lines = 500
         self.death_snippet_max_lines = 100
-        self.recent_log_lines: Deque[str] = deque(maxlen=20000)
+        safe_recent_log_lines = max(1, int(max_recent_log_lines))
+        self.recent_log_lines: Deque[str] = deque(maxlen=safe_recent_log_lines)
         self._name_token_pattern_cache: Dict[str, Pattern[str]] = {}
         self._damage_immunity_marker = "Damage Immunity absorbs"
         self._attack_marker = " attacks "
@@ -177,7 +184,7 @@ class LogParser:
     def _collect_death_snippet_lines(
         self,
         *,
-        history: list[str],
+        candidates_reversed: Iterable[str],
         target_name: str,
         trigger_line: Optional[str] = None,
     ) -> Optional[list[str]]:
@@ -187,7 +194,7 @@ class LogParser:
 
         name_pattern = self._get_name_token_pattern(target_name)
         snippet_reversed = []
-        for candidate in reversed(history):
+        for candidate in candidates_reversed:
             if name_pattern.search(candidate):
                 snippet_reversed.append(candidate)
                 if len(snippet_reversed) >= self.death_snippet_max_lines:
@@ -201,6 +208,15 @@ class LogParser:
             snippet_lines.append(trigger_line)
         return snippet_lines
 
+    def _iter_recent_log_lines_reversed(self, skip_latest: int = 0) -> Iterator[str]:
+        """Yield recent log lines from newest to oldest, optionally skipping newest lines."""
+        lines = iter(reversed(self.recent_log_lines))
+        for _ in range(max(0, skip_latest)):
+            if next(lines, None) is None:
+                return
+        for candidate in lines:
+            yield candidate
+
     def _build_death_snippet_event_from_fallback(
         self,
         fallback_line: str,
@@ -211,10 +227,9 @@ class LogParser:
             return None
 
         # Exclude current prayer line; scan recent history backward for nearest kill line.
-        history = list(self.recent_log_lines)[:-1]
         killed_match = None
         scanned = 0
-        for candidate in reversed(history):
+        for candidate in self._iter_recent_log_lines_reversed(skip_latest=1):
             if scanned >= self.death_lookup_killed_lookback_lines:
                 break
             scanned += 1
@@ -232,7 +247,7 @@ class LogParser:
             return None
 
         snippet_lines = self._collect_death_snippet_lines(
-            history=history,
+            candidates_reversed=self._iter_recent_log_lines_reversed(skip_latest=1),
             target_name=dead_target,
             trigger_line=fallback_line,
         )
@@ -255,9 +270,8 @@ class LogParser:
         timestamp: datetime,
     ) -> Optional[Dict[str, Any]]:
         """Build death snippet event using current killed line as trigger."""
-        history = list(self.recent_log_lines)
         snippet_lines = self._collect_death_snippet_lines(
-            history=history,
+            candidates_reversed=reversed(self.recent_log_lines),
             target_name=target,
         )
         if not snippet_lines:
@@ -339,6 +353,76 @@ class LogParser:
             damage_types[dtype] = amt
 
         return damage_types
+
+    @staticmethod
+    def _normalize_attack_attacker_name(raw_attacker: str) -> str:
+        """Strip attack prefix chains and keep only the attacker segment."""
+        attacker = raw_attacker.strip()
+        if " : " in attacker:
+            attacker = attacker.rsplit(" : ", 1)[-1].strip()
+        return attacker
+
+    def _parse_attack_conceal_fast(self, s: str) -> tuple[Optional[Dict[str, Any]], bool]:
+        """Fast-path parser for conceal lines.
+
+        Returns:
+            (parsed_attack, should_fallback_regex)
+            - parsed_attack: Parsed dict with attacker/target/outcome/roll/bonus/total when successful.
+            - should_fallback_regex: Whether to try the legacy regex when fast-path doesn't parse.
+        """
+        if " attacks " not in s or "*target concealed:" not in s:
+            return None, True
+
+        try:
+            left, right = s.split(" attacks ", 1)
+            target_part, rest = right.split(" : *target concealed:", 1)
+
+            roll_seg_start = rest.find("(")
+            roll_seg_end = rest.find(")", roll_seg_start + 1)
+            if roll_seg_start < 0 or roll_seg_end < 0:
+                return None, True
+
+            roll_expr = rest[roll_seg_start + 1:roll_seg_end]
+            roll_s, rem = roll_expr.split("+", 1)
+            bonus_s, total_s = rem.split("=", 1)
+
+            attacker = self._normalize_attack_attacker_name(left)
+            target = target_part.strip()
+            roll = int(roll_s.strip())
+            bonus = int(bonus_s.strip())
+            total = int(total_s.strip())
+
+            # Keep existing behavior: conceal lines without an explicit final
+            # outcome token are ignored and should not affect hit/miss stats.
+            tail = rest[roll_seg_end + 1:].strip()
+            if not tail:
+                return None, False
+            if tail.startswith(":"):
+                tail = tail[1:].strip()
+            if not tail:
+                return None, False
+            if not tail.startswith("*"):
+                return None, True
+
+            end_star = tail.find("*", 1)
+            if end_star < 0:
+                return None, True
+
+            outcome = tail[1:end_star].strip().lower()
+            allowed_outcomes = {"hit", "critical hit", "miss", "parried", "resisted"}
+            if outcome not in allowed_outcomes:
+                return None, True
+
+            return {
+                "attacker": attacker,
+                "target": target,
+                "outcome": outcome,
+                "roll": roll,
+                "bonus": str(bonus),
+                "total": total,
+            }, False
+        except Exception:
+            return None, True
 
     def parse_line(self, line: str) -> Optional[Dict]:
         """Parse a single log line and extract relevant data.
@@ -490,13 +574,19 @@ class LogParser:
                 if target not in self.target_ac:
                     self.target_ac[target] = EnemyAC(name=target)
                 self.target_ac[target].mark_epic_dodge()
-                return None
+                return {
+                    'type': 'epic_dodge',
+                    'target': target,
+                    'timestamp': get_timestamp(),
+                }
 
         # Check for attack rolls to estimate AC. Most lines are plain hit/miss entries,
         # so route to the narrowest plausible regex first.
+        attack_fast_data: Optional[Dict[str, Any]] = None
         if self._attack_marker in stripped_line:
             if self._target_concealed_marker in stripped_line:
-                attack_match = self.patterns['attack_conceal'].search(stripped_line)
+                attack_fast_data, should_fallback = self._parse_attack_conceal_fast(stripped_line)
+                attack_match = patterns['attack_conceal'].search(stripped_line) if should_fallback else None
             elif (
                 self._threat_roll_marker in stripped_line or
                 self._attacker_miss_chance_marker in stripped_line
@@ -507,15 +597,29 @@ class LogParser:
         else:
             attack_match = None
 
-        if attack_match:
+        if attack_fast_data is not None:
+            attacker = attack_fast_data['attacker']
+            target = attack_fast_data['target']
+            outcome = attack_fast_data['outcome']
+            roll_str = str(attack_fast_data['roll'])
+            total_str = str(attack_fast_data['total'])
+            bonus_str = attack_fast_data['bonus']
+        elif attack_match:
             attacker = attack_match.group('attacker').strip()
             target = attack_match.group('target').strip()
             outcome = attack_match.group('outcome').lower() if 'outcome' in attack_match.groupdict() else ''
-
-            # Parse roll results
             roll_str = attack_match.group('roll')
             total_str = attack_match.group('total')
+            bonus_str = attack_match.group('bonus')
+        else:
+            roll_str = None
+            total_str = None
+            bonus_str = None
+            outcome = ''
+            attacker = ''
+            target = ''
 
+        if attack_fast_data is not None or attack_match:
             # Handle outcomes including special miss chance
             # outcome can only be: hit, critical hit, miss, parried, resisted, or attacker miss chance
             is_hit = 'hit' in outcome
@@ -528,7 +632,6 @@ class LogParser:
                 total = int(total_str)
                 was_nat1 = roll == 1
                 was_nat20 = roll == 20
-                bonus_str = attack_match.group('bonus')
                 bonus = int(bonus_str) if bonus_str else None
 
                 # Track AC for all attacks against targets (for AC estimation)
@@ -559,6 +662,8 @@ class LogParser:
                         'roll': roll,
                         'bonus': bonus_str,
                         'total': total,
+                        'was_nat20': was_nat20,
+                        'is_concealment': is_concealment,
                         'timestamp': get_timestamp()
                     }
                 elif is_miss:
@@ -567,9 +672,10 @@ class LogParser:
                         'attacker': attacker,
                         'target': target,
                         'roll': roll,
-                        'bonus': attack_match.group('bonus'),
+                        'bonus': bonus_str,
                         'total': total,
                         'was_nat1': was_nat1,
+                        'is_concealment': is_concealment,
                         'timestamp': get_timestamp()
                     }
 

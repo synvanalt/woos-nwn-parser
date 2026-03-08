@@ -9,6 +9,9 @@ from typing import Dict, List, Optional, Callable
 
 from .parser import LogParser
 
+ABORT_CHECK_MASK = 0x3FF
+PROGRESS_REPORT_EVERY_LINES = 10_000
+
 
 # Forward damage logic (AUTHORITATIVE)
 def compute_dmg_reduced(dmg_before_immunity: int, immunity: float) -> int:
@@ -168,97 +171,123 @@ def parse_and_import_file(
         # Track the last damage_dealt for each target to match immunities
         last_damage_dealt = {}
 
+        last_progress_report = 0
+
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            while True:
-                if should_abort and should_abort():
+            if should_abort and should_abort():
+                return {
+                    'success': True,
+                    'lines_processed': lines_processed,
+                    'error': None,
+                    'aborted': True
+                }
+
+            for line in f:
+                # Keep cancellation responsive during large file imports.
+                if (
+                    should_abort
+                    and lines_processed
+                    and (lines_processed & ABORT_CHECK_MASK) == 0
+                    and should_abort()
+                ):
                     return {
                         'success': True,
                         'lines_processed': lines_processed,
                         'error': None,
                         'aborted': True
                     }
-                lines = f.readlines(10000)  # Read in chunks
-                if not lines:
-                    break
-                for line in lines:
-                    # Keep cancellation responsive during large file imports.
-                    if should_abort and should_abort():
-                        return {
-                            'success': True,
-                            'lines_processed': lines_processed,
-                            'error': None,
-                            'aborted': True
+
+                lines_processed += 1
+                parsed_data = parser.parse_line(line)
+                if parsed_data:
+                    if parsed_data['type'] == 'damage_dealt':
+                        target = parsed_data['target']
+                        attacker = parsed_data['attacker']
+                        timestamp = parsed_data['timestamp']
+                        total_damage = parsed_data['total_damage']
+
+                        # Always track DPS data for all characters
+                        damage_types = parsed_data.get('damage_types', {})
+                        database.update_dps_data(attacker, total_damage, timestamp, damage_types)
+
+                        # Always store target damage events for complete data tracking (consistent with monitoring behavior)
+                        # Store all damage types from this damage_dealt event
+                        for dt, amount in parsed_data['damage_types'].items():
+                            amount_int = int(amount or 0)
+                            database.insert_damage_event(target, dt, 0, amount_int, attacker, timestamp)
+                        # Remember this damage event for immunity matching
+                        last_damage_dealt[target] = {
+                            'damage_types': parsed_data['damage_types'],
+                            'timestamp': timestamp,
+                            'attacker': attacker
                         }
-                    lines_processed += 1
-                    parsed_data = parser.parse_line(line)
-                    if parsed_data:
-                        if parsed_data['type'] == 'damage_dealt':
-                            target = parsed_data['target']
-                            attacker = parsed_data['attacker']
-                            timestamp = parsed_data['timestamp']
-                            total_damage = parsed_data['total_damage']
 
-                            # Always track DPS data for all characters
-                            damage_types = parsed_data.get('damage_types', {})
-                            database.update_dps_data(attacker, total_damage, timestamp, damage_types)
+                    elif parsed_data['type'] == 'immunity':
+                        target = parsed_data['target']
+                        damage_type = parsed_data['damage_type']
+                        immunity_points = parsed_data['immunity_points']
 
-                            # Always store target damage events for complete data tracking (consistent with monitoring behavior)
-                            # Store all damage types from this damage_dealt event
-                            for dt, amount in parsed_data['damage_types'].items():
-                                amount_int = int(amount or 0)
-                                database.insert_damage_event(target, dt, 0, amount_int, attacker, timestamp)
-                            # Remember this damage event for immunity matching
-                            last_damage_dealt[target] = {
-                                'damage_types': parsed_data['damage_types'],
-                                'timestamp': timestamp,
-                                'attacker': attacker
-                            }
+                        # Try to match with the last damage_dealt for this target
+                        if target in last_damage_dealt:
+                            damage_types = last_damage_dealt[target]['damage_types']
+                            if damage_type in damage_types:
+                                # Use the damage amount from the matched damage_dealt
+                                damage_amount = int(damage_types[damage_type] or 0)
+                                # Record immunity data separately (not as duplicate damage events)
+                                database.record_immunity(target, damage_type, immunity_points, damage_amount)
 
+                    # Handle attack events
+                    elif parsed_data['type'] == 'attack_hit':
+                        database.insert_attack_event(
+                            parsed_data['attacker'],
+                            parsed_data['target'],
+                            'hit',
+                            parsed_data.get('roll'),
+                            parsed_data.get('bonus'),
+                            parsed_data.get('total'),
+                            was_nat1=bool(parsed_data.get('was_nat1', False)),
+                            was_nat20=bool(parsed_data.get('was_nat20', False)),
+                            is_concealment=bool(parsed_data.get('is_concealment', False)),
+                        )
+                    elif parsed_data['type'] == 'attack_hit_critical':
+                        database.insert_attack_event(
+                            parsed_data['attacker'],
+                            parsed_data['target'],
+                            'critical_hit',
+                            parsed_data.get('roll'),
+                            parsed_data.get('bonus'),
+                            parsed_data.get('total'),
+                            was_nat1=bool(parsed_data.get('was_nat1', False)),
+                            was_nat20=bool(parsed_data.get('was_nat20', False)),
+                            is_concealment=bool(parsed_data.get('is_concealment', False)),
+                        )
+                    elif parsed_data['type'] == 'attack_miss':
+                        database.insert_attack_event(
+                            parsed_data['attacker'],
+                            parsed_data['target'],
+                            'miss',
+                            parsed_data.get('roll'),
+                            parsed_data.get('bonus'),
+                            parsed_data.get('total'),
+                            was_nat1=bool(parsed_data.get('was_nat1', False)),
+                            was_nat20=bool(parsed_data.get('was_nat20', False)),
+                            is_concealment=bool(parsed_data.get('is_concealment', False)),
+                        )
+                    elif parsed_data['type'] == 'save':
+                        database.record_target_save(
+                            parsed_data['target'],
+                            parsed_data['save_type'],
+                            parsed_data['bonus'],
+                        )
+                    elif parsed_data['type'] == 'epic_dodge':
+                        database.mark_target_epic_dodge(parsed_data['target'])
 
-                        elif parsed_data['type'] == 'immunity':
-                            target = parsed_data['target']
-                            damage_type = parsed_data['damage_type']
-                            immunity_points = parsed_data['immunity_points']
-
-                            # Try to match with the last damage_dealt for this target
-                            if target in last_damage_dealt:
-                                damage_types = last_damage_dealt[target]['damage_types']
-                                if damage_type in damage_types:
-                                    # Use the damage amount from the matched damage_dealt
-                                    damage_amount = int(damage_types[damage_type] or 0)
-                                    # Record immunity data separately (not as duplicate damage events)
-                                    database.record_immunity(target, damage_type, immunity_points, damage_amount)
-
-                        # Handle attack events
-                        elif parsed_data['type'] == 'attack_hit':
-                            database.insert_attack_event(
-                                parsed_data['attacker'],
-                                parsed_data['target'],
-                                'hit',
-                                parsed_data.get('roll'),
-                                parsed_data.get('bonus'),
-                                parsed_data.get('total')
-                            )
-                        elif parsed_data['type'] == 'attack_hit_critical':
-                            database.insert_attack_event(
-                                parsed_data['attacker'],
-                                parsed_data['target'],
-                                'critical_hit',
-                                parsed_data.get('roll'),
-                                parsed_data.get('bonus'),
-                                parsed_data.get('total')
-                            )
-                        elif parsed_data['type'] == 'attack_miss':
-                            database.insert_attack_event(
-                                parsed_data['attacker'],
-                                parsed_data['target'],
-                                'miss',
-                                parsed_data.get('roll'),
-                                parsed_data.get('bonus'),
-                                parsed_data.get('total')
-                            )
-                if progress_callback:
+                if progress_callback and (lines_processed % PROGRESS_REPORT_EVERY_LINES) == 0:
                     progress_callback(lines_processed)
+                    last_progress_report = lines_processed
+
+        if progress_callback and lines_processed > last_progress_report:
+            progress_callback(lines_processed)
 
         return {
             'success': True,
@@ -295,95 +324,115 @@ def parse_file_to_ops(
         damage_events = []
         immunity_records = []
         attack_events = []
+        save_events = []
+        epic_dodge_targets = []
         death_snippets = []
 
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            while True:
-                if should_abort and should_abort():
+            if should_abort and should_abort():
+                return {
+                    'success': True,
+                    'aborted': True,
+                    'lines_processed': lines_processed,
+                    'error': None,
+                }
+
+            for line in f:
+                if (
+                    should_abort
+                    and lines_processed
+                    and (lines_processed & ABORT_CHECK_MASK) == 0
+                    and should_abort()
+                ):
                     return {
                         'success': True,
                         'aborted': True,
                         'lines_processed': lines_processed,
                         'error': None,
                     }
-                lines = f.readlines(10000)
-                if not lines:
-                    break
 
-                for line in lines:
-                    if should_abort and should_abort():
-                        return {
-                            'success': True,
-                            'aborted': True,
-                            'lines_processed': lines_processed,
-                            'error': None,
-                        }
+                lines_processed += 1
+                parsed_data = parser.parse_line(line)
+                if not parsed_data:
+                    continue
 
-                    lines_processed += 1
-                    parsed_data = parser.parse_line(line)
-                    if not parsed_data:
-                        continue
+                if parsed_data['type'] == 'damage_dealt':
+                    target = parsed_data['target']
+                    attacker = parsed_data['attacker']
+                    timestamp = parsed_data['timestamp']
+                    total_damage = parsed_data['total_damage']
+                    damage_types = parsed_data.get('damage_types', {})
 
-                    if parsed_data['type'] == 'damage_dealt':
-                        target = parsed_data['target']
-                        attacker = parsed_data['attacker']
-                        timestamp = parsed_data['timestamp']
-                        total_damage = parsed_data['total_damage']
-                        damage_types = parsed_data.get('damage_types', {})
+                    dps_updates.append((attacker, total_damage, timestamp, damage_types))
+                    for dt, amount in damage_types.items():
+                        damage_events.append((target, dt, 0, int(amount or 0), attacker, timestamp))
 
-                        dps_updates.append((attacker, total_damage, timestamp, damage_types))
-                        for dt, amount in damage_types.items():
-                            damage_events.append((target, dt, 0, int(amount or 0), attacker, timestamp))
+                    last_damage_dealt[target] = {
+                        'damage_types': damage_types,
+                    }
 
-                        last_damage_dealt[target] = {
-                            'damage_types': damage_types,
-                        }
+                elif parsed_data['type'] == 'immunity':
+                    target = parsed_data['target']
+                    damage_type = parsed_data['damage_type']
+                    immunity_points = parsed_data['immunity_points']
+                    if target in last_damage_dealt:
+                        damage_types = last_damage_dealt[target]['damage_types']
+                        if damage_type in damage_types:
+                            damage_amount = int(damage_types[damage_type] or 0)
+                            immunity_records.append((target, damage_type, immunity_points, damage_amount))
 
-                    elif parsed_data['type'] == 'immunity':
-                        target = parsed_data['target']
-                        damage_type = parsed_data['damage_type']
-                        immunity_points = parsed_data['immunity_points']
-                        if target in last_damage_dealt:
-                            damage_types = last_damage_dealt[target]['damage_types']
-                            if damage_type in damage_types:
-                                damage_amount = int(damage_types[damage_type] or 0)
-                                immunity_records.append((target, damage_type, immunity_points, damage_amount))
-
-                    elif parsed_data['type'] == 'attack_hit':
-                        attack_events.append((
-                            parsed_data['attacker'],
-                            parsed_data['target'],
-                            'hit',
-                            parsed_data.get('roll'),
-                            parsed_data.get('bonus'),
-                            parsed_data.get('total'),
-                        ))
-                    elif parsed_data['type'] == 'attack_hit_critical':
-                        attack_events.append((
-                            parsed_data['attacker'],
-                            parsed_data['target'],
-                            'critical_hit',
-                            parsed_data.get('roll'),
-                            parsed_data.get('bonus'),
-                            parsed_data.get('total'),
-                        ))
-                    elif parsed_data['type'] == 'attack_miss':
-                        attack_events.append((
-                            parsed_data['attacker'],
-                            parsed_data['target'],
-                            'miss',
-                            parsed_data.get('roll'),
-                            parsed_data.get('bonus'),
-                            parsed_data.get('total'),
-                        ))
-                    elif parsed_data['type'] == 'death_snippet':
-                        death_snippets.append({
-                            'target': parsed_data.get('target', ''),
-                            'killer': parsed_data.get('killer', ''),
-                            'lines': parsed_data.get('lines', []),
-                            'timestamp': parsed_data.get('timestamp'),
-                            'type': 'death_snippet',
-                        })
+                elif parsed_data['type'] == 'attack_hit':
+                    attack_events.append((
+                        parsed_data['attacker'],
+                        parsed_data['target'],
+                        'hit',
+                        parsed_data.get('roll'),
+                        parsed_data.get('bonus'),
+                        parsed_data.get('total'),
+                        False,
+                        bool(parsed_data.get('was_nat20', False)),
+                        bool(parsed_data.get('is_concealment', False)),
+                    ))
+                elif parsed_data['type'] == 'attack_hit_critical':
+                    attack_events.append((
+                        parsed_data['attacker'],
+                        parsed_data['target'],
+                        'critical_hit',
+                        parsed_data.get('roll'),
+                        parsed_data.get('bonus'),
+                        parsed_data.get('total'),
+                        False,
+                        bool(parsed_data.get('was_nat20', False)),
+                        bool(parsed_data.get('is_concealment', False)),
+                    ))
+                elif parsed_data['type'] == 'attack_miss':
+                    attack_events.append((
+                        parsed_data['attacker'],
+                        parsed_data['target'],
+                        'miss',
+                        parsed_data.get('roll'),
+                        parsed_data.get('bonus'),
+                        parsed_data.get('total'),
+                        bool(parsed_data.get('was_nat1', False)),
+                        False,
+                        bool(parsed_data.get('is_concealment', False)),
+                    ))
+                elif parsed_data['type'] == 'save':
+                    save_events.append((
+                        parsed_data.get('target'),
+                        parsed_data.get('save_type'),
+                        parsed_data.get('bonus'),
+                    ))
+                elif parsed_data['type'] == 'epic_dodge':
+                    epic_dodge_targets.append(parsed_data.get('target'))
+                elif parsed_data['type'] == 'death_snippet':
+                    death_snippets.append({
+                        'target': parsed_data.get('target', ''),
+                        'killer': parsed_data.get('killer', ''),
+                        'lines': parsed_data.get('lines', []),
+                        'timestamp': parsed_data.get('timestamp'),
+                        'type': 'death_snippet',
+                    })
 
         return {
             'success': True,
@@ -395,13 +444,11 @@ def parse_file_to_ops(
                 'damage_events': damage_events,
                 'immunity_records': immunity_records,
                 'attack_events': attack_events,
+                'save_events': save_events,
+                'epic_dodge_targets': epic_dodge_targets,
                 'death_snippets': death_snippets,
             },
-            'parser_state': {
-                'target_ac': parser.target_ac,
-                'target_saves': parser.target_saves,
-                'target_attack_bonus': parser.target_attack_bonus,
-            },
+            'parser_state': {},
         }
     except Exception as e:
         return {
@@ -467,6 +514,8 @@ def import_worker_process(
         damage_chunks = _slice_chunks(ops.get('damage_events', []), chunk_size)
         immunity_chunks = _slice_chunks(ops.get('immunity_records', []), chunk_size)
         attack_chunks = _slice_chunks(ops.get('attack_events', []), chunk_size)
+        save_chunks = _slice_chunks(ops.get('save_events', []), chunk_size)
+        epic_dodge_chunks = _slice_chunks(ops.get('epic_dodge_targets', []), chunk_size)
         death_chunks = _slice_chunks(ops.get('death_snippets', []), chunk_size)
 
         max_chunk_count = max(
@@ -474,6 +523,8 @@ def import_worker_process(
             len(damage_chunks),
             len(immunity_chunks),
             len(attack_chunks),
+            len(save_chunks),
+            len(epic_dodge_chunks),
             len(death_chunks),
             0,
         )
@@ -489,6 +540,8 @@ def import_worker_process(
                     'damage_events': damage_chunks[chunk_idx] if chunk_idx < len(damage_chunks) else [],
                     'immunity_records': immunity_chunks[chunk_idx] if chunk_idx < len(immunity_chunks) else [],
                     'attack_events': attack_chunks[chunk_idx] if chunk_idx < len(attack_chunks) else [],
+                    'save_events': save_chunks[chunk_idx] if chunk_idx < len(save_chunks) else [],
+                    'epic_dodge_targets': epic_dodge_chunks[chunk_idx] if chunk_idx < len(epic_dodge_chunks) else [],
                     'death_snippets': death_chunks[chunk_idx] if chunk_idx < len(death_chunks) else [],
                 },
             })
@@ -498,7 +551,7 @@ def import_worker_process(
             'index': index,
             'total_files': total_files,
             'file_name': file_name,
-            'parser_state': result['parser_state'],
+            'parser_state': result.get('parser_state', {}),
         })
 
     result_queue.put({'event': 'done'})
