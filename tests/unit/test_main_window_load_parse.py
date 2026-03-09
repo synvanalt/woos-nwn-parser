@@ -404,7 +404,8 @@ class TestLoadAndParseWorkflow:
             def Event(self):
                 return self.event
 
-            def Queue(self):
+            def Queue(self, maxsize=0):
+                self.queue_maxsize = maxsize
                 return self.queue
 
             def Process(self, target, args, daemon):
@@ -421,5 +422,6 @@ class TestLoadAndParseWorkflow:
         assert app.import_process is fake_ctx.process
         assert fake_ctx.process is not None
         assert fake_ctx.process.started is True
+        assert fake_ctx.queue_maxsize == main_window_module.IMPORT_RESULT_QUEUE_MAXSIZE
         assert fake_ctx.process.args[4] == "Woo Wildrock"
         assert fake_ctx.process.args[5] == "Custom fallback"

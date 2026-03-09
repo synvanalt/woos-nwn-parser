@@ -5,12 +5,17 @@ that are independent of the UI.
 """
 
 import math
-from typing import Dict, List, Optional, Callable
+import queue
+import time
+from typing import Any, Callable, Dict, List, Optional
 
 from .parser import LogParser
 
 ABORT_CHECK_MASK = 0x3FF
 PROGRESS_REPORT_EVERY_LINES = 10_000
+IMPORT_RESULT_QUEUE_MAXSIZE = 512
+IMPORT_QUEUE_PUT_TIMEOUT_SEC = 0.05
+IMPORT_QUEUE_ABORT_PUT_GRACE_SEC = 0.20
 
 
 # Forward damage logic (AUTHORITATIVE)
@@ -470,22 +475,43 @@ def import_worker_process(
     """Process target for multiprocessing import pipeline."""
     chunk_size = 2000
 
+    def _put_with_backpressure(
+        event: Dict[str, Any],
+        *,
+        force_on_abort: bool = False,
+    ) -> bool:
+        """Enqueue worker events with bounded blocking and abort responsiveness."""
+        started_at = time.monotonic()
+        while True:
+            if abort_event.is_set() and not force_on_abort:
+                return False
+            try:
+                result_queue.put(event, timeout=IMPORT_QUEUE_PUT_TIMEOUT_SEC)
+                return True
+            except queue.Full:
+                if abort_event.is_set() and not force_on_abort:
+                    return False
+                if force_on_abort and (time.monotonic() - started_at) >= IMPORT_QUEUE_ABORT_PUT_GRACE_SEC:
+                    return False
+
     def _slice_chunks(values: List, size: int) -> List[List]:
         return [values[i:i + size] for i in range(0, len(values), size)]
 
     total_files = len(file_paths)
     for index, file_path in enumerate(file_paths, start=1):
         if abort_event.is_set():
-            result_queue.put({'event': 'aborted'})
+            _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
             return
 
         file_name = file_path.replace("\\", "/").split("/")[-1]
-        result_queue.put({
+        if not _put_with_backpressure({
             'event': 'file_started',
             'index': index,
             'total_files': total_files,
             'file_name': file_name,
-        })
+        }):
+            _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
+            return
 
         result = parse_file_to_ops(
             file_path,
@@ -496,17 +522,19 @@ def import_worker_process(
         )
 
         if result.get('aborted'):
-            result_queue.put({'event': 'aborted'})
+            _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
             return
 
         if not result.get('success'):
-            result_queue.put({
+            if not _put_with_backpressure({
                 'event': 'file_error',
                 'index': index,
                 'total_files': total_files,
                 'file_name': file_name,
                 'error': result.get('error', 'Unknown error'),
-            })
+            }):
+                _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
+                return
             continue
 
         ops = result.get('ops', {})
@@ -530,7 +558,7 @@ def import_worker_process(
         )
 
         for chunk_idx in range(max_chunk_count):
-            result_queue.put({
+            if not _put_with_backpressure({
                 'event': 'ops_chunk',
                 'index': index,
                 'total_files': total_files,
@@ -544,14 +572,18 @@ def import_worker_process(
                     'epic_dodge_targets': epic_dodge_chunks[chunk_idx] if chunk_idx < len(epic_dodge_chunks) else [],
                     'death_snippets': death_chunks[chunk_idx] if chunk_idx < len(death_chunks) else [],
                 },
-            })
+            }):
+                _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
+                return
 
-        result_queue.put({
+        if not _put_with_backpressure({
             'event': 'file_completed',
             'index': index,
             'total_files': total_files,
             'file_name': file_name,
             'parser_state': result.get('parser_state', {}),
-        })
+        }):
+            _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
+            return
 
-    result_queue.put({'event': 'done'})
+    _put_with_backpressure({'event': 'done'})

@@ -343,7 +343,7 @@ class _CaptureQueue:
     def __init__(self) -> None:
         self.items = []
 
-    def put(self, item) -> None:
+    def put(self, item, timeout=None) -> None:
         self.items.append(item)
 
 

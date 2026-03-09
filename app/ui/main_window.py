@@ -20,7 +20,7 @@ from ..parser import LogParser
 from ..storage import DataStore
 from ..monitor import LogDirectoryMonitor
 from ..settings import AppSettings, load_app_settings, save_app_settings
-from ..utils import import_worker_process
+from ..utils import IMPORT_RESULT_QUEUE_MAXSIZE, import_worker_process
 from ..services import QueueProcessor, DPSCalculationService
 from .formatters import get_default_log_directory
 from .window_style import apply_dark_title_bar
@@ -350,7 +350,7 @@ class WoosNwnParserApp:
         file_paths = [str(path) for path in selected_files]
         ctx = mp.get_context("spawn")
         self.import_abort_flag = ctx.Event()
-        self.import_result_queue = ctx.Queue()
+        self.import_result_queue = ctx.Queue(maxsize=IMPORT_RESULT_QUEUE_MAXSIZE)
         self.import_process = ctx.Process(
             target=import_worker_process,
             args=(

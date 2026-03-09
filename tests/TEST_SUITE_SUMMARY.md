@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 9, 2026 (DataStore bounded-history retention coverage update)
+**Last Updated:** March 9, 2026 (Import IPC backpressure worker coverage update)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **564 tests collected**
+- Result: **566 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 34 modules, 515 tests
+- `tests/unit/`: 34 modules, 517 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 42 test modules, 564 tests
+- Total: 42 test modules, 566 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -57,7 +57,7 @@ Notes:
 - `test_queue_processor_resilience.py` (5)
 - `test_sorted_treeview_edge_cases.py` (7)
 - `test_storage_edge_branches.py` (8)
-- `test_utils_worker_pipeline.py` (7)
+- `test_utils_worker_pipeline.py` (9)
 
 ### Integration (`tests/integration`)
 - `test_parser_storage_integration.py` (13)
@@ -91,6 +91,7 @@ Notes:
   - `test_settings.py`
 - Import/worker pipeline behavior:
   - `test_utils.py`, `test_utils_worker_pipeline.py`
+  - Includes streaming chunk payload integrity and queue-full abort responsiveness coverage
 - Full-session/e2e behavior:
   - `test_e2e_combat_session.py`
 

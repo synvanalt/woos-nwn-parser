@@ -9,6 +9,8 @@
 - Death snippet lookup on large logs is more efficient during backward scans
 - `Load & Parse` import now checks abort requests more frequently and reports progress in steady intervals
 - `Load & Parse` now applies large import batches in shorter UI time slices to reduce visible stutter during big imports
+- `Load & Parse` import now uses safer queue flow control between background worker and UI to prevent excessive memory growth during very large imports
+- Aborting `Load & Parse` now exits more reliably even under heavy import load
 
 ### Fixed
 - Fixed stale DataStore index retention that could cause avoidable long-session slowdowns
