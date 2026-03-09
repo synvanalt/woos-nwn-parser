@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 9, 2026 (Import IPC backpressure worker coverage update)
+**Last Updated:** March 9, 2026 (Parser malformed-timestamp and concealment fallback coverage update)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **566 tests collected**
+- Result: **570 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 34 modules, 517 tests
+- `tests/unit/`: 34 modules, 521 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 42 test modules, 566 tests
+- Total: 42 test modules, 570 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -26,7 +26,7 @@ Notes:
 ### Unit (`tests/unit`)
 - `test_bump_version_script.py` (6)
 - `test_models.py` (52)
-- `test_parser.py` (68)
+- `test_parser.py` (72)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
 - `test_storage.py` (45)
@@ -75,6 +75,7 @@ Notes:
 
 - Parser and models:
   - `test_parser.py`, `test_models.py`, `test_parser_storage_integration.py`
+  - Includes malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, and malformed target-concealed fast-path fallback coverage
 - Storage and indexing performance behavior:
   - `test_storage.py`, `test_storage_indices.py`
 - Queue processor logic and batching:
