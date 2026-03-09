@@ -4,6 +4,7 @@ This module contains the TargetStatsPanel widget that displays target
 statistics including AC, AB, and save values.
 """
 
+from typing import Any
 from tkinter import ttk
 
 from ...storage import DataStore
@@ -38,6 +39,9 @@ class TargetStatsPanel(ttk.Frame):
         self.parser = parser
         self._cached_rows: dict = {}
         self._item_ids: dict = {}
+        self._cached_row_tokens: dict[str, tuple[Any, ...]] = {}
+        self._cached_order_token: tuple[str, ...] = ()
+        self._last_refresh_version: int = -1
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -72,21 +76,28 @@ class TargetStatsPanel(ttk.Frame):
 
     def refresh(self) -> None:
         """Refresh the target stats display with current data."""
+        current_version = self.data_store.version
+        if (
+            self._can_use_store_version_fast_path()
+            and self._last_refresh_version == current_version
+            and self._item_ids
+            and self._is_natural_order_active()
+        ):
+            return
+
         summary_data = self.data_store.get_all_targets_summary()
+        natural_order = self._is_natural_order_active()
+        order_token = tuple(item["target"] for item in summary_data)
         new_rows = {
-            item["target"]: (
-                item["target"],
-                item["ab"],
-                item["ac"],
-                item["fortitude"],
-                item["reflex"],
-                item["will"],
-                item["damage_taken"],
-            )
+            item["target"]: self._build_row_values(item)
             for item in summary_data
         }
+        new_row_tokens = {
+            target: self._build_row_token(row_values)
+            for target, row_values in new_rows.items()
+        }
 
-        current_targets = set(self._cached_rows.keys())
+        current_targets = set(self._cached_row_tokens.keys())
         new_targets = set(new_rows.keys())
 
         needs_full_refresh = (
@@ -94,16 +105,61 @@ class TargetStatsPanel(ttk.Frame):
             current_targets != new_targets
         )
 
-        if not needs_full_refresh and self.tree.get_children():
-            if self.tree._last_sorted_col == "Target" and not self.tree._sort_reverse:
-                tree_order = [self.tree.item(item, "values")[0] for item in self.tree.get_children()]
-                summary_order = [item["target"] for item in summary_data]
-                needs_full_refresh = tree_order != summary_order
+        changed_targets = {
+            target
+            for target, row_token in new_row_tokens.items()
+            if row_token != self._cached_row_tokens.get(target)
+        }
+
+        if (
+            not needs_full_refresh
+            and order_token == self._cached_order_token
+            and not changed_targets
+        ):
+            self._cached_row_tokens = new_row_tokens
+            self._cached_order_token = order_token
+            self._last_refresh_version = current_version
+            return
 
         if needs_full_refresh:
             self._full_refresh(summary_data)
+            if not natural_order and self.tree._last_sorted_col:
+                self.tree.apply_current_sort()
         else:
-            self._incremental_refresh(new_rows)
+            self._incremental_refresh(summary_data, new_rows, changed_targets, natural_order)
+
+        self._cached_row_tokens = new_row_tokens
+        self._cached_order_token = order_token
+        self._last_refresh_version = current_version
+
+    def _can_use_store_version_fast_path(self) -> bool:
+        """Return whether refresh data is sourced from the live store method."""
+        store_method = getattr(self.data_store, "get_all_targets_summary", None)
+        return (
+            getattr(store_method, "__self__", None) is self.data_store
+            and getattr(store_method, "__func__", None)
+            is DataStore.get_all_targets_summary
+        )
+
+    def _is_natural_order_active(self) -> bool:
+        """Return whether the active tree sort matches store target order."""
+        return self.tree._last_sorted_col == "Target" and not self.tree._sort_reverse
+
+    def _build_row_values(self, item: dict[str, Any]) -> tuple[Any, ...]:
+        """Build the rendered row values for one target summary."""
+        return (
+            item["target"],
+            item["ab"],
+            item["ac"],
+            item["fortitude"],
+            item["reflex"],
+            item["will"],
+            item["damage_taken"],
+        )
+
+    def _build_row_token(self, row_values: tuple[Any, ...]) -> tuple[Any, ...]:
+        """Build a stable token for row change detection."""
+        return row_values
 
     def _full_refresh(self, summary_data: list[dict]) -> None:
         """Rebuild the tree when targets are added, removed, or reordered."""
@@ -128,15 +184,7 @@ class TargetStatsPanel(ttk.Frame):
 
             # Populate treeview with target data
             for item in summary_data:
-                row_values = (
-                    item["target"],
-                    item["ab"],
-                    item["ac"],
-                    item["fortitude"],
-                    item["reflex"],
-                    item["will"],
-                    item["damage_taken"],
-                )
+                row_values = self._build_row_values(item)
                 item_id = self.tree.insert(
                     "",
                     "end",
@@ -152,7 +200,7 @@ class TargetStatsPanel(ttk.Frame):
             # - If user has never sorted, apply default sort
             # - If user has sorted, maintain their sort preference
             # This is efficient: only sorts when structure changes, not on every update
-            if self.tree._last_sorted_col:
+            if self.tree._last_sorted_col and not self._is_natural_order_active():
                 self.tree.apply_current_sort()
 
         finally:
@@ -164,31 +212,34 @@ class TargetStatsPanel(ttk.Frame):
             self.tree.selection_set(items_to_select)
 
         self._cached_rows = {
-            item["target"]: (
-                item["target"],
-                item["ab"],
-                item["ac"],
-                item["fortitude"],
-                item["reflex"],
-                item["will"],
-                item["damage_taken"],
-            )
+            item["target"]: self._build_row_values(item)
             for item in summary_data
         }
 
-    def _incremental_refresh(self, new_rows: dict) -> None:
+    def _incremental_refresh(
+        self,
+        summary_data: list[dict],
+        new_rows: dict,
+        changed_targets: set[str],
+        natural_order: bool,
+    ) -> None:
         """Update existing rows without rebuilding the whole tree."""
-        for target, row_values in new_rows.items():
-            if row_values == self._cached_rows.get(target):
+        for item in summary_data:
+            target = item["target"]
+            if target not in changed_targets:
                 continue
-
+            row_values = new_rows[target]
             item_id = self._item_ids.get(target)
             if item_id:
                 self.tree.item(item_id, values=row_values)
 
+        if natural_order:
+            for index, item in enumerate(summary_data):
+                item_id = self._item_ids.get(item["target"])
+                if item_id:
+                    self.tree.move(item_id, "", index)
+
         self._cached_rows = new_rows
 
-        if self.tree._last_sorted_col and self.tree._last_sorted_col != "Target":
-            self.tree.apply_current_sort()
-        elif self.tree._last_sorted_col == "Target" and self.tree._sort_reverse:
+        if not natural_order and self.tree._last_sorted_col:
             self.tree.apply_current_sort()

@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 9, 2026 (DPS panel refresh-token and authoritative tree-sort coverage update)
+**Last Updated:** March 9, 2026 (DPS, target-stats, and immunity refresh-token coverage update)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **575 tests collected**
+- Result: **579 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 34 modules, 526 tests
+- `tests/unit/`: 34 modules, 530 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 42 test modules, 575 tests
+- Total: 42 test modules, 579 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -43,8 +43,8 @@ Notes:
 - `test_immunity_panel_edge_cases.py` (6)
 - `test_selection_preservation.py` (4)
 - `test_dps_panel_incremental.py` (13)
-- `test_immunity_panel_incremental.py` (3)
-- `test_target_stats_panel_incremental.py` (3)
+- `test_immunity_panel_incremental.py` (5)
+- `test_target_stats_panel_incremental.py` (5)
 - `test_ui_optimizations.py` (19)
 - `test_death_snippet_panel.py` (24)
 - `test_debug_console_panel.py` (6)
@@ -90,7 +90,7 @@ Notes:
   - `test_dps_service.py`, `test_dps_pipeline_integration.py`
 - UI widget/main-window behavior and refresh optimizations:
   - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
-  - Includes explicit coverage for DPS no-op refresh short-circuiting, authoritative natural-order row moves, and tree-sort scan bypass when callers already control order
+  - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, and tree-sort scan bypass when callers already control order
 - App settings persistence:
   - `test_settings.py`
 - Import/worker pipeline behavior:

@@ -2,6 +2,7 @@
 
 import pytest
 from tkinter import ttk
+from unittest.mock import Mock
 
 from app.parser import LogParser
 from app.storage import DataStore
@@ -49,6 +50,16 @@ class TestTargetStatsIncrementalRefresh:
         assert before != after
         assert item_id == panel._item_ids["Goblin"]
 
+    def test_refresh_skips_noop_when_store_version_unchanged(self, target_stats_panel) -> None:
+        panel, store, _ = target_stats_panel
+        apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
+        panel.refresh()
+
+        panel.data_store.get_all_targets_summary = Mock(  # type: ignore[assignment]
+            side_effect=AssertionError("should not be called")
+        )
+        panel.refresh()
+
     def test_full_refresh_when_target_set_changes(self, target_stats_panel) -> None:
         panel, store, _ = target_stats_panel
         apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
@@ -61,3 +72,28 @@ class TestTargetStatsIncrementalRefresh:
 
         assert "Orc" in panel._item_ids
         assert panel._item_ids["Goblin"] != initial_item_id
+
+    def test_incremental_refresh_reorders_natural_target_order_without_rebuild(self, target_stats_panel) -> None:
+        panel, _store, _ = target_stats_panel
+        initial_summary = [
+            {"target": "Goblin", "ab": "-", "ac": "-", "fortitude": "-", "reflex": "-", "will": "-", "damage_taken": "50"},
+            {"target": "Orc", "ab": "-", "ac": "-", "fortitude": "-", "reflex": "-", "will": "-", "damage_taken": "25"},
+        ]
+        reordered_summary = [
+            {"target": "Orc", "ab": "-", "ac": "-", "fortitude": "-", "reflex": "-", "will": "-", "damage_taken": "25"},
+            {"target": "Goblin", "ab": "-", "ac": "-", "fortitude": "-", "reflex": "-", "will": "-", "damage_taken": "50"},
+        ]
+
+        panel.data_store.get_all_targets_summary = lambda: initial_summary  # type: ignore[assignment]
+        panel.refresh()
+        initial_item_ids = dict(panel._item_ids)
+
+        panel.data_store.get_all_targets_summary = lambda: reordered_summary  # type: ignore[assignment]
+        panel.refresh()
+
+        ordered_targets = [
+            panel.tree.item(item_id, "values")[0]
+            for item_id in panel.tree.get_children()
+        ]
+        assert ordered_targets == ["Orc", "Goblin"]
+        assert panel._item_ids == initial_item_ids
