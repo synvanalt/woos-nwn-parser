@@ -852,6 +852,9 @@ class WoosNwnParserApp:
         # Clear DPS panel cache
         self.dps_panel.clear_cache()
 
+        # Clear target stats panel cache
+        self.stats_panel.clear_cache()
+
         # Reset DPS service state
         self.dps_service.set_global_start_time(None)
 

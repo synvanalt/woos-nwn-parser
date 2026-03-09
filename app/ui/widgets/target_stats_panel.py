@@ -161,6 +161,14 @@ class TargetStatsPanel(ttk.Frame):
         """Build a stable token for row change detection."""
         return row_values
 
+    def clear_cache(self) -> None:
+        """Clear cached row and tree state to force a full refresh next time."""
+        self._cached_rows.clear()
+        self._item_ids.clear()
+        self._cached_row_tokens.clear()
+        self._cached_order_token = ()
+        self._last_refresh_version = -1
+
     def _full_refresh(self, summary_data: list[dict]) -> None:
         """Rebuild the tree when targets are added, removed, or reordered."""
         # Save the currently selected target names
@@ -224,18 +232,25 @@ class TargetStatsPanel(ttk.Frame):
         natural_order: bool,
     ) -> None:
         """Update existing rows without rebuilding the whole tree."""
+        known_items = set(self.tree.get_children())
         for item in summary_data:
             target = item["target"]
             if target not in changed_targets:
                 continue
             row_values = new_rows[target]
             item_id = self._item_ids.get(target)
+            if item_id not in known_items:
+                self._full_refresh(summary_data)
+                return
             if item_id:
                 self.tree.item(item_id, values=row_values)
 
         if natural_order:
             for index, item in enumerate(summary_data):
                 item_id = self._item_ids.get(item["target"])
+                if item_id not in known_items:
+                    self._full_refresh(summary_data)
+                    return
                 if item_id:
                     self.tree.move(item_id, "", index)
 

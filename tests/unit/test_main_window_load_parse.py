@@ -123,6 +123,30 @@ class TestLoadAndParseWorkflow:
         app.dps_panel.refresh.assert_called_once()
         assert app.is_importing is False
 
+    def test_reset_data_clears_target_stats_cache(self) -> None:
+        app = _make_app_shell()
+        app.root = Mock()
+        app.data_store = Mock()
+        app.immunity_panel = Mock()
+        app.immunity_panel.tree.get_children.return_value = ("iid1",)
+        app.dps_panel = Mock()
+        app.dps_panel.tree.get_children.return_value = ("iid2",)
+        app.stats_panel = Mock()
+        app.stats_panel.tree.get_children.return_value = ("iid3",)
+        app.death_snippet_panel = Mock()
+        app.dps_service = Mock()
+        app.refresh_targets = Mock()
+        app.dps_refresh_job = None
+        app._refresh_job = None
+        app._dps_dirty = False
+        app._targets_dirty = False
+        app._immunity_dirty_targets = set()
+
+        app.reset_data()
+
+        app.stats_panel.clear_cache.assert_called_once()
+        app.refresh_targets.assert_called_once()
+
     def test_file_counter_updates_immediately_on_file_completed_event(self) -> None:
         app = _make_app_shell()
         app.root = Mock()
