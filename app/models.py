@@ -1,12 +1,13 @@
 """Data models for Woo's NWN Parser application.
 
 This module contains dataclasses representing various entities tracked
-by the combat log parser: enemies, saving throws, armor class, and damage events.
+by the combat log parser: enemies, saving throws, armor class, damage events,
+and normalized store mutations.
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional, TypeAlias
 
 @dataclass
 class EnemySaves:
@@ -178,4 +179,69 @@ class AttackEvent:
     bonus: Optional[int] = None
     total: Optional[int] = None
     timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass(slots=True, frozen=True)
+class DamageMutation:
+    """Normalized store mutation for a single damage-dealt damage type row."""
+
+    kind: Literal["damage"] = "damage"
+    target: str = ""
+    damage_type: str = ""
+    total_damage: int = 0
+    attacker: str = ""
+    timestamp: datetime = field(default_factory=datetime.now)
+    count_for_dps: bool = False
+    damage_types: Optional[dict[str, int]] = None
+    immunity_absorbed: int = 0
+
+
+@dataclass(slots=True, frozen=True)
+class AttackMutation:
+    """Normalized store mutation for one attack roll."""
+
+    kind: Literal["attack"] = "attack"
+    attacker: str = ""
+    target: str = ""
+    outcome: str = ""
+    roll: Optional[int] = None
+    bonus: Optional[int] = None
+    total: Optional[int] = None
+    was_nat1: bool = False
+    was_nat20: bool = False
+    is_concealment: bool = False
+
+
+@dataclass(slots=True, frozen=True)
+class ImmunityMutation:
+    """Normalized store mutation for one immunity observation."""
+
+    kind: Literal["immunity"] = "immunity"
+    target: str = ""
+    damage_type: str = ""
+    immunity_points: int = 0
+    damage_dealt: int = 0
+
+
+@dataclass(slots=True, frozen=True)
+class SaveMutation:
+    """Normalized store mutation for one save observation."""
+
+    kind: Literal["save"] = "save"
+    target: str = ""
+    save_key: str = ""
+    bonus: int = 0
+
+
+@dataclass(slots=True, frozen=True)
+class EpicDodgeMutation:
+    """Normalized store mutation for one epic-dodge marker."""
+
+    kind: Literal["epic_dodge"] = "epic_dodge"
+    target: str = ""
+
+
+StoreMutation: TypeAlias = (
+    DamageMutation | AttackMutation | ImmunityMutation | SaveMutation | EpicDodgeMutation
+)
 

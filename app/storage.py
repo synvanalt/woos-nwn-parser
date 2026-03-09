@@ -9,7 +9,19 @@ from collections import deque
 from datetime import datetime
 from typing import Deque, Dict, List, Optional, Tuple
 
-from .models import AttackEvent, DamageEvent, EnemyAC, EnemySaves, TargetAttackBonus
+from .models import (
+    AttackEvent,
+    AttackMutation,
+    DamageEvent,
+    DamageMutation,
+    EnemyAC,
+    EnemySaves,
+    EpicDodgeMutation,
+    ImmunityMutation,
+    SaveMutation,
+    StoreMutation,
+    TargetAttackBonus,
+)
 
 
 class DataStore:
@@ -57,7 +69,10 @@ class DataStore:
         ] = {}
         self._dps_breakdown_dirty_attacker_target: set[Tuple[str, str]] = set()
         self._earliest_timestamp: Optional[datetime] = None
+        self._earliest_timestamp_by_target: Dict[str, datetime] = {}
         self._all_damage_types_cache: set[str] = set()
+        self._sorted_targets_cache: tuple[str, ...] = ()
+        self._sorted_targets_dirty: bool = False
         self._target_stats_cache: Dict[str, Dict[str, int]] = {}
         self._target_ac_by_name: Dict[str, EnemyAC] = {}
         self._target_saves_by_name: Dict[str, EnemySaves] = {}
@@ -75,68 +90,230 @@ class DataStore:
         """
         return self._version
 
-    def insert_attack_event(self, attacker: str, target: str, outcome: str, roll: Optional[int] = None,
-                           bonus: Optional[int] = None, total: Optional[int] = None,
-                           was_nat1: bool = False, was_nat20: bool = False,
-                           is_concealment: bool = False) -> None:
-        """Insert an attack event into the in-memory store.
+    def apply_mutations(self, mutations: List[StoreMutation]) -> None:
+        """Apply normalized store mutations in one lock acquisition."""
+        if not mutations:
+            return
 
-        Args:
-            attacker: Name of the attacking character
-            target: Name of the target
-            outcome: Outcome of the attack ('hit', 'miss', 'critical_hit')
-            roll: The d20 roll value
-            bonus: Attack bonus
-            total: Total attack roll (roll + bonus)
-            was_nat1: Whether this was a natural 1
-            was_nat20: Whether this was a natural 20
-            is_concealment: Whether this miss was concealment-based
-        """
         with self.lock:
             self._version += 1
-            event = AttackEvent(
-                attacker=attacker,
-                target=target,
-                outcome=outcome,
-                roll=roll,
-                bonus=bonus,
-                total=total
-            )
-            self.attacks.append(event)
-            key = (attacker, target)
-            if attacker not in self._attack_stats_by_attacker:
-                self._attack_stats_by_attacker[attacker] = {'hits': 0, 'crits': 0, 'misses': 0}
+            for mutation in mutations:
+                if isinstance(mutation, DamageMutation):
+                    self._apply_damage_mutation_locked(mutation)
+                elif isinstance(mutation, AttackMutation):
+                    self._apply_attack_mutation_locked(mutation)
+                elif isinstance(mutation, ImmunityMutation):
+                    self._apply_immunity_mutation_locked(mutation)
+                elif isinstance(mutation, SaveMutation):
+                    self._apply_save_mutation_locked(mutation)
+                elif isinstance(mutation, EpicDodgeMutation):
+                    self._apply_epic_dodge_mutation_locked(mutation)
 
-            attacker_stats = self._attack_stats_by_attacker[attacker]
-            target_stats = self._attack_stats_by_target.setdefault(
-                target, {'hits': 0, 'crits': 0, 'misses': 0}
-            )
-            attacker_target_stats = self._attack_stats_by_attacker_target.setdefault(
-                key, {'hits': 0, 'crits': 0, 'misses': 0}
-            )
-            if outcome == 'hit':
-                attacker_stats['hits'] += 1
-                target_stats['hits'] += 1
-                attacker_target_stats['hits'] += 1
-            elif outcome == 'critical_hit':
-                attacker_stats['crits'] += 1
-                target_stats['crits'] += 1
-                attacker_target_stats['crits'] += 1
-            elif outcome == 'miss':
-                attacker_stats['misses'] += 1
-                target_stats['misses'] += 1
-                attacker_target_stats['misses'] += 1
+    def _add_target_locked(self, target: str) -> None:
+        """Add a target to the cache and invalidate sorted order when needed."""
+        if target and target not in self._targets_cache:
+            self._targets_cache.add(target)
+            self._sorted_targets_dirty = True
 
-            self._record_target_attack_roll_locked(
-                attacker=attacker,
-                target=target,
-                outcome=outcome,
-                bonus=bonus,
-                total=total,
-                was_nat1=was_nat1,
-                was_nat20=was_nat20,
-                is_concealment=is_concealment,
-            )
+    def _get_sorted_targets_locked(self) -> tuple[str, ...]:
+        """Return cached sorted targets while lock is held."""
+        if self._sorted_targets_dirty:
+            self._sorted_targets_cache = tuple(sorted(self._targets_cache))
+            self._sorted_targets_dirty = False
+        return self._sorted_targets_cache
+
+    def _update_dps_data_locked(
+        self,
+        character: str,
+        damage_amount: int,
+        timestamp: datetime,
+        damage_types: Optional[Dict[str, int]] = None,
+    ) -> None:
+        """Update DPS data while lock is held."""
+        if self.last_damage_timestamp is None or timestamp > self.last_damage_timestamp:
+            self.last_damage_timestamp = timestamp
+        if self._earliest_timestamp is None or timestamp < self._earliest_timestamp:
+            self._earliest_timestamp = timestamp
+
+        char_data = self.dps_data.get(character)
+        if char_data is None:
+            self.dps_data[character] = {
+                'total_damage': damage_amount,
+                'first_timestamp': timestamp,
+                'damage_by_type': damage_types.copy() if damage_types else {}
+            }
+            self._dps_breakdown_dirty_characters.add(character)
+            return
+
+        char_data['total_damage'] += damage_amount
+        if timestamp < char_data['first_timestamp']:
+            char_data['first_timestamp'] = timestamp
+
+        if not damage_types:
+            return
+
+        damage_by_type = char_data.get('damage_by_type')
+        if damage_by_type is None:
+            char_data['damage_by_type'] = damage_types.copy()
+        else:
+            for damage_type, amount in damage_types.items():
+                amount_int = int(amount or 0)
+                damage_by_type[damage_type] = damage_by_type.get(damage_type, 0) + amount_int
+        self._dps_breakdown_dirty_characters.add(character)
+
+    def _apply_damage_mutation_locked(self, mutation: DamageMutation) -> None:
+        """Apply one normalized damage mutation while lock is held."""
+        timestamp = mutation.timestamp
+        if mutation.count_for_dps and not mutation.damage_type:
+            if mutation.attacker:
+                self._update_dps_data_locked(
+                    mutation.attacker,
+                    mutation.total_damage,
+                    timestamp,
+                    mutation.damage_types,
+                )
+            return
+
+        event = DamageEvent(
+            target=mutation.target,
+            damage_type=mutation.damage_type,
+            immunity_absorbed=mutation.immunity_absorbed,
+            total_damage_dealt=mutation.total_damage,
+            attacker=mutation.attacker,
+            timestamp=timestamp,
+        )
+        self.events.append(event)
+        self._all_damage_types_cache.add(mutation.damage_type)
+        self._add_target_locked(mutation.target)
+        if (
+            mutation.target not in self._earliest_timestamp_by_target
+            or timestamp < self._earliest_timestamp_by_target[mutation.target]
+        ):
+            self._earliest_timestamp_by_target[mutation.target] = timestamp
+        self._damage_taken_by_target[mutation.target] = (
+            self._damage_taken_by_target.get(mutation.target, 0) + mutation.total_damage
+        )
+        target_stats = self._target_stats_cache.setdefault(
+            mutation.target, {'total_hits': 0, 'total_damage': 0, 'total_absorbed': 0}
+        )
+        target_stats['total_hits'] += 1
+        target_stats['total_damage'] += mutation.total_damage
+        target_stats['total_absorbed'] += mutation.immunity_absorbed
+
+        if mutation.total_damage > 0 and mutation.attacker:
+            self._damage_dealers_cache.add(mutation.attacker)
+            dealers = self._damage_dealers_by_target.setdefault(mutation.target, set())
+            dealers.add(mutation.attacker)
+
+        if mutation.attacker:
+            key = (mutation.attacker, mutation.target)
+            summary = self._dps_by_attacker_target.get(key)
+            if summary is None:
+                self._dps_by_attacker_target[key] = {
+                    'total_damage': mutation.total_damage,
+                    'first_timestamp': timestamp,
+                    'last_timestamp': timestamp,
+                    'damage_by_type': {mutation.damage_type: mutation.total_damage},
+                }
+            else:
+                summary['total_damage'] += mutation.total_damage
+                if timestamp < summary['first_timestamp']:
+                    summary['first_timestamp'] = timestamp
+                if timestamp > summary['last_timestamp']:
+                    summary['last_timestamp'] = timestamp
+                damage_by_type = summary['damage_by_type']
+                damage_by_type[mutation.damage_type] = (
+                    damage_by_type.get(mutation.damage_type, 0) + mutation.total_damage
+                )
+            self._dps_breakdown_dirty_attacker_target.add(key)
+
+        if mutation.target not in self._damage_summary_by_target:
+            self._damage_summary_by_target[mutation.target] = {}
+        if mutation.damage_type not in self._damage_summary_by_target[mutation.target]:
+            self._damage_summary_by_target[mutation.target][mutation.damage_type] = {'max_damage': 0}
+        damage_summary = self._damage_summary_by_target[mutation.target][mutation.damage_type]
+        if mutation.total_damage > damage_summary['max_damage']:
+            damage_summary['max_damage'] = mutation.total_damage
+
+    def _apply_attack_mutation_locked(self, mutation: AttackMutation) -> None:
+        """Apply one normalized attack mutation while lock is held."""
+        event = AttackEvent(
+            attacker=mutation.attacker,
+            target=mutation.target,
+            outcome=mutation.outcome,
+            roll=mutation.roll,
+            bonus=mutation.bonus,
+            total=mutation.total,
+        )
+        self.attacks.append(event)
+        key = (mutation.attacker, mutation.target)
+        attacker_stats = self._attack_stats_by_attacker.setdefault(
+            mutation.attacker, {'hits': 0, 'crits': 0, 'misses': 0}
+        )
+        target_stats = self._attack_stats_by_target.setdefault(
+            mutation.target, {'hits': 0, 'crits': 0, 'misses': 0}
+        )
+        attacker_target_stats = self._attack_stats_by_attacker_target.setdefault(
+            key, {'hits': 0, 'crits': 0, 'misses': 0}
+        )
+        if mutation.outcome == 'hit':
+            attacker_stats['hits'] += 1
+            target_stats['hits'] += 1
+            attacker_target_stats['hits'] += 1
+        elif mutation.outcome == 'critical_hit':
+            attacker_stats['crits'] += 1
+            target_stats['crits'] += 1
+            attacker_target_stats['crits'] += 1
+        elif mutation.outcome == 'miss':
+            attacker_stats['misses'] += 1
+            target_stats['misses'] += 1
+            attacker_target_stats['misses'] += 1
+
+        self._record_target_attack_roll_locked(
+            attacker=mutation.attacker,
+            target=mutation.target,
+            outcome=mutation.outcome,
+            bonus=mutation.bonus,
+            total=mutation.total,
+            was_nat1=mutation.was_nat1,
+            was_nat20=mutation.was_nat20,
+            is_concealment=mutation.is_concealment,
+        )
+
+    def _apply_immunity_mutation_locked(self, mutation: ImmunityMutation) -> None:
+        """Apply one normalized immunity mutation while lock is held."""
+        self._add_target_locked(mutation.target)
+        if mutation.target not in self.immunity_data:
+            self.immunity_data[mutation.target] = {}
+        if mutation.damage_type not in self.immunity_data[mutation.target]:
+            self.immunity_data[mutation.target][mutation.damage_type] = {
+                'max_immunity': 0,
+                'max_damage': 0,
+                'sample_count': 0,
+            }
+        record = self.immunity_data[mutation.target][mutation.damage_type]
+        record['sample_count'] += 1
+        if mutation.damage_dealt > record['max_damage']:
+            record['max_damage'] = mutation.damage_dealt
+            record['max_immunity'] = mutation.immunity_points
+
+    def _apply_save_mutation_locked(self, mutation: SaveMutation) -> None:
+        """Apply one normalized save mutation while lock is held."""
+        self._add_target_locked(mutation.target)
+        saves = self._target_saves_by_name.get(mutation.target)
+        if saves is None:
+            saves = EnemySaves(name=mutation.target)
+            self._target_saves_by_name[mutation.target] = saves
+        saves.update_save(mutation.save_key, int(mutation.bonus))
+
+    def _apply_epic_dodge_mutation_locked(self, mutation: EpicDodgeMutation) -> None:
+        """Apply one normalized epic-dodge mutation while lock is held."""
+        self._add_target_locked(mutation.target)
+        ac = self._target_ac_by_name.get(mutation.target)
+        if ac is None:
+            ac = EnemyAC(name=mutation.target)
+            self._target_ac_by_name[mutation.target] = ac
+        ac.mark_epic_dodge()
 
     def _record_target_attack_roll_locked(
         self,
@@ -152,8 +329,7 @@ class DataStore:
     ) -> None:
         """Update target AC/AB indices from an attack while lock is held."""
         if target:
-            self._targets_cache.add(target)
-
+            self._add_target_locked(target)
         if target and total is not None and not is_concealment:
             ac = self._target_ac_by_name.get(target)
             if ac is None:
@@ -170,127 +346,6 @@ class DataStore:
                 tab = TargetAttackBonus(name=attacker)
                 self._target_attack_bonus_by_name[attacker] = tab
             tab.record_bonus(int(bonus))
-
-    def insert_damage_event(self, target: str, damage_type: str, immunity: int, total_damage: int, attacker: str = "", timestamp: Optional[datetime] = None) -> None:
-        """Insert a damage event into the in-memory store.
-
-        Args:
-            target: Name of the target
-            damage_type: Type of damage (e.g., 'Fire', 'Physical')
-            immunity: Amount of damage absorbed by immunity
-            total_damage: Total damage dealt
-            attacker: Name of the character who dealt the damage
-            timestamp: Timestamp when the damage occurred (defaults to now if not provided)
-        """
-        with self.lock:
-            self._version += 1
-            if timestamp is None:
-                timestamp = datetime.now()
-            event = DamageEvent(
-                target=target,
-                damage_type=damage_type,
-                immunity_absorbed=immunity,
-                total_damage_dealt=total_damage,
-                attacker=attacker,
-                timestamp=timestamp
-            )
-            self.events.append(event)
-            self._all_damage_types_cache.add(damage_type)
-            # Update targets cache (O(1) set add)
-            self._targets_cache.add(target)
-            self._damage_taken_by_target[target] = (
-                self._damage_taken_by_target.get(target, 0) + total_damage
-            )
-            target_stats = self._target_stats_cache.setdefault(
-                target, {'total_hits': 0, 'total_damage': 0, 'total_absorbed': 0}
-            )
-            target_stats['total_hits'] += 1
-            target_stats['total_damage'] += total_damage
-            target_stats['total_absorbed'] += immunity
-            # Update damage dealers cache if damage was dealt
-            if total_damage > 0 and attacker:
-                self._damage_dealers_cache.add(attacker)
-                if target not in self._damage_dealers_by_target:
-                    self._damage_dealers_by_target[target] = set()
-                self._damage_dealers_by_target[target].add(attacker)
-
-            if attacker:
-                key = (attacker, target)
-                summary = self._dps_by_attacker_target.get(key)
-                if summary is None:
-                    self._dps_by_attacker_target[key] = {
-                        'total_damage': total_damage,
-                        'first_timestamp': timestamp,
-                        'last_timestamp': timestamp,
-                        'damage_by_type': {damage_type: total_damage},
-                    }
-                else:
-                    summary['total_damage'] += total_damage
-                    if timestamp < summary['first_timestamp']:
-                        summary['first_timestamp'] = timestamp
-                    if timestamp > summary['last_timestamp']:
-                        summary['last_timestamp'] = timestamp
-                    damage_by_type = summary['damage_by_type']
-                    damage_by_type[damage_type] = damage_by_type.get(damage_type, 0) + total_damage
-                self._dps_breakdown_dirty_attacker_target.add(key)
-
-            if target not in self._damage_summary_by_target:
-                self._damage_summary_by_target[target] = {}
-
-            if damage_type not in self._damage_summary_by_target[target]:
-                self._damage_summary_by_target[target][damage_type] = {'max_damage': 0}
-
-            damage_summary = self._damage_summary_by_target[target][damage_type]
-            if total_damage > damage_summary['max_damage']:
-                damage_summary['max_damage'] = total_damage
-
-    def update_dps_data(self, character: str, damage_amount: int, timestamp: datetime, damage_types: Optional[Dict[str, int]] = None) -> None:
-        """Update DPS data for a character.
-
-        Args:
-            character: Character name dealing the damage
-            damage_amount: Amount of damage dealt
-            timestamp: Timestamp when the damage was dealt
-            damage_types: Dictionary mapping damage type to amount for this hit
-        """
-        with self.lock:
-            self._version += 1
-            # Always update the global last damage timestamp
-            if self.last_damage_timestamp is None or timestamp > self.last_damage_timestamp:
-                self.last_damage_timestamp = timestamp
-            if self._earliest_timestamp is None or timestamp < self._earliest_timestamp:
-                self._earliest_timestamp = timestamp
-
-            char_data = self.dps_data.get(character)
-            if char_data is None:
-                # New character - initialize everything at once
-                self.dps_data[character] = {
-                    'total_damage': damage_amount,
-                    'first_timestamp': timestamp,
-                    'damage_by_type': damage_types.copy() if damage_types else {}
-                }
-                self._dps_breakdown_dirty_characters.add(character)
-            else:
-                # Existing character - update efficiently
-                char_data['total_damage'] += damage_amount
-                # Update first timestamp if this one is older
-                if timestamp < char_data['first_timestamp']:
-                    char_data['first_timestamp'] = timestamp
-
-                # Track damage by type if provided
-                if damage_types:
-                    damage_by_type = char_data.get('damage_by_type')
-                    if damage_by_type is None:
-                        char_data['damage_by_type'] = damage_types.copy()
-                    else:
-                        # Batch update damage types
-                        for damage_type, amount in damage_types.items():
-                            amount_int = int(amount or 0)
-                            if damage_type in damage_by_type:
-                                damage_by_type[damage_type] += amount_int
-                            else:
-                                damage_by_type[damage_type] = amount_int
-                        self._dps_breakdown_dirty_characters.add(character)
 
     def _get_character_breakdown_token(self, character: str, damage_by_type: Dict[str, int]) -> tuple[tuple[str, int], ...]:
         """Return cached sorted damage breakdown token for one character."""
@@ -347,10 +402,9 @@ class DataStore:
             if time_tracking_mode == "global":
                 # Global mode: use global start time and global last damage timestamp
                 if global_start_time is None:
-                    # If global_start_time not set, fall back to first character's first timestamp
-                    if not self.dps_data:
+                    if self._earliest_timestamp is None:
                         return dps_list
-                    global_start_time = min(data['first_timestamp'] for data in self.dps_data.values())
+                    global_start_time = self._earliest_timestamp
 
                 # Use the global last damage timestamp (same as per_character mode)
                 if self.last_damage_timestamp is None:
@@ -483,9 +537,7 @@ class DataStore:
                             return result
                         global_start_time = datetime.now()
                     else:
-                        global_start_time = min(
-                            data['first_timestamp'] for data in self.dps_data.values()
-                        )
+                        global_start_time = self._earliest_timestamp
 
                 if self.last_damage_timestamp is None:
                     return result
@@ -573,8 +625,7 @@ class DataStore:
             Sorted list of target names
         """
         with self.lock:
-            # Use cached set for O(1) lookup instead of O(n) iteration
-            return sorted(self._targets_cache)
+            return list(self._get_sorted_targets_locked())
 
     def get_target_stats(self, target: str) -> Optional[Tuple[int, int, int]]:
         """Get overall stats for a target.
@@ -763,14 +814,9 @@ class DataStore:
             if time_tracking_mode == "global":
                 # Global mode: use global start time and global last damage timestamp
                 if global_start_time is None:
-                    first_timestamps = [
-                        self._dps_by_attacker_target[(character, target)]['first_timestamp']
-                        for character in attackers
-                        if (character, target) in self._dps_by_attacker_target
-                    ]
-                    if not first_timestamps:
+                    global_start_time = self._earliest_timestamp_by_target.get(target)
+                    if global_start_time is None:
                         return dps_list
-                    global_start_time = min(first_timestamps)
 
                 # Use the global last damage timestamp (same as per_character mode)
                 if self.last_damage_timestamp is None:
@@ -834,15 +880,7 @@ class DataStore:
             Earliest timestamp for attacks on this target, or None if no attacks
         """
         with self.lock:
-            first_timestamps = [
-                summary['first_timestamp']
-                for (attacker, attack_target), summary in self._dps_by_attacker_target.items()
-                if attack_target == target
-            ]
-            if not first_timestamps:
-                return None
-
-            return min(first_timestamps)
+            return self._earliest_timestamp_by_target.get(target)
 
     def record_target_attack_roll(
         self,
@@ -882,29 +920,6 @@ class DataStore:
                 is_concealment=is_concealment,
             )
 
-    def record_target_save(self, target: str, save_key: str, bonus: int) -> None:
-        """Record save-derived target stats."""
-        with self.lock:
-            self._version += 1
-            self._targets_cache.add(target)
-            saves = self._target_saves_by_name.get(target)
-            if saves is None:
-                saves = EnemySaves(name=target)
-                self._target_saves_by_name[target] = saves
-            saves.update_save(save_key, int(bonus))
-
-    def mark_target_epic_dodge(self, target: str) -> None:
-        """Mark a target as having Epic Dodge for AC display confidence."""
-        with self.lock:
-            self._version += 1
-            self._targets_cache.add(target)
-            ac = self._target_ac_by_name.get(target)
-            if ac is None:
-                ac = EnemyAC(name=target)
-                self._target_ac_by_name[target] = ac
-            ac.mark_epic_dodge()
-
-
     def clear_all_data(self) -> None:
         """Clear all data from the store."""
         with self.lock:
@@ -914,10 +929,13 @@ class DataStore:
             self.immunity_data.clear()
             self.last_damage_timestamp = None
             self._earliest_timestamp = None
+            self._earliest_timestamp_by_target.clear()
             # Clear caches
             self._targets_cache.clear()
             self._damage_dealers_cache.clear()
             self._all_damage_types_cache.clear()
+            self._sorted_targets_cache = ()
+            self._sorted_targets_dirty = False
             self._damage_taken_by_target.clear()
             self._attack_stats_by_attacker.clear()
             self._attack_stats_by_target.clear()
@@ -1012,7 +1030,7 @@ class DataStore:
             Sorted alphabetically by target name
         """
         with self.lock:
-            targets = sorted(self._targets_cache)
+            targets = self._get_sorted_targets_locked()
             summary = []
 
             for target in targets:
@@ -1050,43 +1068,6 @@ class DataStore:
                 })
 
             return summary
-
-    def record_immunity(self, target: str, damage_type: str, immunity_points: int, damage_dealt: int) -> None:
-        """Record immunity data for a target and damage type.
-
-        This tracks damage and associated immunity as a coupled pair from the same hit.
-        Only updates when a new higher damage is recorded, ensuring the immunity value
-        shown corresponds to the hit that dealt the most damage (not tracked independently).
-
-        This is important because enemies can have temporary 100% immunity buffs, which
-        would skew the immunity percentage calculation if tracked independently.
-
-        Args:
-            target: Name of the target
-            damage_type: Type of damage
-            immunity_points: Amount of damage absorbed by immunity for this specific hit
-            damage_dealt: Amount of damage dealt for this specific hit
-        """
-        with self.lock:
-            if target not in self.immunity_data:
-                self.immunity_data[target] = {}
-
-            if damage_type not in self.immunity_data[target]:
-                self.immunity_data[target][damage_type] = {
-                    'max_immunity': 0,
-                    'max_damage': 0,
-                    'sample_count': 0
-                }
-
-            record = self.immunity_data[target][damage_type]
-            record['sample_count'] += 1
-
-            # Only update max_damage AND associated max_immunity together when this hit
-            # deals more damage than the previous maximum. This ensures the immunity value
-            # shown is from the same hit as the max damage, not tracked independently.
-            if damage_dealt > record['max_damage']:
-                record['max_damage'] = damage_dealt
-                record['max_immunity'] = immunity_points
 
     def get_immunity_for_target_and_type(self, target: str, damage_type: str) -> Dict[str, int]:
         """Get immunity data for a specific target and damage type.

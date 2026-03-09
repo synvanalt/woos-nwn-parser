@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from threading import Thread
 import time
 
+from app.models import AttackMutation, DamageMutation, ImmunityMutation
 from app.storage import DataStore
 
 
@@ -22,6 +23,46 @@ class TestDataStoreInitialization:
         assert len(data_store.dps_data) == 0
         assert len(data_store.immunity_data) == 0
         assert data_store.last_damage_timestamp is None
+
+
+class TestApplyMutations:
+    """Test suite for the public batch mutation API."""
+
+    def test_apply_mutations_updates_damage_and_dps_in_one_batch(self, data_store: DataStore) -> None:
+        ts = datetime.now()
+        data_store.apply_mutations([
+            DamageMutation(
+                target="Goblin",
+                total_damage=50,
+                attacker="Woo",
+                timestamp=ts,
+                count_for_dps=True,
+                damage_types={"Fire": 50},
+            ),
+            DamageMutation(
+                target="Goblin",
+                damage_type="Fire",
+                total_damage=50,
+                attacker="Woo",
+                timestamp=ts,
+            ),
+        ])
+
+        assert data_store.dps_data["Woo"]["total_damage"] == 50
+        assert data_store.get_target_stats("Goblin") == (1, 50, 0)
+        assert data_store.get_earliest_timestamp() == ts
+        assert data_store.get_earliest_timestamp_for_target("Goblin") == ts
+
+    def test_apply_mutations_updates_mixed_mutations_with_single_version_bump(self, data_store: DataStore) -> None:
+        start_version = data_store.version
+        data_store.apply_mutations([
+            AttackMutation(attacker="Woo", target="Goblin", outcome="hit"),
+            ImmunityMutation(target="Goblin", damage_type="Fire", immunity_points=5, damage_dealt=20),
+        ])
+
+        assert data_store.version == start_version + 1
+        assert data_store.get_attack_stats("Woo", "Goblin") is not None
+        assert data_store.get_immunity_for_target_and_type("Goblin", "Fire")["sample_count"] == 1
 
 
 

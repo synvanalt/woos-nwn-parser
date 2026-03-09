@@ -383,7 +383,7 @@ class WoosNwnParserApp:
                 self._pending_file_payloads.append({
                     'ops': event.get('ops', {}),
                     'index': event.get('index', 0),
-                    'progress': {'stage': 'dps', 'idx': 0},
+                    'progress': {'stage': 'mutations', 'idx': 0},
                 })
                 if not self._is_applying_payload:
                     self._is_applying_payload = True
@@ -423,78 +423,10 @@ class WoosNwnParserApp:
             stage = progress['stage']
             idx = progress['idx']
 
-            if stage == 'dps':
-                dps = ops.get('dps_updates', [])
-                if idx < len(dps):
-                    attacker, total_damage, timestamp, damage_types = dps[idx]
-                    self.data_store.update_dps_data(attacker, total_damage, timestamp, damage_types)
-                    progress['idx'] += 1
-                    continue
-                progress['stage'] = 'damage'
-                progress['idx'] = 0
-                continue
-
-            if stage == 'damage':
-                damage_events = ops.get('damage_events', [])
-                if idx < len(damage_events):
-                    target, damage_type, immunity, total_damage, attacker, timestamp = damage_events[idx]
-                    self.data_store.insert_damage_event(target, damage_type, immunity, total_damage, attacker, timestamp)
-                    progress['idx'] += 1
-                    continue
-                progress['stage'] = 'immunity'
-                progress['idx'] = 0
-                continue
-
-            if stage == 'immunity':
-                immunities = ops.get('immunity_records', [])
-                if idx < len(immunities):
-                    target, damage_type, immunity_points, damage_amount = immunities[idx]
-                    self.data_store.record_immunity(target, damage_type, immunity_points, damage_amount)
-                    progress['idx'] += 1
-                    continue
-                progress['stage'] = 'attack'
-                progress['idx'] = 0
-                continue
-
-            if stage == 'attack':
-                attacks = ops.get('attack_events', [])
-                if idx < len(attacks):
-                    attacker, target, outcome, roll, bonus, total, was_nat1, was_nat20, is_concealment = attacks[idx]
-                    self.data_store.insert_attack_event(
-                        attacker,
-                        target,
-                        outcome,
-                        roll,
-                        bonus,
-                        total,
-                        was_nat1=was_nat1,
-                        was_nat20=was_nat20,
-                        is_concealment=is_concealment,
-                    )
-                    progress['idx'] += 1
-                    continue
-                progress['stage'] = 'save'
-                progress['idx'] = 0
-                continue
-
-            if stage == 'save':
-                saves = ops.get('save_events', [])
-                if idx < len(saves):
-                    target, save_type, bonus = saves[idx]
-                    if target and save_type and bonus is not None:
-                        self.data_store.record_target_save(target, save_type, bonus)
-                    progress['idx'] += 1
-                    continue
-                progress['stage'] = 'epic_dodge'
-                progress['idx'] = 0
-                continue
-
-            if stage == 'epic_dodge':
-                epic_dodge_targets = ops.get('epic_dodge_targets', [])
-                if idx < len(epic_dodge_targets):
-                    target = epic_dodge_targets[idx]
-                    if target:
-                        self.data_store.mark_target_epic_dodge(target)
+            if stage == 'mutations':
+                mutations = ops.get('mutations', [])
+                if idx < len(mutations):
+                    self.data_store.apply_mutations([mutations[idx]])
                     progress['idx'] += 1
                     continue
                 progress['stage'] = 'death_snippet'

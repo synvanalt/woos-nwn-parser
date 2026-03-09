@@ -6,6 +6,7 @@ from collections import deque
 from unittest.mock import Mock
 
 import app.ui.main_window as main_window_module
+from app.models import DamageMutation, SaveMutation
 from app.ui.main_window import WoosNwnParserApp
 from app.parser import LogParser
 
@@ -141,10 +142,7 @@ class TestLoadAndParseWorkflow:
             "index": 1,
             "file_name": "alpha.txt",
             "ops": {
-                "dps_updates": [],
-                "damage_events": [],
-                "immunity_records": [],
-                "attack_events": [],
+                "mutations": [],
             },
             "parser_state": {
                 "target_ac": {},
@@ -240,10 +238,10 @@ class TestLoadAndParseWorkflow:
         app._is_applying_payload = True
         app._pending_file_payloads.append({
             "ops": {
-                "dps_updates": [("Orc", 10, 1.0, {"slashing": 10})],
+                "mutations": [DamageMutation(target="Goblin", total_damage=10, attacker="Orc", timestamp=1.0, count_for_dps=True, damage_types={"slashing": 10})],
             },
             "index": 1,
-            "progress": {"stage": "dps", "idx": 0},
+            "progress": {"stage": "mutations", "idx": 0},
         })
 
         # Tick 1: process one operation then run out of time.
@@ -251,9 +249,10 @@ class TestLoadAndParseWorkflow:
         app._apply_pending_payloads_incremental()
 
         assert len(app._pending_file_payloads) == 1
-        assert app._pending_file_payloads[0]["progress"] == {"stage": "dps", "idx": 1}
+        assert app._pending_file_payloads[0]["progress"] == {"stage": "mutations", "idx": 1}
         assert app._is_applying_payload is True
         app.root.after.assert_called_once_with(1, app._apply_pending_payloads_incremental)
+        app.data_store.apply_mutations.assert_called_once()
 
         # Tick 2: finish all remaining stages and drain queue.
         _patch_perf_counter(monkeypatch, [1.0] * 20)
@@ -272,11 +271,11 @@ class TestLoadAndParseWorkflow:
         app._is_applying_payload = True
         app._pending_file_payloads.append({
             "ops": {
-                "save_events": [("Goblin", "fort", 4)],
+                "mutations": [SaveMutation(target="Goblin", save_key="fort", bonus=4)],
                 "death_snippets": [],
             },
             "index": 1,
-            "progress": {"stage": "save", "idx": 0},
+            "progress": {"stage": "mutations", "idx": 0},
         })
 
         _patch_perf_counter(monkeypatch, [0.0, 0.0, 0.01])
@@ -312,7 +311,7 @@ class TestLoadAndParseWorkflow:
             "event": "ops_chunk",
             "index": 1,
             "ops": {
-                "dps_updates": [("Orc", 10, 1.0, {"slashing": 10})],
+                "mutations": [DamageMutation(target="Goblin", total_damage=10, attacker="Orc", timestamp=1.0, count_for_dps=True, damage_types={"slashing": 10})],
             },
         })
         app.import_result_queue.put({"event": "file_completed", "index": 1, "file_name": "alpha.txt"})

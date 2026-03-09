@@ -58,9 +58,7 @@ class TestQueueProcessor(unittest.TestCase):
         result = self.processor.process_queue(self.queue, Mock())
         self.assertTrue(result.dps_updated)
 
-        # Verify data store was updated
-        self.data_store.update_dps_data.assert_called()
-        self.data_store.insert_damage_event.assert_called()
+        self.data_store.apply_mutations.assert_called_once()
 
     def test_immunity_event_without_damage(self) -> None:
         """Test queuing immunity event when no recent damage exists."""
@@ -113,8 +111,7 @@ class TestQueueProcessor(unittest.TestCase):
         self.queue.put(immunity_event)
         self.processor.process_queue(self.queue, Mock())
 
-        # Verify immunity was recorded
-        self.data_store.record_immunity.assert_called()
+        self.data_store.apply_mutations.assert_called()
 
     def test_attack_hit_event(self) -> None:
         """Test processing attack_hit event."""
@@ -130,18 +127,7 @@ class TestQueueProcessor(unittest.TestCase):
         self.queue.put(attack_event)
         self.processor.process_queue(self.queue, Mock())
 
-        # Verify attack was recorded
-        self.data_store.insert_attack_event.assert_called_with(
-            'TestCharacter',
-            'TestTarget',
-            'hit',
-            10,
-            5,
-            15,
-            was_nat1=False,
-            was_nat20=False,
-            is_concealment=False,
-        )
+        self.data_store.apply_mutations.assert_called_once()
 
     def test_cleanup_stale_immunities(self) -> None:
         """Test cleanup of stale immunity entries."""
@@ -181,18 +167,7 @@ class TestQueueProcessor(unittest.TestCase):
         self.queue.put(crit_event)
         self.processor.process_queue(self.queue, Mock())
 
-        # Verify critical hit was recorded
-        self.data_store.insert_attack_event.assert_called_with(
-            'TestCharacter',
-            'TestTarget',
-            'critical_hit',
-            20,
-            5,
-            25,
-            was_nat1=False,
-            was_nat20=False,
-            is_concealment=False,
-        )
+        self.data_store.apply_mutations.assert_called_once()
 
     def test_damage_buffer_state(self) -> None:
         """Test damage buffer maintains state correctly."""

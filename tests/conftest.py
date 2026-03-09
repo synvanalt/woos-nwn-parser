@@ -6,6 +6,13 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List
 
+from app.models import (
+    AttackMutation,
+    DamageMutation,
+    EpicDodgeMutation,
+    ImmunityMutation,
+    SaveMutation,
+)
 from app.settings import get_settings_path
 from app.parser import LogParser
 from app.storage import DataStore
@@ -21,6 +28,106 @@ def pytest_configure(config):
     """Make LogMessageCapture available for import in test files."""
     import sys
     sys.modules['conftest'] = sys.modules[__name__]
+
+
+def _install_storage_test_shim() -> None:
+    """Provide legacy write helpers in tests while production uses apply_mutations()."""
+
+    def insert_attack_event(
+        self: DataStore,
+        attacker: str,
+        target: str,
+        outcome: str,
+        roll=None,
+        bonus=None,
+        total=None,
+        was_nat1: bool = False,
+        was_nat20: bool = False,
+        is_concealment: bool = False,
+    ) -> None:
+        self.apply_mutations([
+            AttackMutation(
+                attacker=attacker,
+                target=target,
+                outcome=outcome,
+                roll=roll,
+                bonus=bonus,
+                total=total,
+                was_nat1=was_nat1,
+                was_nat20=was_nat20,
+                is_concealment=is_concealment,
+            )
+        ])
+
+    def insert_damage_event(
+        self: DataStore,
+        target: str,
+        damage_type: str,
+        immunity: int,
+        total_damage: int,
+        attacker: str = "",
+        timestamp: datetime | None = None,
+    ) -> None:
+        self.apply_mutations([
+            DamageMutation(
+                target=target,
+                damage_type=damage_type,
+                immunity_absorbed=immunity,
+                total_damage=total_damage,
+                attacker=attacker,
+                timestamp=timestamp or datetime.now(),
+            )
+        ])
+
+    def update_dps_data(
+        self: DataStore,
+        character: str,
+        damage_amount: int,
+        timestamp: datetime,
+        damage_types: Dict[str, int] | None = None,
+    ) -> None:
+        self.apply_mutations([
+            DamageMutation(
+                target="",
+                total_damage=damage_amount,
+                attacker=character,
+                timestamp=timestamp,
+                count_for_dps=True,
+                damage_types=damage_types,
+            )
+        ])
+
+    def record_immunity(
+        self: DataStore,
+        target: str,
+        damage_type: str,
+        immunity_points: int,
+        damage_dealt: int,
+    ) -> None:
+        self.apply_mutations([
+            ImmunityMutation(
+                target=target,
+                damage_type=damage_type,
+                immunity_points=immunity_points,
+                damage_dealt=damage_dealt,
+            )
+        ])
+
+    def record_target_save(self: DataStore, target: str, save_key: str, bonus: int) -> None:
+        self.apply_mutations([SaveMutation(target=target, save_key=save_key, bonus=bonus)])
+
+    def mark_target_epic_dodge(self: DataStore, target: str) -> None:
+        self.apply_mutations([EpicDodgeMutation(target=target)])
+
+    DataStore.insert_attack_event = insert_attack_event  # type: ignore[attr-defined]
+    DataStore.insert_damage_event = insert_damage_event  # type: ignore[attr-defined]
+    DataStore.update_dps_data = update_dps_data  # type: ignore[attr-defined]
+    DataStore.record_immunity = record_immunity  # type: ignore[attr-defined]
+    DataStore.record_target_save = record_target_save  # type: ignore[attr-defined]
+    DataStore.mark_target_epic_dodge = mark_target_epic_dodge  # type: ignore[attr-defined]
+
+
+_install_storage_test_shim()
 
 
 @pytest.fixture(scope="function", autouse=True)
