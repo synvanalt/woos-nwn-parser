@@ -53,7 +53,7 @@ def test_unknown_event_without_message_logs_generated_fallback_message() -> None
 
 def test_damage_dealt_logs_dps_tracking_error_when_store_raises() -> None:
     processor, data_store, _ = _build_processor_with_mocks()
-    data_store.update_dps_data.side_effect = RuntimeError("boom")
+    data_store.apply_mutations.side_effect = RuntimeError("boom")
 
     q = queue.Queue()
     q.put(
@@ -70,12 +70,12 @@ def test_damage_dealt_logs_dps_tracking_error_when_store_raises() -> None:
     on_log_message = Mock()
     processor.process_queue(q, on_log_message)
 
-    assert any("DPS tracking error" in c.args[0] and c.args[1] == "error" for c in on_log_message.call_args_list)
+    assert any("Data store batch error" in c.args[0] and c.args[1] == "error" for c in on_log_message.call_args_list)
 
 
 def test_damage_dealt_logs_insert_error_when_damage_event_insert_fails() -> None:
     processor, data_store, _ = _build_processor_with_mocks()
-    data_store.insert_damage_event.side_effect = RuntimeError("insert-failed")
+    data_store.apply_mutations.side_effect = RuntimeError("insert-failed")
 
     q = queue.Queue()
     q.put(
@@ -92,7 +92,7 @@ def test_damage_dealt_logs_insert_error_when_damage_event_insert_fails() -> None
     on_log_message = Mock()
     processor.process_queue(q, on_log_message)
 
-    assert any("Data store error on damage_dealt" in c.args[0] and c.args[1] == "error" for c in on_log_message.call_args_list)
+    assert any("Data store batch error" in c.args[0] and c.args[1] == "error" for c in on_log_message.call_args_list)
 
 
 def test_queued_immunity_mismatch_emits_debug_log() -> None:
@@ -121,4 +121,4 @@ def test_queued_immunity_mismatch_emits_debug_log() -> None:
     processor.process_queue(q, on_log_message, debug_enabled=True)
 
     assert any("Queue mismatched" in c.args[0] and c.args[1] == "debug" for c in on_log_message.call_args_list)
-    data_store.record_immunity.assert_not_called()
+    data_store.apply_mutations.assert_called_once()

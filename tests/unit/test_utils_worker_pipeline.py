@@ -6,6 +6,7 @@ import time
 from unittest.mock import Mock
 
 import app.utils
+from app.models import AttackMutation, DamageMutation, EpicDodgeMutation, ImmunityMutation, SaveMutation
 from app.utils import parse_file_to_ops, import_worker_process
 
 
@@ -63,10 +64,11 @@ def test_parse_file_to_ops_collects_damage_immunity_attacks_and_death_snippet(mo
     assert result["success"] is True
     assert result["aborted"] is False
     ops = result["ops"]
-    assert len(ops["dps_updates"]) == 1
-    assert len(ops["damage_events"]) == 2
-    assert len(ops["immunity_records"]) == 1
-    assert len(ops["attack_events"]) == 1
+    mutations = ops["mutations"]
+    assert sum(isinstance(item, DamageMutation) and item.count_for_dps for item in mutations) == 1
+    assert sum(isinstance(item, DamageMutation) and not item.count_for_dps for item in mutations) == 2
+    assert sum(isinstance(item, ImmunityMutation) for item in mutations) == 1
+    assert sum(isinstance(item, AttackMutation) for item in mutations) == 1
     assert len(ops["death_snippets"]) == 1
     assert ops["death_snippets"][0]["target"] == "Goblin"
 
@@ -139,10 +141,7 @@ def test_import_worker_process_emits_file_error_and_continues(monkeypatch) -> No
             "error": None,
             "lines_processed": 10,
             "ops": {
-                "dps_updates": [],
-                "damage_events": [],
-                "immunity_records": [],
-                "attack_events": [],
+                "mutations": [],
                 "death_snippets": [],
             },
             "parser_state": {"target_ac": {}, "target_saves": {}, "target_attack_bonus": {}},
@@ -193,10 +192,7 @@ def test_import_worker_process_forwards_death_settings(monkeypatch) -> None:
         "error": None,
         "lines_processed": 1,
         "ops": {
-            "dps_updates": [],
-            "damage_events": [],
-            "immunity_records": [],
-            "attack_events": [],
+            "mutations": [],
             "death_snippets": [],
         },
         "parser_state": {"target_ac": {}, "target_saves": {}, "target_attack_bonus": {}},
@@ -220,12 +216,14 @@ def test_import_worker_process_forwards_death_settings(monkeypatch) -> None:
 
 def test_import_worker_process_streams_chunk_order_and_payload_integrity(monkeypatch) -> None:
     ops = {
-        "dps_updates": [("Woo", i, float(i), {"Physical": i}) for i in range(2501)],
-        "damage_events": [("Goblin", "Physical", 0, i, "Woo", float(i)) for i in range(5)],
-        "immunity_records": [("Goblin", "Fire", i, 100 + i) for i in range(3)],
-        "attack_events": [("Woo", "Goblin", "hit", 10, 20, 30, False, False, False) for _ in range(2100)],
-        "save_events": [("Goblin", "fort", 3), ("Goblin", "ref", 2)],
-        "epic_dodge_targets": ["Goblin", "Dragon"],
+        "mutations": (
+            [DamageMutation(target="Goblin", total_damage=i, attacker="Woo", timestamp=float(i), count_for_dps=True, damage_types={"Physical": i}) for i in range(2501)]
+            + [DamageMutation(target="Goblin", damage_type="Physical", total_damage=i, attacker="Woo", timestamp=float(i)) for i in range(5)]
+            + [ImmunityMutation(target="Goblin", damage_type="Fire", immunity_points=i, damage_dealt=100 + i) for i in range(3)]
+            + [AttackMutation(attacker="Woo", target="Goblin", outcome="hit", roll=10, bonus=20, total=30) for _ in range(2100)]
+            + [SaveMutation(target="Goblin", save_key="fort", bonus=3), SaveMutation(target="Goblin", save_key="ref", bonus=2)]
+            + [EpicDodgeMutation(target="Goblin"), EpicDodgeMutation(target="Dragon")]
+        ),
         "death_snippets": [{"type": "death_snippet", "target": "Goblin", "killer": "Woo", "lines": ["a"]}],
     }
     parse_mock = Mock(return_value={
@@ -252,17 +250,9 @@ def test_import_worker_process_streams_chunk_order_and_payload_integrity(monkeyp
     assert events[-1] == "done"
 
     chunk_events = [item for item in result_queue.items if item["event"] == "ops_chunk"]
-    assert len(chunk_events) == 2
+    assert len(chunk_events) == 3
 
-    reconstructed = {
-        "dps_updates": [],
-        "damage_events": [],
-        "immunity_records": [],
-        "attack_events": [],
-        "save_events": [],
-        "epic_dodge_targets": [],
-        "death_snippets": [],
-    }
+    reconstructed = {"mutations": [], "death_snippets": []}
     for chunk in chunk_events:
         for key in reconstructed:
             reconstructed[key].extend(chunk["ops"].get(key, []))
@@ -277,12 +267,7 @@ def test_import_worker_process_exits_promptly_when_queue_full_and_abort_set(monk
         "error": None,
         "lines_processed": 1,
         "ops": {
-            "dps_updates": [],
-            "damage_events": [],
-            "immunity_records": [],
-            "attack_events": [],
-            "save_events": [],
-            "epic_dodge_targets": [],
+            "mutations": [],
             "death_snippets": [],
         },
         "parser_state": {},

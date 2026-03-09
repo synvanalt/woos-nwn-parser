@@ -6,6 +6,7 @@ attack parsing, save parsing, and player filtering.
 
 from datetime import datetime
 
+import app.parser as parser_module
 from app.parser import LogParser
 
 
@@ -102,6 +103,18 @@ class TestTimestampExtraction:
     def test_extract_timestamp_invalid_format(self, parser: LogParser) -> None:
         """Test extracting timestamp from invalid format returns None."""
         line = "Invalid line without timestamp"
+        result = parser.extract_timestamp_from_line(line)
+        assert result is None
+
+    def test_extract_timestamp_invalid_numeric_fields(self, parser: LogParser) -> None:
+        """Invalid numeric timestamp fields should return None without raising."""
+        line = "[CHAT WINDOW TEXT] [Thu Jan xx 14:30:00] Test message"
+        result = parser.extract_timestamp_from_line(line)
+        assert result is None
+
+    def test_extract_timestamp_invalid_calendar_date(self, parser: LogParser) -> None:
+        """Invalid calendar dates should return None without raising."""
+        line = "[CHAT WINDOW TEXT] [Thu Feb 31 14:30:00] Test message"
         result = parser.extract_timestamp_from_line(line)
         assert result is None
 
@@ -418,6 +431,18 @@ class TestAttackParsing:
         assert result['bonus'] == '17'
         assert result['total'] == 36
 
+    def test_parse_target_concealed_malformed_roll_falls_back_cleanly(self, parser: LogParser) -> None:
+        """Malformed target-concealed fast-path lines should fail cleanly."""
+        line = (
+            "[CHAT WINDOW TEXT] [Sat Oct 18 21:12:56] Woo Whirlwind attacks Cerberus : "
+            "*target concealed: 50%* : (19 + seventeen = 36) : *hit*"
+        )
+        result = parser.parse_line(line)
+
+        assert result is None
+        assert 'Cerberus' not in parser.target_ac
+        assert 'Woo Whirlwind' not in parser.target_attack_bonus
+
     def test_parse_concealment_real_world_scenario(self, parser: LogParser) -> None:
         """Test real-world scenario from user's logs.
 
@@ -696,6 +721,30 @@ class TestEdgeCases:
 
         assert result is not None
         assert isinstance(result['timestamp'], datetime)
+
+    def test_parse_line_with_malformed_timestamp_uses_single_cached_fallback_now(
+        self,
+        parser: LogParser,
+        monkeypatch,
+    ) -> None:
+        """Malformed timestamps should call datetime.now() only once per line parse."""
+        calls = 0
+
+        class FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):  # type: ignore[override]
+                nonlocal calls
+                calls += 1
+                return cls(2026, 3, 9, 12, 0, 0)
+
+        monkeypatch.setattr(parser_module, "datetime", FixedDatetime)
+
+        line = "[CHAT WINDOW TEXT] [Thu Jan xx 14:30:00] Woo attacks Goblin: *hit*: (14 + 5 = 19)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result["timestamp"] == FixedDatetime(2026, 3, 9, 12, 0, 0)
+        assert calls == 1
 
     def test_parse_malformed_damage_breakdown(self, parser: LogParser) -> None:
         """Test parsing malformed damage breakdown."""

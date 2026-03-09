@@ -15,6 +15,7 @@ from app.parser import LogParser
 from app.services import DPSCalculationService
 from app.ui.widgets import DPSPanel, TargetStatsPanel, ImmunityPanel
 from app.models import EnemyAC, TargetAttackBonus
+from tests.helpers.store_mutations import apply, damage_row, dps_update, immunity
 
 
 @pytest.fixture
@@ -46,26 +47,18 @@ def test_dps_panel_selection_preservation(shared_tk_root, notebook) -> None:
 
     # Add some test data using the correct API
     timestamp1 = datetime.now()
-    data_store.insert_damage_event(
-        target="Monster",
-        damage_type="Physical",
-        immunity=0,
-        total_damage=10,
-        attacker="Hero",
-        timestamp=timestamp1
+    apply(
+        data_store,
+        damage_row(target="Monster", damage_type="Physical", total_damage=10, attacker="Hero", timestamp=timestamp1),
+        dps_update(attacker="Hero", total_damage=10, timestamp=timestamp1, damage_types={"Physical": 10}),
     )
-    data_store.update_dps_data("Hero", 10, timestamp1, {"Physical": 10})
 
     timestamp2 = datetime.now()
-    data_store.insert_damage_event(
-        target="Monster",
-        damage_type="Fire",
-        immunity=0,
-        total_damage=15,
-        attacker="Hero",
-        timestamp=timestamp2
+    apply(
+        data_store,
+        damage_row(target="Monster", damage_type="Fire", total_damage=15, attacker="Hero", timestamp=timestamp2),
+        dps_update(attacker="Hero", total_damage=15, timestamp=timestamp2, damage_types={"Fire": 15}),
     )
-    data_store.update_dps_data("Hero", 15, timestamp2, {"Fire": 15})
 
     # Initial refresh to populate the tree
     panel.refresh()
@@ -123,24 +116,10 @@ def test_target_stats_panel_selection_preservation(shared_tk_root, notebook) -> 
     parser.target_attack_bonus["Monster2"] = bonus2
 
     timestamp1 = datetime.now()
-    data_store.insert_damage_event(
-        target="Monster1",  # Hero attacking Monster1
-        damage_type="Physical",
-        immunity=0,
-        total_damage=10,
-        attacker="Hero",
-        timestamp=timestamp1
-    )
+    apply(data_store, damage_row(target="Monster1", damage_type="Physical", total_damage=10, attacker="Hero", timestamp=timestamp1))
 
     timestamp2 = datetime.now()
-    data_store.insert_damage_event(
-        target="Monster2",  # Hero attacking Monster2
-        damage_type="Physical",
-        immunity=0,
-        total_damage=12,
-        attacker="Hero",
-        timestamp=timestamp2
-    )
+    apply(data_store, damage_row(target="Monster2", damage_type="Physical", total_damage=12, attacker="Hero", timestamp=timestamp2))
 
     # Initial refresh to populate the tree
     panel.refresh()
@@ -185,26 +164,18 @@ def test_immunity_panel_selection_preservation(shared_tk_root, notebook) -> None
 
     # Add some test data with immunity
     timestamp1 = datetime.now()
-    data_store.insert_damage_event(
-        target="Monster",
-        damage_type="Physical",
-        immunity=5,
-        total_damage=10,
-        attacker="Hero",
-        timestamp=timestamp1
+    apply(
+        data_store,
+        damage_row(target="Monster", damage_type="Physical", immunity_absorbed=5, total_damage=10, attacker="Hero", timestamp=timestamp1),
+        immunity(target="Monster", damage_type="Physical", immunity_points=5, damage_dealt=10),
     )
-    data_store.record_immunity("Monster", "Physical", 5, 10)
 
     timestamp2 = datetime.now()
-    data_store.insert_damage_event(
-        target="Monster",
-        damage_type="Fire",
-        immunity=3,
-        total_damage=15,
-        attacker="Hero",
-        timestamp=timestamp2
+    apply(
+        data_store,
+        damage_row(target="Monster", damage_type="Fire", immunity_absorbed=3, total_damage=15, attacker="Hero", timestamp=timestamp2),
+        immunity(target="Monster", damage_type="Fire", immunity_points=3, damage_dealt=15),
     )
-    data_store.record_immunity("Monster", "Fire", 3, 15)
 
     # Update target list and select a target
     targets = data_store.get_all_targets()
@@ -260,14 +231,7 @@ def test_multiple_selection_preservation(shared_tk_root, notebook) -> None:
         bonus = TargetAttackBonus(name=target, max_bonus=15 + i)
         parser.target_attack_bonus[target] = bonus
         timestamp = datetime.now()
-        data_store.insert_damage_event(
-            target=target,  # Hero attacking Monster
-            damage_type="Physical",
-            immunity=0,
-            total_damage=10 + i,
-            attacker="Hero",
-            timestamp=timestamp
-        )
+        apply(data_store, damage_row(target=target, damage_type="Physical", total_damage=10 + i, attacker="Hero", timestamp=timestamp))
 
     # Initial refresh
     panel.refresh()

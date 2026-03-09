@@ -11,6 +11,14 @@ from datetime import datetime
 from time import perf_counter
 from typing import Dict, Callable, List, Any, Set
 
+from ..models import (
+    AttackMutation,
+    DamageMutation,
+    EpicDodgeMutation,
+    ImmunityMutation,
+    SaveMutation,
+    StoreMutation,
+)
 from ..storage import DataStore
 from ..parser import LogParser
 
@@ -76,6 +84,7 @@ class QueueProcessor:
         """
         result = QueueDrainResult()
         started = perf_counter()
+        pending_mutations: List[StoreMutation] = []
 
         try:
             while result.events_processed < max_events:
@@ -90,6 +99,7 @@ class QueueProcessor:
                 # Process event and track what needs UI update
                 event_result = self._handle_event_batched(
                     data,
+                    pending_mutations,
                     on_log_message,
                     debug_enabled,
                 )
@@ -111,6 +121,12 @@ class QueueProcessor:
         except queue.Empty:
             pass
 
+        if pending_mutations:
+            try:
+                self.data_store.apply_mutations(pending_mutations)
+            except Exception as e:
+                on_log_message(f"Data store batch error: {e}", 'error')
+
         result.has_backlog = not data_queue.empty()
 
         # Periodic cleanup of stale immunity entries (every 100 processed events)
@@ -128,6 +144,7 @@ class QueueProcessor:
     def _handle_event_batched(
         self,
         data: Dict[str, Any],
+        pending_mutations: List[StoreMutation],
         on_log_message: Callable,
         debug_enabled: bool,
     ) -> Dict[str, Any]:
@@ -149,20 +166,26 @@ class QueueProcessor:
         result = {}
 
         if event_type == 'damage_dealt':
-            result = self._handle_damage_dealt_batched(data, on_log_message, debug_enabled)
+            result = self._handle_damage_dealt_batched(
+                data, pending_mutations, on_log_message, debug_enabled
+            )
         elif event_type == 'immunity':
-            result = self._handle_immunity_batched(data, on_log_message, debug_enabled)
+            result = self._handle_immunity_batched(
+                data, pending_mutations, on_log_message, debug_enabled
+            )
         elif event_type in (
             'attack_hit',
             'attack_miss',
             'attack_hit_critical',
             'critical_hit',
         ):
-            result = self._handle_attack_batched(data, on_log_message, debug_enabled)
+            result = self._handle_attack_batched(
+                data, pending_mutations, on_log_message, debug_enabled
+            )
         elif event_type == 'epic_dodge':
             target = data.get('target')
             if target:
-                self.data_store.mark_target_epic_dodge(target)
+                pending_mutations.append(EpicDodgeMutation(target=target))
                 result['target'] = target
             if debug_enabled:
                 on_log_message(f"EPIC DODGE: {target}", 'debug')
@@ -175,7 +198,9 @@ class QueueProcessor:
             save_type = data.get('save_type')
             bonus = data.get('bonus')
             if target and save_type and bonus is not None:
-                self.data_store.record_target_save(target, str(save_type), int(bonus))
+                pending_mutations.append(
+                    SaveMutation(target=target, save_key=str(save_type), bonus=int(bonus))
+                )
                 result['target'] = target
             if debug_enabled:
                 on_log_message(
@@ -195,6 +220,7 @@ class QueueProcessor:
     def _handle_damage_dealt_batched(
         self,
         data: Dict[str, Any],
+        pending_mutations: List[StoreMutation],
         on_log_message: Callable,
         debug_enabled: bool,
     ) -> Dict[str, Any]:
@@ -218,9 +244,16 @@ class QueueProcessor:
                 timestamp = data.get('timestamp', datetime.now())
                 damage_types = data.get('damage_types', {})
 
-                # Update DPS tracking
-                self.data_store.update_dps_data(
-                    attacker, total_damage, timestamp, damage_types
+                pending_mutations.append(
+                    DamageMutation(
+                        target=target,
+                        damage_type="",
+                        total_damage=int(total_damage or 0),
+                        attacker=attacker,
+                        timestamp=timestamp,
+                        count_for_dps=True,
+                        damage_types={k: int(v or 0) for k, v in damage_types.items()},
+                    )
                 )
                 if debug_enabled:
                     on_log_message(
@@ -242,19 +275,23 @@ class QueueProcessor:
         try:
             for dt, amount in data['damage_types'].items():
                 amount_int = int(amount or 0)
-                self.data_store.insert_damage_event(
-                    target,
-                    dt,
-                    0,
-                    amount_int,
-                    data.get('attacker', ''),
-                    data['timestamp'],
+                pending_mutations.append(
+                    DamageMutation(
+                        target=target,
+                        damage_type=dt,
+                        immunity_absorbed=0,
+                        total_damage=amount_int,
+                        attacker=data.get('attacker', ''),
+                        timestamp=data['timestamp'],
+                    )
                 )
         except Exception as e:
             on_log_message(f"Data store error on damage_dealt: {e}", 'error')
 
         # Process queued immunities (internal, returns if any were processed)
-        immunity_processed = self._process_queued_immunities_batched(target, data, on_log_message, debug_enabled)
+        immunity_processed = self._process_queued_immunities_batched(
+            target, data, pending_mutations, on_log_message, debug_enabled
+        )
 
         result['damage_target'] = target
         if immunity_processed:
@@ -264,6 +301,7 @@ class QueueProcessor:
     def _handle_immunity_batched(
         self,
         data: Dict[str, Any],
+        pending_mutations: List[StoreMutation],
         on_log_message: Callable,
         debug_enabled: bool,
     ) -> Dict[str, Any]:
@@ -304,8 +342,13 @@ class QueueProcessor:
 
                 try:
                     dmg_inflicted = int(damage_dealt or 0)
-                    self.data_store.record_immunity(
-                        target, damage_type, int(dmg_absorbed or 0), dmg_inflicted
+                    pending_mutations.append(
+                        ImmunityMutation(
+                            target=target,
+                            damage_type=damage_type,
+                            immunity_points=int(dmg_absorbed or 0),
+                            damage_dealt=dmg_inflicted,
+                        )
                     )
                     if debug_enabled:
                         on_log_message(
@@ -325,6 +368,7 @@ class QueueProcessor:
     def _handle_attack_batched(
         self,
         data: Dict[str, Any],
+        pending_mutations: List[StoreMutation],
         on_log_message: Callable,
         debug_enabled: bool,
     ) -> Dict[str, Any]:
@@ -348,16 +392,18 @@ class QueueProcessor:
         else:
             event_type = 'miss'
 
-        self.data_store.insert_attack_event(
-            attacker,
-            target,
-            event_type,
-            data.get('roll'),
-            data.get('bonus'),
-            data.get('total'),
-            was_nat1=bool(data.get('was_nat1', False)),
-            was_nat20=bool(data.get('was_nat20', False)),
-            is_concealment=bool(data.get('is_concealment', False)),
+        pending_mutations.append(
+            AttackMutation(
+                attacker=attacker,
+                target=target,
+                outcome=event_type,
+                roll=data.get('roll'),
+                bonus=data.get('bonus'),
+                total=data.get('total'),
+                was_nat1=bool(data.get('was_nat1', False)),
+                was_nat20=bool(data.get('was_nat20', False)),
+                is_concealment=bool(data.get('is_concealment', False)),
+            )
         )
 
         if debug_enabled:
@@ -371,6 +417,7 @@ class QueueProcessor:
         self,
         target: str,
         damage_event: Dict[str, Any],
+        pending_mutations: List[StoreMutation],
         on_log_message: Callable,
         debug_enabled: bool,
     ) -> bool:
@@ -406,8 +453,13 @@ class QueueProcessor:
                 if time_diff <= 1:  # Allow 1-second difference
                     try:
                         inferred_amount = int(damage_dealt or 0)
-                        self.data_store.record_immunity(
-                            target, damage_type, immunity, inferred_amount
+                        pending_mutations.append(
+                            ImmunityMutation(
+                                target=target,
+                                damage_type=damage_type,
+                                immunity_points=immunity,
+                                damage_dealt=inferred_amount,
+                            )
                         )
                         if debug_enabled:
                             on_log_message(

@@ -1,10 +1,11 @@
 """Pytest configuration and shared fixtures for Woo's NWN Parser tests."""
 
-import pytest
-import tempfile
+import shutil
+import uuid
 from pathlib import Path
-from datetime import datetime
 from typing import Dict, List
+
+import pytest
 
 from app.settings import get_settings_path
 from app.parser import LogParser
@@ -145,8 +146,14 @@ def queue_processor(data_store: DataStore, parser: LogParser) -> QueueProcessor:
 @pytest.fixture
 def temp_log_dir():
     """Create a temporary directory for log file testing."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        yield Path(tmpdir)
+    temp_root = Path.cwd() / ".pytest_tmp"
+    temp_root.mkdir(exist_ok=True)
+    tmpdir = temp_root / f"test-{uuid.uuid4().hex}"
+    tmpdir.mkdir()
+    try:
+        yield tmpdir
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 @pytest.fixture

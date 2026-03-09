@@ -296,32 +296,36 @@ class LogParser:
         Returns:
             datetime object or None if parsing fails
         """
+        # Use pre-compiled pattern for better performance
+        match = self.timestamp_pattern.search(line)
+        if not match:
+            return None
+
+        timestamp_str = match.group(1)
+        # Expected format: "Wed Dec 31 21:07:37" (Day Mon DD HH:MM:SS)
+        # Manual parsing for performance while preserving date for midnight crossing accuracy
+        parts = timestamp_str.split(maxsplit=3)
+        if len(parts) != 4:
+            return None
+
+        month = MONTHS.get(parts[1])
+        if month is None:
+            return None
+
+        time_part = parts[3]
+        if len(time_part) != 8 or time_part[2] != ':' or time_part[5] != ':':
+            return None
+
         try:
-            # Use pre-compiled pattern for better performance
-            match = self.timestamp_pattern.search(line)
-            if match:
-                timestamp_str = match.group(1)
-                # Expected format: "Wed Dec 31 21:07:37" (Day Mon DD HH:MM:SS)
-                # Manual parsing for performance while preserving date for midnight crossing accuracy
-                parts = timestamp_str.split(maxsplit=3)
-                if len(parts) == 4:
-                    month = MONTHS.get(parts[1])
-                    if month is None:
-                        return None
+            day = int(parts[2])
+            hour = int(time_part[0:2])
+            minute = int(time_part[3:5])
+            second = int(time_part[6:8])
 
-                    time_part = parts[3]
-                    if len(time_part) != 8 or time_part[2] != ':' or time_part[5] != ':':
-                        return None
-
-                    day = int(parts[2])
-                    hour = int(time_part[0:2])
-                    minute = int(time_part[3:5])
-                    second = int(time_part[6:8])
-
-                    # Create datetime with full date to handle midnight crossings correctly
-                    return datetime(self._current_year, month, day, hour, minute, second)
-        except Exception:
-            pass
+            # Create datetime with full date to handle midnight crossings correctly
+            return datetime(self._current_year, month, day, hour, minute, second)
+        except ValueError:
+            return None
         return None
 
     def parse_damage_breakdown(self, breakdown_str: str) -> Dict[str, int]:
@@ -421,7 +425,7 @@ class LogParser:
                 "bonus": str(bonus),
                 "total": total,
             }, False
-        except Exception:
+        except ValueError:
             return None, True
 
     def parse_line(self, line: str) -> Optional[Dict]:
@@ -446,6 +450,8 @@ class LogParser:
             if timestamp is None:
                 timestamp = self.extract_timestamp_from_line(line)
                 if not timestamp:
+                    # Reuse one fallback timestamp for the whole line so malformed
+                    # timestamps do not trigger repeated datetime.now() calls.
                     timestamp = datetime.now()
             return timestamp
 

@@ -8,6 +8,7 @@ from tkinter import ttk
 from app.parser import LogParser
 from app.storage import DataStore
 from app.ui.widgets.immunity_panel import ImmunityPanel
+from tests.helpers.store_mutations import apply, damage_row
 
 
 @pytest.fixture
@@ -48,7 +49,7 @@ def test_refresh_uses_cached_immunity_pct_when_parse_disabled(immunity_panel_ctx
     target = "Goblin"
     parser.parse_immunity = False
     panel.immunity_pct_cache[target] = {"Fire": 60}
-    store.insert_damage_event(target, "Fire", 10, 50, "Woo")
+    apply(store, damage_row(target=target, damage_type="Fire", immunity_absorbed=10, total_damage=50, attacker="Woo"))
 
     panel.refresh_target_details(target)
 
@@ -58,12 +59,12 @@ def test_refresh_uses_cached_immunity_pct_when_parse_disabled(immunity_panel_ctx
 
 def test_incremental_refresh_applies_sort_when_non_damage_column_sorted(immunity_panel_ctx) -> None:
     panel, store, _parser = immunity_panel_ctx
-    store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
+    apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
     panel.refresh_target_details("Goblin")
     panel.tree._last_sorted_col = "Absorbed"
     panel.tree.apply_current_sort = Mock()
 
-    store.insert_damage_event("Goblin", "Fire", 10, 50, "Woo")
+    apply(store, damage_row(target="Goblin", damage_type="Fire", immunity_absorbed=10, total_damage=50, attacker="Woo"))
     panel.refresh_target_details("Goblin")
 
     panel.tree.apply_current_sort.assert_called_once()
@@ -71,13 +72,13 @@ def test_incremental_refresh_applies_sort_when_non_damage_column_sorted(immunity
 
 def test_incremental_refresh_applies_sort_when_damage_type_descending(immunity_panel_ctx) -> None:
     panel, store, _parser = immunity_panel_ctx
-    store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
+    apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
     panel.refresh_target_details("Goblin")
     panel.tree._last_sorted_col = "Damage Type"
     panel.tree._sort_reverse = True
     panel.tree.apply_current_sort = Mock()
 
-    store.insert_damage_event("Goblin", "Fire", 10, 50, "Woo")
+    apply(store, damage_row(target="Goblin", damage_type="Fire", immunity_absorbed=10, total_damage=50, attacker="Woo"))
     panel.refresh_target_details("Goblin")
 
     panel.tree.apply_current_sort.assert_called_once()
@@ -86,14 +87,17 @@ def test_incremental_refresh_applies_sort_when_damage_type_descending(immunity_p
 def test_full_refresh_restores_selection_for_surviving_damage_type(immunity_panel_ctx) -> None:
     panel, store, _parser = immunity_panel_ctx
     target = "Goblin"
-    store.insert_damage_event(target, "Fire", 0, 50, "Woo")
-    store.insert_damage_event(target, "Cold", 0, 30, "Woo")
+    apply(
+        store,
+        damage_row(target=target, damage_type="Fire", total_damage=50, attacker="Woo"),
+        damage_row(target=target, damage_type="Cold", total_damage=30, attacker="Woo"),
+    )
     panel.refresh_target_details(target)
 
     fire_id = panel._item_ids["Fire"]
     panel.tree.selection_set((fire_id,))
 
-    store.insert_damage_event(target, "Acid", 0, 20, "Woo")
+    apply(store, damage_row(target=target, damage_type="Acid", total_damage=20, attacker="Woo"))
     panel.refresh_target_details(target)
 
     selected_items = panel.tree.selection()

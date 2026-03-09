@@ -6,6 +6,7 @@ from tkinter import ttk
 from app.parser import LogParser
 from app.storage import DataStore
 from app.ui.widgets.target_stats_panel import TargetStatsPanel
+from tests.helpers.store_mutations import apply, damage_row
 
 
 @pytest.fixture
@@ -26,7 +27,7 @@ class TestTargetStatsIncrementalRefresh:
 
     def test_refresh_populates_cache(self, target_stats_panel) -> None:
         panel, store, _ = target_stats_panel
-        store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
+        apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
 
         panel.refresh()
 
@@ -35,13 +36,13 @@ class TestTargetStatsIncrementalRefresh:
 
     def test_incremental_refresh_updates_existing_row(self, target_stats_panel) -> None:
         panel, store, _ = target_stats_panel
-        store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
+        apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
         panel.refresh()
 
         item_id = panel._item_ids["Goblin"]
         before = panel.tree.item(item_id, "values")
 
-        store.insert_damage_event("Goblin", "Cold", 0, 25, "Woo")
+        apply(store, damage_row(target="Goblin", damage_type="Cold", total_damage=25, attacker="Woo"))
         panel.refresh()
 
         after = panel.tree.item(item_id, "values")
@@ -50,12 +51,12 @@ class TestTargetStatsIncrementalRefresh:
 
     def test_full_refresh_when_target_set_changes(self, target_stats_panel) -> None:
         panel, store, _ = target_stats_panel
-        store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
+        apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
         panel.refresh()
 
         initial_item_id = panel._item_ids["Goblin"]
 
-        store.insert_damage_event("Orc", "Cold", 0, 25, "Woo")
+        apply(store, damage_row(target="Orc", damage_type="Cold", total_damage=25, attacker="Woo"))
         panel.refresh()
 
         assert "Orc" in panel._item_ids
