@@ -7,6 +7,7 @@
 - DPS damage-type breakdown updates are more efficient during active fights and target filtering
 - Death snippet lookup on large logs is more efficient during backward scans
 - `Load & Parse` import now checks abort requests more frequently and reports progress in steady intervals
+- `Load & Parse` now applies large import batches in shorter UI time slices to reduce visible stutter during big imports
 
 ### Fixed
 - Fixed stale DataStore index retention that could cause avoidable long-session slowdowns
