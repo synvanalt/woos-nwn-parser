@@ -51,7 +51,6 @@ class QueueProcessor:
         self.parser = parser
         self.damage_buffer: Dict[str, Dict] = {}
         self.pending_immunity_queue: Dict[str, Dict[str, list]] = {}
-        self.immunity_pct_cache: Dict[str, Dict[str, Any]] = {}
         self.parsed_event_count = 0
         self.next_immunity_cleanup_event_count = 100
 

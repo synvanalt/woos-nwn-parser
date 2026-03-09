@@ -64,7 +64,6 @@ class TestQueueProcessorInitialization:
         assert processor.parser == parser
         assert len(processor.damage_buffer) == 0
         assert len(processor.pending_immunity_queue) == 0
-        assert len(processor.immunity_pct_cache) == 0
         assert processor.parsed_event_count == 0
         assert processor.next_immunity_cleanup_event_count == 100
 
