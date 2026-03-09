@@ -12,6 +12,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from app.storage import DataStore
+from tests.helpers.store_mutations import apply, attack, damage_row, dps_update
 
 # Check if we're in a headless environment
 _SKIP_TK_TESTS = os.environ.get('DISPLAY') is None and os.name != 'nt'
@@ -47,7 +48,7 @@ class TestDataStoreVersionTracking:
         data_store = DataStore()
         initial_version = data_store.version
 
-        data_store.insert_attack_event("Attacker", "Target", "hit", roll=15, bonus=5, total=20)
+        apply(data_store, attack(attacker="Attacker", target="Target", outcome="hit", roll=15, bonus=5, total=20))
 
         assert data_store.version == initial_version + 1
 
@@ -56,7 +57,7 @@ class TestDataStoreVersionTracking:
         data_store = DataStore()
         initial_version = data_store.version
 
-        data_store.insert_damage_event("Target", "Fire", 0, 50, "Attacker", datetime.now())
+        apply(data_store, damage_row(target="Target", damage_type="Fire", total_damage=50, attacker="Attacker", timestamp=datetime.now()))
 
         assert data_store.version == initial_version + 1
 
@@ -65,7 +66,7 @@ class TestDataStoreVersionTracking:
         data_store = DataStore()
         initial_version = data_store.version
 
-        data_store.update_dps_data("Character", 100, datetime.now(), {"Fire": 100})
+        apply(data_store, dps_update(attacker="Character", total_damage=100, timestamp=datetime.now(), damage_types={"Fire": 100}))
 
         assert data_store.version == initial_version + 1
 
@@ -74,7 +75,7 @@ class TestDataStoreVersionTracking:
         data_store = DataStore()
 
         for i in range(5):
-            data_store.insert_attack_event("Attacker", f"Target{i}", "hit")
+            apply(data_store, attack(attacker="Attacker", target=f"Target{i}", outcome="hit"))
 
         assert data_store.version == 5
 
@@ -87,7 +88,7 @@ class TestDataStoreVersionTracking:
         def insert_events():
             try:
                 for _ in range(100):
-                    data_store.insert_attack_event("Attacker", "Target", "hit")
+                    apply(data_store, attack(attacker="Attacker", target="Target", outcome="hit"))
             except Exception as e:
                 errors.append(e)
 
@@ -229,8 +230,11 @@ class TestBatchVisualUpdates:
         panel = TargetStatsPanel(notebook, data_store, parser)
 
         # Add some data
-        data_store.insert_damage_event("Target1", "Fire", 0, 100, "Attacker")
-        data_store.insert_attack_event("Attacker", "Target1", "hit", roll=15, bonus=5, total=20)
+        apply(
+            data_store,
+            damage_row(target="Target1", damage_type="Fire", total_damage=100, attacker="Attacker"),
+            attack(attacker="Attacker", target="Target1", outcome="hit", roll=15, bonus=5, total=20),
+        )
 
         # The refresh should work without error (batch update pattern)
         panel.refresh()
@@ -255,7 +259,7 @@ class TestBatchVisualUpdates:
         panel = ImmunityPanel(notebook, data_store, parser)
 
         # Add some data
-        data_store.insert_damage_event("Target1", "Fire", 0, 100, "Attacker")
+        apply(data_store, damage_row(target="Target1", damage_type="Fire", total_damage=100, attacker="Attacker"))
 
         # The refresh should work without error (batch update pattern)
         panel.refresh_target_details("Target1")
@@ -278,7 +282,7 @@ class TestDirtyFlagRefresh:
         assert data_store.version == last_refresh_version
 
         # Make a change
-        data_store.insert_attack_event("Attacker", "Target", "hit")
+        apply(data_store, attack(attacker="Attacker", target="Target", outcome="hit"))
 
         # Should now be dirty
         assert data_store.version != last_refresh_version

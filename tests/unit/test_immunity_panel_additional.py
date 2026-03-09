@@ -9,6 +9,7 @@ import app.ui.widgets.immunity_panel as immunity_module
 from app.parser import LogParser
 from app.storage import DataStore
 from app.ui.widgets.immunity_panel import ImmunityPanel
+from tests.helpers.store_mutations import apply, damage_row, immunity
 
 
 @pytest.fixture
@@ -54,7 +55,7 @@ def test_parse_immunity_toggle_updates_parser_and_refresh(panel_ctx) -> None:
 
 def test_combo_selection_event_triggers_target_refresh(panel_ctx) -> None:
     panel, store, _parser = panel_ctx
-    store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
+    apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
     panel.update_target_list(["Goblin"])
 
     called = {"target": None}
@@ -72,8 +73,11 @@ def test_combo_selection_event_triggers_target_refresh(panel_ctx) -> None:
 def test_cached_immunity_percentage_none_displays_dash(panel_ctx, monkeypatch) -> None:
     panel, store, parser = panel_ctx
     parser.parse_immunity = True
-    store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
-    store.record_immunity("Goblin", "Fire", 10, 50)
+    apply(
+        store,
+        damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"),
+        immunity(target="Goblin", damage_type="Fire", immunity_points=10, damage_dealt=50),
+    )
 
     monkeypatch.setattr(immunity_module, "calculate_immunity_percentage", lambda *_args, **_kwargs: None)
     panel.refresh_target_details("Goblin")

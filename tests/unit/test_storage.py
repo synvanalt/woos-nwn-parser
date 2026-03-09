@@ -11,6 +11,7 @@ import time
 
 from app.models import AttackMutation, DamageMutation, ImmunityMutation
 from app.storage import DataStore
+from tests.helpers.store_mutations import apply, attack, damage_row, dps_update, epic_dodge, immunity, save
 
 
 class TestDataStoreInitialization:
@@ -71,7 +72,7 @@ class TestDamageEventInsertion:
 
     def test_insert_single_damage_event(self, data_store: DataStore) -> None:
         """Test inserting a single damage event."""
-        data_store.insert_damage_event("Goblin", "Fire", 10, 40, "Woo")
+        apply(data_store, damage_row(target="Goblin", damage_type="Fire", immunity_absorbed=10, total_damage=40, attacker="Woo"))
 
         assert len(data_store.events) == 1
         event = data_store.events[0]
@@ -83,22 +84,25 @@ class TestDamageEventInsertion:
 
     def test_insert_multiple_damage_events(self, data_store: DataStore) -> None:
         """Test inserting multiple damage events."""
-        data_store.insert_damage_event("Goblin", "Fire", 10, 40, "Woo")
-        data_store.insert_damage_event("Orc", "Cold", 5, 30, "Rogue")
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", immunity_absorbed=10, total_damage=40, attacker="Woo"),
+            damage_row(target="Orc", damage_type="Cold", immunity_absorbed=5, total_damage=30, attacker="Rogue"),
+        )
 
         assert len(data_store.events) == 2
 
     def test_insert_damage_with_timestamp(self, data_store: DataStore) -> None:
         """Test inserting damage event with custom timestamp."""
         ts = datetime(2026, 1, 9, 14, 30, 0)
-        data_store.insert_damage_event("Goblin", "Fire", 10, 40, "Woo", ts)
+        apply(data_store, damage_row(target="Goblin", damage_type="Fire", immunity_absorbed=10, total_damage=40, attacker="Woo", timestamp=ts))
 
         event = data_store.events[0]
         assert event.timestamp == ts
 
     def test_insert_damage_without_timestamp(self, data_store: DataStore) -> None:
         """Test inserting damage event without timestamp uses current time."""
-        data_store.insert_damage_event("Goblin", "Fire", 10, 40, "Woo")
+        apply(data_store, damage_row(target="Goblin", damage_type="Fire", immunity_absorbed=10, total_damage=40, attacker="Woo"))
 
         event = data_store.events[0]
         assert isinstance(event.timestamp, datetime)
@@ -109,30 +113,30 @@ class TestAttackEventInsertion:
 
     def test_insert_attack_hit(self, data_store: DataStore) -> None:
         """Test inserting an attack hit event."""
-        data_store.insert_attack_event("Woo", "Goblin", "hit", 15, 5, 20)
+        apply(data_store, attack(attacker="Woo", target="Goblin", outcome="hit", roll=15, bonus=5, total=20))
 
         assert len(data_store.attacks) == 1
-        attack = data_store.attacks[0]
-        assert attack.attacker == "Woo"
-        assert attack.target == "Goblin"
-        assert attack.outcome == "hit"
-        assert attack.roll == 15
-        assert attack.bonus == 5
-        assert attack.total == 20
+        attack_event = data_store.attacks[0]
+        assert attack_event.attacker == "Woo"
+        assert attack_event.target == "Goblin"
+        assert attack_event.outcome == "hit"
+        assert attack_event.roll == 15
+        assert attack_event.bonus == 5
+        assert attack_event.total == 20
 
     def test_insert_attack_miss(self, data_store: DataStore) -> None:
         """Test inserting an attack miss event."""
-        data_store.insert_attack_event("Woo", "Goblin", "miss", 8, 5, 13)
+        apply(data_store, attack(attacker="Woo", target="Goblin", outcome="miss", roll=8, bonus=5, total=13))
 
-        attack = data_store.attacks[0]
-        assert attack.outcome == "miss"
+        attack_event = data_store.attacks[0]
+        assert attack_event.outcome == "miss"
 
     def test_insert_attack_critical(self, data_store: DataStore) -> None:
         """Test inserting a critical hit event."""
-        data_store.insert_attack_event("Woo", "Goblin", "critical_hit", 18, 5, 23)
+        apply(data_store, attack(attacker="Woo", target="Goblin", outcome="critical_hit", roll=18, bonus=5, total=23))
 
-        attack = data_store.attacks[0]
-        assert attack.outcome == "critical_hit"
+        attack_event = data_store.attacks[0]
+        assert attack_event.outcome == "critical_hit"
 
 
 class TestDPSTracking:
@@ -141,7 +145,7 @@ class TestDPSTracking:
     def test_update_dps_data_new_character(self, data_store: DataStore) -> None:
         """Test updating DPS data for a new character."""
         ts = datetime.now()
-        data_store.update_dps_data("Woo", 100, ts, {"Fire": 60, "Physical": 40})
+        apply(data_store, dps_update(attacker="Woo", total_damage=100, timestamp=ts, damage_types={"Fire": 60, "Physical": 40}))
 
         assert "Woo" in data_store.dps_data
         assert data_store.dps_data["Woo"]["total_damage"] == 100
@@ -154,8 +158,11 @@ class TestDPSTracking:
         ts1 = datetime.now()
         ts2 = ts1 + timedelta(seconds=5)
 
-        data_store.update_dps_data("Woo", 100, ts1, {"Fire": 100})
-        data_store.update_dps_data("Woo", 50, ts2, {"Fire": 50})
+        apply(
+            data_store,
+            dps_update(attacker="Woo", total_damage=100, timestamp=ts1, damage_types={"Fire": 100}),
+            dps_update(attacker="Woo", total_damage=50, timestamp=ts2, damage_types={"Fire": 50}),
+        )
 
         assert data_store.dps_data["Woo"]["total_damage"] == 150
         assert data_store.dps_data["Woo"]["damage_by_type"]["Fire"] == 150
@@ -163,7 +170,7 @@ class TestDPSTracking:
     def test_update_dps_data_updates_global_timestamp(self, data_store: DataStore) -> None:
         """Test that updating DPS data updates global last damage timestamp."""
         ts = datetime.now()
-        data_store.update_dps_data("Woo", 100, ts)
+        apply(data_store, dps_update(attacker="Woo", total_damage=100, timestamp=ts))
 
         assert data_store.last_damage_timestamp == ts
 
@@ -173,9 +180,12 @@ class TestDPSTracking:
         ts2 = datetime(2026, 1, 9, 14, 25, 0)  # Earlier
         ts3 = datetime(2026, 1, 9, 14, 35, 0)
 
-        data_store.update_dps_data("Woo", 100, ts1)
-        data_store.update_dps_data("Rogue", 50, ts2)
-        data_store.update_dps_data("Mage", 75, ts3)
+        apply(
+            data_store,
+            dps_update(attacker="Woo", total_damage=100, timestamp=ts1),
+            dps_update(attacker="Rogue", total_damage=50, timestamp=ts2),
+            dps_update(attacker="Mage", total_damage=75, timestamp=ts3),
+        )
 
         earliest = data_store.get_earliest_timestamp()
         assert earliest == ts2
@@ -193,7 +203,7 @@ class TestDPSCalculations:
         ts1 = datetime.now()
         ts2 = ts1 + timedelta(seconds=10)
 
-        data_store.update_dps_data("Woo", 100, ts1)
+        apply(data_store, dps_update(attacker="Woo", total_damage=100, timestamp=ts1))
         data_store.last_damage_timestamp = ts2
 
         dps_list = data_store.get_dps_data(time_tracking_mode="per_character")
@@ -209,8 +219,11 @@ class TestDPSCalculations:
         ts1 = ts_start + timedelta(seconds=5)
         ts2 = ts_start + timedelta(seconds=10)
 
-        data_store.update_dps_data("Woo", 100, ts1)
-        data_store.update_dps_data("Rogue", 50, ts2)
+        apply(
+            data_store,
+            dps_update(attacker="Woo", total_damage=100, timestamp=ts1, damage_types={"Fire": 100}),
+            dps_update(attacker="Rogue", total_damage=50, timestamp=ts2, damage_types={"Cold": 50}),
+        )
 
         dps_list = data_store.get_dps_data(
             time_tracking_mode="global",
@@ -224,9 +237,12 @@ class TestDPSCalculations:
         """Test that DPS data is sorted by DPS descending."""
         ts = datetime.now()
 
-        data_store.update_dps_data("Woo", 100, ts)
-        data_store.update_dps_data("Rogue", 200, ts)
-        data_store.update_dps_data("Mage", 150, ts)
+        apply(
+            data_store,
+            dps_update(attacker="Woo", total_damage=100, timestamp=ts),
+            dps_update(attacker="Rogue", total_damage=200, timestamp=ts),
+            dps_update(attacker="Mage", total_damage=150, timestamp=ts),
+        )
         data_store.last_damage_timestamp = ts + timedelta(seconds=10)
 
         dps_list = data_store.get_dps_data(time_tracking_mode="per_character")
@@ -240,7 +256,7 @@ class TestDPSCalculations:
         ts = datetime.now()
         damage_types = {"Fire": 60, "Physical": 40}
 
-        data_store.update_dps_data("Woo", 100, ts, damage_types)
+        apply(data_store, dps_update(attacker="Woo", total_damage=100, timestamp=ts, damage_types=damage_types))
         data_store.last_damage_timestamp = ts + timedelta(seconds=10)
 
         breakdown = data_store.get_dps_breakdown_by_type(
@@ -255,8 +271,11 @@ class TestDPSCalculations:
     def test_get_dps_breakdowns_by_type_bulk(self, data_store: DataStore) -> None:
         """Test bulk DPS breakdown retrieval for multiple characters."""
         ts = datetime.now()
-        data_store.update_dps_data("Woo", 100, ts, {"Fire": 60, "Physical": 40})
-        data_store.update_dps_data("Rogue", 50, ts, {"Cold": 50})
+        apply(
+            data_store,
+            dps_update(attacker="Woo", total_damage=100, timestamp=ts, damage_types={"Fire": 60, "Physical": 40}),
+            dps_update(attacker="Rogue", total_damage=50, timestamp=ts, damage_types={"Cold": 50}),
+        )
         data_store.last_damage_timestamp = ts + timedelta(seconds=10)
 
         breakdowns = data_store.get_dps_breakdowns_by_type(
@@ -274,7 +293,7 @@ class TestDPSCalculations:
     def test_get_dps_breakdowns_by_type_bulk_missing_character(self, data_store: DataStore) -> None:
         """Missing characters should return empty breakdown lists in bulk calls."""
         ts = datetime.now()
-        data_store.update_dps_data("Woo", 100, ts, {"Fire": 100})
+        apply(data_store, dps_update(attacker="Woo", total_damage=100, timestamp=ts, damage_types={"Fire": 100}))
         data_store.last_damage_timestamp = ts + timedelta(seconds=5)
 
         breakdowns = data_store.get_dps_breakdowns_by_type(
@@ -292,9 +311,12 @@ class TestTargetFiltering:
 
     def test_get_all_targets(self, data_store: DataStore) -> None:
         """Test getting all unique targets."""
-        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
-        data_store.insert_damage_event("Orc", "Cold", 0, 40, "Rogue")
-        data_store.insert_damage_event("Goblin", "Physical", 0, 30, "Woo")
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"),
+            damage_row(target="Orc", damage_type="Cold", total_damage=40, attacker="Rogue"),
+            damage_row(target="Goblin", damage_type="Physical", total_damage=30, attacker="Woo"),
+        )
 
         targets = data_store.get_all_targets()
 
@@ -304,8 +326,11 @@ class TestTargetFiltering:
 
     def test_get_target_stats(self, data_store: DataStore) -> None:
         """Test getting stats for a specific target."""
-        data_store.insert_damage_event("Goblin", "Fire", 10, 40, "Woo")
-        data_store.insert_damage_event("Goblin", "Physical", 5, 30, "Woo")
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", immunity_absorbed=10, total_damage=40, attacker="Woo"),
+            damage_row(target="Goblin", damage_type="Physical", immunity_absorbed=5, total_damage=30, attacker="Woo"),
+        )
 
         stats = data_store.get_target_stats("Goblin")
 
@@ -321,10 +346,13 @@ class TestTargetFiltering:
 
     def test_get_target_damage_type_summary_uses_indexed_values(self, data_store: DataStore) -> None:
         """Test combined target damage-type summaries from indexed store data."""
-        data_store.insert_damage_event("Goblin", "Fire", 0, 20, "Woo")
-        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
-        data_store.insert_damage_event("Goblin", "Cold", 0, 15, "Woo")
-        data_store.record_immunity("Goblin", "Fire", 10, 50)
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", total_damage=20, attacker="Woo"),
+            damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"),
+            damage_row(target="Goblin", damage_type="Cold", total_damage=15, attacker="Woo"),
+            immunity(target="Goblin", damage_type="Fire", immunity_points=10, damage_dealt=50),
+        )
 
         summary = data_store.get_target_damage_type_summary("Goblin")
 
@@ -346,9 +374,12 @@ class TestTargetFiltering:
         """Test getting DPS data filtered by target."""
         ts = datetime.now()
 
-        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo", ts)
-        data_store.insert_damage_event("Orc", "Cold", 0, 40, "Woo", ts)
-        data_store.insert_damage_event("Goblin", "Physical", 0, 30, "Rogue", ts)
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo", timestamp=ts),
+            damage_row(target="Orc", damage_type="Cold", total_damage=40, attacker="Woo", timestamp=ts),
+            damage_row(target="Goblin", damage_type="Physical", total_damage=30, attacker="Rogue", timestamp=ts),
+        )
 
         dps_list = data_store.get_dps_data_for_target(
             "Goblin", time_tracking_mode="per_character"
@@ -362,9 +393,12 @@ class TestTargetFiltering:
         """Test target-filtered breakdown uses aggregated attacker-target data."""
         ts = datetime.now()
 
-        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo", ts)
-        data_store.insert_damage_event("Goblin", "Physical", 0, 30, "Woo", ts)
-        data_store.insert_damage_event("Orc", "Cold", 0, 40, "Woo", ts)
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo", timestamp=ts),
+            damage_row(target="Goblin", damage_type="Physical", total_damage=30, attacker="Woo", timestamp=ts),
+            damage_row(target="Orc", damage_type="Cold", total_damage=40, attacker="Woo", timestamp=ts),
+        )
 
         breakdown = data_store.get_dps_breakdown_by_type_for_target(
             "Woo", "Goblin", time_tracking_mode="per_character"
@@ -378,9 +412,12 @@ class TestTargetFiltering:
     def test_get_dps_breakdowns_by_type_bulk_for_target(self, data_store: DataStore) -> None:
         """Test bulk target-filtered breakdown retrieval from cached summaries."""
         ts = datetime.now()
-        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo", ts)
-        data_store.insert_damage_event("Goblin", "Physical", 0, 30, "Woo", ts)
-        data_store.insert_damage_event("Goblin", "Cold", 0, 40, "Rogue", ts)
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo", timestamp=ts),
+            damage_row(target="Goblin", damage_type="Physical", total_damage=30, attacker="Woo", timestamp=ts),
+            damage_row(target="Goblin", damage_type="Cold", total_damage=40, attacker="Rogue", timestamp=ts),
+        )
 
         breakdowns = data_store.get_dps_breakdowns_by_type(
             ["Woo", "Rogue", "Mage"],
@@ -403,10 +440,13 @@ class TestAttackStats:
 
     def test_get_attack_stats(self, data_store: DataStore) -> None:
         """Test getting attack statistics for attacker vs target."""
-        data_store.insert_attack_event("Woo", "Goblin", "hit")
-        data_store.insert_attack_event("Woo", "Goblin", "hit")
-        data_store.insert_attack_event("Woo", "Goblin", "critical_hit")
-        data_store.insert_attack_event("Woo", "Goblin", "miss")
+        apply(
+            data_store,
+            attack(attacker="Woo", target="Goblin", outcome="hit"),
+            attack(attacker="Woo", target="Goblin", outcome="hit"),
+            attack(attacker="Woo", target="Goblin", outcome="critical_hit"),
+            attack(attacker="Woo", target="Goblin", outcome="miss"),
+        )
 
         stats = data_store.get_attack_stats("Woo", "Goblin")
 
@@ -424,13 +464,15 @@ class TestAttackStats:
 
     def test_get_hit_rate_per_character(self, data_store: DataStore) -> None:
         """Test getting hit rate for each character."""
-        data_store.insert_attack_event("Woo", "Goblin", "hit")
-        data_store.insert_attack_event("Woo", "Goblin", "hit")
-        data_store.insert_attack_event("Woo", "Goblin", "miss")
-
-        data_store.insert_attack_event("Rogue", "Orc", "hit")
-        data_store.insert_attack_event("Rogue", "Orc", "miss")
-        data_store.insert_attack_event("Rogue", "Orc", "miss")
+        apply(
+            data_store,
+            attack(attacker="Woo", target="Goblin", outcome="hit"),
+            attack(attacker="Woo", target="Goblin", outcome="hit"),
+            attack(attacker="Woo", target="Goblin", outcome="miss"),
+            attack(attacker="Rogue", target="Orc", outcome="hit"),
+            attack(attacker="Rogue", target="Orc", outcome="miss"),
+            attack(attacker="Rogue", target="Orc", outcome="miss"),
+        )
 
         hit_rates = data_store.get_hit_rate_per_character()
 
@@ -440,13 +482,14 @@ class TestAttackStats:
     def test_get_hit_rate_for_damage_dealers(self, data_store: DataStore) -> None:
         """Test getting hit rate only for characters who dealt damage."""
         # Character with damage and attacks
-        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
-        data_store.insert_attack_event("Woo", "Goblin", "hit")
-        data_store.insert_attack_event("Woo", "Goblin", "miss")
-
-        # Character with attacks but no damage
-        data_store.insert_attack_event("Rogue", "Orc", "hit")
-        data_store.insert_attack_event("Rogue", "Orc", "miss")
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"),
+            attack(attacker="Woo", target="Goblin", outcome="hit"),
+            attack(attacker="Woo", target="Goblin", outcome="miss"),
+            attack(attacker="Rogue", target="Orc", outcome="hit"),
+            attack(attacker="Rogue", target="Orc", outcome="miss"),
+        )
 
         hit_rates = data_store.get_hit_rate_for_damage_dealers()
 
@@ -459,7 +502,7 @@ class TestImmunityTracking:
 
     def test_record_immunity(self, data_store: DataStore) -> None:
         """Test recording immunity data."""
-        data_store.record_immunity("Goblin", "Fire", 10, 50)
+        apply(data_store, immunity(target="Goblin", damage_type="Fire", immunity_points=10, damage_dealt=50))
 
         immunity_info = data_store.get_immunity_for_target_and_type("Goblin", "Fire")
 
@@ -469,8 +512,11 @@ class TestImmunityTracking:
 
     def test_record_immunity_updates_maximum(self, data_store: DataStore) -> None:
         """Test that recording immunity keeps maximum values."""
-        data_store.record_immunity("Goblin", "Fire", 10, 50)
-        data_store.record_immunity("Goblin", "Fire", 15, 70)  # Higher
+        apply(
+            data_store,
+            immunity(target="Goblin", damage_type="Fire", immunity_points=10, damage_dealt=50),
+            immunity(target="Goblin", damage_type="Fire", immunity_points=15, damage_dealt=70),
+        )
 
         immunity_info = data_store.get_immunity_for_target_and_type("Goblin", "Fire")
 
@@ -487,7 +533,7 @@ class TestImmunityTracking:
         from skewing the calculation).
         """
         # First hit: 50 damage dealt, 10 absorbed (20% immunity)
-        data_store.record_immunity("Goblin", "Fire", 10, 50)
+        apply(data_store, immunity(target="Goblin", damage_type="Fire", immunity_points=10, damage_dealt=50))
 
         immunity_info = data_store.get_immunity_for_target_and_type("Goblin", "Fire")
         assert immunity_info["max_damage"] == 50
@@ -495,7 +541,7 @@ class TestImmunityTracking:
 
         # Second hit: 0 damage dealt, 50 absorbed (100% temporary immunity buff)
         # This should NOT update the record because damage_dealt is lower
-        data_store.record_immunity("Goblin", "Fire", 50, 0)
+        apply(data_store, immunity(target="Goblin", damage_type="Fire", immunity_points=50, damage_dealt=0))
 
         immunity_info = data_store.get_immunity_for_target_and_type("Goblin", "Fire")
         assert immunity_info["max_damage"] == 50  # Still 50, not 0
@@ -504,7 +550,7 @@ class TestImmunityTracking:
 
         # Third hit: 60 damage dealt, 12 absorbed (20% immunity)
         # This SHOULD update because damage_dealt is higher
-        data_store.record_immunity("Goblin", "Fire", 12, 60)
+        apply(data_store, immunity(target="Goblin", damage_type="Fire", immunity_points=12, damage_dealt=60))
 
         immunity_info = data_store.get_immunity_for_target_and_type("Goblin", "Fire")
         assert immunity_info["max_damage"] == 60  # Updated to 60
@@ -513,8 +559,11 @@ class TestImmunityTracking:
 
     def test_get_target_resists(self, data_store: DataStore) -> None:
         """Test getting all resist data for a target."""
-        data_store.record_immunity("Goblin", "Fire", 10, 50)
-        data_store.record_immunity("Goblin", "Cold", 5, 40)
+        apply(
+            data_store,
+            immunity(target="Goblin", damage_type="Fire", immunity_points=10, damage_dealt=50),
+            immunity(target="Goblin", damage_type="Cold", immunity_points=5, damage_dealt=40),
+        )
 
         resists = data_store.get_target_resists("Goblin")
 
@@ -552,12 +601,15 @@ class TestTargetSummary:
     def test_get_all_targets_summary(self, data_store: DataStore) -> None:
         """Test getting summary for all targets."""
         # Add some data
-        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
-        data_store.insert_damage_event("Orc", "Cold", 0, 40, "Rogue")
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"),
+            damage_row(target="Orc", damage_type="Cold", total_damage=40, attacker="Rogue"),
+        )
 
         # Add target stats directly to DataStore-owned structures
         data_store.record_target_attack_roll("Woo", "Goblin", "hit", 15, 5, 20)
-        data_store.record_target_save("Orc", "fort", 5)
+        apply(data_store, save(target="Orc", save_key="fort", bonus=5))
 
         summary = data_store.get_all_targets_summary()
 
@@ -569,10 +621,13 @@ class TestTargetSummary:
     def test_get_all_targets_summary_includes_damage_taken(self, data_store: DataStore) -> None:
         """Test that summary includes total damage taken by each target."""
         # Add multiple damage events against same target from different attackers
-        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
-        data_store.insert_damage_event("Goblin", "Cold", 0, 30, "Rogue")
-        data_store.insert_damage_event("Goblin", "Physical", 0, 20, "Woo")
-        data_store.insert_damage_event("Orc", "Fire", 0, 100, "Woo")
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"),
+            damage_row(target="Goblin", damage_type="Cold", total_damage=30, attacker="Rogue"),
+            damage_row(target="Goblin", damage_type="Physical", total_damage=20, attacker="Woo"),
+            damage_row(target="Orc", damage_type="Fire", total_damage=100, attacker="Woo"),
+        )
 
         summary = data_store.get_all_targets_summary()
 
@@ -588,10 +643,10 @@ class TestTargetSummary:
     def test_get_all_targets_summary_damage_taken_zero_when_no_damage(self, data_store: DataStore) -> None:
         """Test that damage_taken is 0 when target has no damage events."""
         # Insert an attack event but no damage event for target
-        data_store.insert_attack_event("Woo", "Goblin", "miss")
+        apply(data_store, attack(attacker="Woo", target="Goblin", outcome="miss"))
 
         # Manually add target via damage event with 0 damage to get it in the list
-        data_store.insert_damage_event("Goblin", "Physical", 0, 0, "Woo")
+        apply(data_store, damage_row(target="Goblin", damage_type="Physical", total_damage=0, attacker="Woo"))
 
         summary = data_store.get_all_targets_summary()
 
@@ -600,12 +655,15 @@ class TestTargetSummary:
 
     def test_get_all_targets_summary_uses_datastore_owned_ac_ab_save(self, data_store: DataStore) -> None:
         """Test summary values are sourced from DataStore target stat state."""
-        data_store.insert_damage_event("Goblin", "Physical", 0, 10, "Woo")
+        apply(data_store, damage_row(target="Goblin", damage_type="Physical", total_damage=10, attacker="Woo"))
         data_store.record_target_attack_roll("Goblin", "Woo", "hit", 14, 8, 22)
         data_store.record_target_attack_roll("Woo", "Goblin", "miss", 10, 20, 30)
         data_store.record_target_attack_roll("Woo", "Goblin", "hit", 11, 20, 31)
-        data_store.mark_target_epic_dodge("Goblin")
-        data_store.record_target_save("Goblin", "fort", 5)
+        apply(
+            data_store,
+            epic_dodge(target="Goblin"),
+            save(target="Goblin", save_key="fort", bonus=5),
+        )
 
         summary = data_store.get_all_targets_summary()
         goblin_summary = next(s for s in summary if s["target"] == "Goblin")
@@ -616,7 +674,7 @@ class TestTargetSummary:
 
     def test_concealment_miss_does_not_affect_ac_estimate(self, data_store: DataStore) -> None:
         """Test concealment misses are excluded from AC inference in DataStore."""
-        data_store.insert_damage_event("Boss", "Physical", 0, 1, "Woo")
+        apply(data_store, damage_row(target="Boss", damage_type="Physical", total_damage=1, attacker="Woo"))
         data_store.record_target_attack_roll("Woo", "Boss", "hit", 11, 20, 31)
         data_store.record_target_attack_roll(
             "Woo",
@@ -640,7 +698,7 @@ class TestThreadSafety:
         """Test thread-safe damage event insertion."""
         def insert_events():
             for i in range(100):
-                data_store.insert_damage_event(f"Target{i}", "Fire", 0, 50, "Woo")
+                apply(data_store, damage_row(target=f"Target{i}", damage_type="Fire", total_damage=50, attacker="Woo"))
 
         threads = [Thread(target=insert_events) for _ in range(5)]
         for t in threads:
@@ -655,7 +713,7 @@ class TestThreadSafety:
         def update_dps():
             ts = datetime.now()
             for i in range(50):
-                data_store.update_dps_data("Woo", 10, ts)
+                apply(data_store, dps_update(attacker="Woo", total_damage=10, timestamp=ts))
 
         threads = [Thread(target=update_dps) for _ in range(5)]
         for t in threads:
@@ -672,10 +730,14 @@ class TestClearData:
     def test_clear_all_data(self, data_store: DataStore) -> None:
         """Test clearing all data from store."""
         # Add various data
-        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
-        data_store.insert_attack_event("Woo", "Goblin", "hit")
-        data_store.update_dps_data("Woo", 100, datetime.now())
-        data_store.record_immunity("Goblin", "Fire", 10, 50)
+        now = datetime.now()
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"),
+            attack(attacker="Woo", target="Goblin", outcome="hit"),
+            dps_update(attacker="Woo", total_damage=100, timestamp=now),
+            immunity(target="Goblin", damage_type="Fire", immunity_points=10, damage_dealt=50),
+        )
 
         # Clear
         data_store.clear_all_data()
@@ -694,9 +756,12 @@ class TestUtilityMethods:
 
     def test_get_all_damage_types(self, data_store: DataStore) -> None:
         """Test getting all unique damage types."""
-        data_store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
-        data_store.insert_damage_event("Orc", "Cold", 0, 40, "Rogue")
-        data_store.insert_damage_event("Dragon", "Fire", 0, 100, "Mage")
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"),
+            damage_row(target="Orc", damage_type="Cold", total_damage=40, attacker="Rogue"),
+            damage_row(target="Dragon", damage_type="Fire", total_damage=100, attacker="Mage"),
+        )
 
         damage_types = data_store.get_all_damage_types()
 

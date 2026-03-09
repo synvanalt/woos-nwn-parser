@@ -18,6 +18,7 @@ from app.utils import (
 )
 from app.parser import LogParser
 from app.storage import DataStore
+from tests.helpers.store_mutations import apply, damage_row
 
 
 class TestComputeDmgReduced:
@@ -170,7 +171,7 @@ class TestParseAndImportFile:
         database = DataStore()
 
         # Add some data
-        database.insert_damage_event("OldTarget", "Fire", 0, 50, "OldAttacker")
+        apply(database, damage_row(target="OldTarget", damage_type="Fire", total_damage=50, attacker="OldAttacker"))
 
         # Clear data before parsing (caller's responsibility)
         database.clear_all_data()

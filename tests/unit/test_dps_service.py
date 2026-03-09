@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 from app.services.dps_service import DPSCalculationService
 from app.storage import DataStore
+from tests.helpers.store_mutations import apply, dps_update
 
 
 class TestDPSCalculationService(unittest.TestCase):
@@ -214,8 +215,11 @@ class TestDPSCalculationServiceIntegration(unittest.TestCase):
         now = datetime.now()
 
         # Insert some test data
-        self.data_store.update_dps_data('Rogue1', 100, now, {'Piercing': 100})
-        self.data_store.update_dps_data('Mage1', 150, now + timedelta(seconds=10), {'Fire': 150})
+        apply(
+            self.data_store,
+            dps_update(attacker='Rogue1', total_damage=100, timestamp=now, damage_types={'Piercing': 100}),
+            dps_update(attacker='Mage1', total_damage=150, timestamp=now + timedelta(seconds=10), damage_types={'Fire': 150}),
+        )
 
         # Test per_character mode
         self.service.set_time_tracking_mode('per_character')

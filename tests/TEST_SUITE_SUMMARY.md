@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 9, 2026 (Parser malformed-timestamp and concealment fallback coverage update)
+**Last Updated:** March 9, 2026 (Public-first `DataStore` test migration and shared mutation helper update)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **570 tests collected**
+- Result: **572 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 34 modules, 521 tests
+- `tests/unit/`: 34 modules, 523 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 42 test modules, 570 tests
+- Total: 42 test modules, 572 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -29,7 +29,7 @@ Notes:
 - `test_parser.py` (72)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
-- `test_storage.py` (45)
+- `test_storage.py` (47)
 - `test_storage_indices.py` (21)
 - `test_utils.py` (37)
 - `test_monitor.py` (19)
@@ -78,8 +78,10 @@ Notes:
   - Includes malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, and malformed target-concealed fast-path fallback coverage
 - Storage and indexing performance behavior:
   - `test_storage.py`, `test_storage_indices.py`
+  - Direct store setup now uses the real public batch API (`DataStore.apply_mutations(...)`) instead of legacy per-write helper methods
 - Queue processor logic and batching:
   - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`
+  - Queue/import tests validate the public-first mutation payload flow used by production ingestion
 - Release/version automation:
   - `test_bump_version_script.py`
 - Monitor behavior (rotation/truncation/debug):
@@ -115,6 +117,16 @@ Current shared fixtures include:
 - `real_combat_log2` -> `tests/fixtures/real_deadwyrm_offhand_crit_mix.txt`
 - `real_combat_log3` -> `tests/fixtures/real_tod_risen_save_dense.txt`
 - `synthetic_combat_log` -> `tests/fixtures/synthetic_parser_variety_matrix.txt`
+
+Notes:
+- `tests/conftest.py` no longer monkeypatches removed legacy `DataStore` write methods for tests.
+- `temp_log_dir` now uses repo-local per-test directories under `.pytest_tmp` for more reliable file-based tests on Windows in this workspace.
+
+## Shared Test Helpers
+
+- `tests/helpers/store_mutations.py`
+  - Provides shared builders for the public-first storage API, including `apply(...)`, `damage_row(...)`, `dps_update(...)`, `damage_dealt(...)`, `attack(...)`, `immunity(...)`, `save(...)`, and `epic_dodge(...)`.
+  - Used by storage, panel, DPS service, and import-related tests to keep setup aligned with production mutation batching.
 
 ## Fixture Files (`tests/fixtures`)
 

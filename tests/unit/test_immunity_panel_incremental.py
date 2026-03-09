@@ -6,6 +6,7 @@ from tkinter import ttk
 from app.parser import LogParser
 from app.storage import DataStore
 from app.ui.widgets.immunity_panel import ImmunityPanel
+from tests.helpers.store_mutations import apply, damage_row
 
 
 @pytest.fixture
@@ -26,7 +27,7 @@ class TestImmunityPanelIncrementalRefresh:
 
     def test_refresh_populates_cache(self, immunity_panel) -> None:
         panel, store, _ = immunity_panel
-        store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
+        apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
 
         panel.refresh_target_details("Goblin")
 
@@ -36,13 +37,13 @@ class TestImmunityPanelIncrementalRefresh:
 
     def test_incremental_refresh_updates_existing_row(self, immunity_panel) -> None:
         panel, store, _ = immunity_panel
-        store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
+        apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
         panel.refresh_target_details("Goblin")
 
         item_id = panel._item_ids["Fire"]
         before = panel.tree.item(item_id, "values")
 
-        store.insert_damage_event("Goblin", "Fire", 0, 75, "Woo")
+        apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=75, attacker="Woo"))
         panel.refresh_target_details("Goblin")
 
         after = panel.tree.item(item_id, "values")
@@ -51,12 +52,12 @@ class TestImmunityPanelIncrementalRefresh:
 
     def test_full_refresh_when_damage_type_set_changes(self, immunity_panel) -> None:
         panel, store, _ = immunity_panel
-        store.insert_damage_event("Goblin", "Fire", 0, 50, "Woo")
+        apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
         panel.refresh_target_details("Goblin")
 
         initial_item_id = panel._item_ids["Fire"]
 
-        store.insert_damage_event("Goblin", "Cold", 0, 20, "Woo")
+        apply(store, damage_row(target="Goblin", damage_type="Cold", total_damage=20, attacker="Woo"))
         panel.refresh_target_details("Goblin")
 
         assert "Cold" in panel._item_ids
