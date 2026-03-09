@@ -8,6 +8,7 @@ import queue
 import threading
 import multiprocessing as mp
 import time
+from time import perf_counter
 from collections import deque
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -19,7 +20,7 @@ from ..parser import LogParser
 from ..storage import DataStore
 from ..monitor import LogDirectoryMonitor
 from ..settings import AppSettings, load_app_settings, save_app_settings
-from ..utils import import_worker_process
+from ..utils import IMPORT_RESULT_QUEUE_MAXSIZE, import_worker_process
 from ..services import QueueProcessor, DPSCalculationService
 from .formatters import get_default_log_directory
 from .window_style import apply_dark_title_bar
@@ -349,7 +350,7 @@ class WoosNwnParserApp:
         file_paths = [str(path) for path in selected_files]
         ctx = mp.get_context("spawn")
         self.import_abort_flag = ctx.Event()
-        self.import_result_queue = ctx.Queue()
+        self.import_result_queue = ctx.Queue(maxsize=IMPORT_RESULT_QUEUE_MAXSIZE)
         self.import_process = ctx.Process(
             target=import_worker_process,
             args=(
@@ -413,8 +414,9 @@ class WoosNwnParserApp:
 
     def _apply_pending_payloads_incremental(self) -> None:
         """Apply completed-file payloads in small slices on the Tk thread."""
-        budget = 500
-        while budget > 0 and self._pending_file_payloads:
+        budget_ms = 4.0
+        deadline = perf_counter() + (budget_ms / 1000.0)
+        while perf_counter() < deadline and self._pending_file_payloads:
             item = self._pending_file_payloads[0]
             ops = item['ops']
             progress = item['progress']
@@ -427,7 +429,6 @@ class WoosNwnParserApp:
                     attacker, total_damage, timestamp, damage_types = dps[idx]
                     self.data_store.update_dps_data(attacker, total_damage, timestamp, damage_types)
                     progress['idx'] += 1
-                    budget -= 1
                     continue
                 progress['stage'] = 'damage'
                 progress['idx'] = 0
@@ -439,7 +440,6 @@ class WoosNwnParserApp:
                     target, damage_type, immunity, total_damage, attacker, timestamp = damage_events[idx]
                     self.data_store.insert_damage_event(target, damage_type, immunity, total_damage, attacker, timestamp)
                     progress['idx'] += 1
-                    budget -= 1
                     continue
                 progress['stage'] = 'immunity'
                 progress['idx'] = 0
@@ -451,7 +451,6 @@ class WoosNwnParserApp:
                     target, damage_type, immunity_points, damage_amount = immunities[idx]
                     self.data_store.record_immunity(target, damage_type, immunity_points, damage_amount)
                     progress['idx'] += 1
-                    budget -= 1
                     continue
                 progress['stage'] = 'attack'
                 progress['idx'] = 0
@@ -473,7 +472,6 @@ class WoosNwnParserApp:
                         is_concealment=is_concealment,
                     )
                     progress['idx'] += 1
-                    budget -= 1
                     continue
                 progress['stage'] = 'save'
                 progress['idx'] = 0
@@ -486,7 +484,6 @@ class WoosNwnParserApp:
                     if target and save_type and bonus is not None:
                         self.data_store.record_target_save(target, save_type, bonus)
                     progress['idx'] += 1
-                    budget -= 1
                     continue
                 progress['stage'] = 'epic_dodge'
                 progress['idx'] = 0
@@ -499,7 +496,6 @@ class WoosNwnParserApp:
                     if target:
                         self.data_store.mark_target_epic_dodge(target)
                     progress['idx'] += 1
-                    budget -= 1
                     continue
                 progress['stage'] = 'death_snippet'
                 progress['idx'] = 0
@@ -511,7 +507,6 @@ class WoosNwnParserApp:
                     event = death_snippets[idx]
                     self.death_snippet_panel.add_death_event(event)
                     progress['idx'] += 1
-                    budget -= 1
                     continue
                 progress['stage'] = 'done'
                 progress['idx'] = 0
@@ -519,7 +514,6 @@ class WoosNwnParserApp:
 
             if stage == 'done':
                 self._pending_file_payloads.popleft()
-                budget -= 1
                 continue
 
         if self._pending_file_payloads:

@@ -41,6 +41,12 @@ def _make_app_shell() -> WoosNwnParserApp:
     return app
 
 
+def _patch_perf_counter(monkeypatch, values: list[float]) -> None:
+    """Patch main-window perf_counter to return deterministic values."""
+    ticks = iter(values)
+    monkeypatch.setattr(main_window_module, "perf_counter", lambda: next(ticks))
+
+
 class TestLoadAndParseWorkflow:
     """Test suite for selected-file load and parse controls."""
 
@@ -225,6 +231,105 @@ class TestLoadAndParseWorkflow:
 
         app.death_snippet_panel.add_death_event.assert_called_once()
 
+    def test_apply_pending_payloads_incremental_spans_ticks_and_drains(self, monkeypatch) -> None:
+        app = _make_app_shell()
+        app.root = Mock()
+        app.root.after = Mock()
+        app.data_store = Mock()
+        app.death_snippet_panel = Mock()
+        app._is_applying_payload = True
+        app._pending_file_payloads.append({
+            "ops": {
+                "dps_updates": [("Orc", 10, 1.0, {"slashing": 10})],
+            },
+            "index": 1,
+            "progress": {"stage": "dps", "idx": 0},
+        })
+
+        # Tick 1: process one operation then run out of time.
+        _patch_perf_counter(monkeypatch, [0.0, 0.0, 0.005])
+        app._apply_pending_payloads_incremental()
+
+        assert len(app._pending_file_payloads) == 1
+        assert app._pending_file_payloads[0]["progress"] == {"stage": "dps", "idx": 1}
+        assert app._is_applying_payload is True
+        app.root.after.assert_called_once_with(1, app._apply_pending_payloads_incremental)
+
+        # Tick 2: finish all remaining stages and drain queue.
+        _patch_perf_counter(monkeypatch, [1.0] * 20)
+        app._apply_pending_payloads_incremental()
+
+        assert len(app._pending_file_payloads) == 0
+        assert app._is_applying_payload is False
+        assert app.root.after.call_count == 1
+
+    def test_is_applying_payload_lifecycle_tracks_queue_drain(self, monkeypatch) -> None:
+        app = _make_app_shell()
+        app.root = Mock()
+        app.root.after = Mock()
+        app.data_store = Mock()
+        app.death_snippet_panel = Mock()
+        app._is_applying_payload = True
+        app._pending_file_payloads.append({
+            "ops": {
+                "save_events": [("Goblin", "fort", 4)],
+                "death_snippets": [],
+            },
+            "index": 1,
+            "progress": {"stage": "save", "idx": 0},
+        })
+
+        _patch_perf_counter(monkeypatch, [0.0, 0.0, 0.01])
+        app._apply_pending_payloads_incremental()
+        assert app._is_applying_payload is True
+        assert len(app._pending_file_payloads) == 1
+
+        _patch_perf_counter(monkeypatch, [1.0, 1.0, 1.001, 1.002, 1.003, 1.004])
+        app._apply_pending_payloads_incremental()
+        assert app._is_applying_payload is False
+        assert len(app._pending_file_payloads) == 0
+
+    def test_poll_import_progress_waits_for_streaming_apply_before_finalize(self, monkeypatch) -> None:
+        app = _make_app_shell()
+        app.root = Mock()
+        app.root.after = Mock(return_value="poll-next")
+        app._poll_import_progress = WoosNwnParserApp._poll_import_progress.__get__(app, WoosNwnParserApp)
+        app.is_importing = True
+        app.import_result_queue = queue.Queue()
+        app._finalize_import = Mock()
+        app.data_store = Mock()
+        app.death_snippet_panel = Mock()
+        app._import_status = {
+            "files_completed": 0,
+            "total_files": 1,
+            "current_file": "alpha.txt",
+            "errors": [],
+            "aborted": False,
+            "success": False,
+            "worker_done": False,
+        }
+        app.import_result_queue.put({
+            "event": "ops_chunk",
+            "index": 1,
+            "ops": {
+                "dps_updates": [("Orc", 10, 1.0, {"slashing": 10})],
+            },
+        })
+        app.import_result_queue.put({"event": "file_completed", "index": 1, "file_name": "alpha.txt"})
+        app.import_result_queue.put({"event": "done"})
+
+        app._poll_import_progress()
+
+        assert app._is_applying_payload is True
+        app.root.after.assert_called()
+        app._finalize_import.assert_not_called()
+
+        _patch_perf_counter(monkeypatch, [0.0] * 30)
+        app._apply_pending_payloads_incremental()
+
+        app._poll_import_progress()
+        app._finalize_import.assert_called_once()
+
     def test_on_death_character_identified_sets_panel_character(self) -> None:
         app = _make_app_shell()
         app.death_snippet_panel = Mock()
@@ -299,7 +404,8 @@ class TestLoadAndParseWorkflow:
             def Event(self):
                 return self.event
 
-            def Queue(self):
+            def Queue(self, maxsize=0):
+                self.queue_maxsize = maxsize
                 return self.queue
 
             def Process(self, target, args, daemon):
@@ -316,5 +422,6 @@ class TestLoadAndParseWorkflow:
         assert app.import_process is fake_ctx.process
         assert fake_ctx.process is not None
         assert fake_ctx.process.started is True
+        assert fake_ctx.queue_maxsize == main_window_module.IMPORT_RESULT_QUEUE_MAXSIZE
         assert fake_ctx.process.args[4] == "Woo Wildrock"
         assert fake_ctx.process.args[5] == "Custom fallback"

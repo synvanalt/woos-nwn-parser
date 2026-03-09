@@ -4,9 +4,13 @@
 
 ### Changed
 - Improved long-session responsiveness while keeping combat totals accurate across the session
+- Combat event history now auto-limits in long sessions to keep memory use and responsiveness stable (oldest raw entries are removed first while summaries and totals stay intact)
 - DPS damage-type breakdown updates are more efficient during active fights and target filtering
 - Death snippet lookup on large logs is more efficient during backward scans
 - `Load & Parse` import now checks abort requests more frequently and reports progress in steady intervals
+- `Load & Parse` now applies large import batches in shorter UI time slices to reduce visible stutter during big imports
+- `Load & Parse` import now uses safer queue flow control between background worker and UI to prevent excessive memory growth during very large imports
+- Aborting `Load & Parse` now exits more reliably even under heavy import load
 
 ### Fixed
 - Fixed stale DataStore index retention that could cause avoidable long-session slowdowns

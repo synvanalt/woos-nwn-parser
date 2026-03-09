@@ -375,3 +375,25 @@ class TestIndexPerformance:
         target_stats = store.get_target_stats("Goblin")
         assert target_stats == (5, 50, 0)
 
+    def test_raw_histories_evict_oldest_and_preserve_read_semantics(self) -> None:
+        """Bounded histories should evict oldest entries while supporting len/iteration/index."""
+        store = DataStore(max_events_history=2, max_attacks_history=2)
+        now = datetime.now()
+
+        store.insert_damage_event("T1", "Physical", 0, 10, "Woo", now)
+        store.insert_damage_event("T2", "Physical", 0, 10, "Woo", now + timedelta(seconds=1))
+        store.insert_damage_event("T3", "Physical", 0, 10, "Woo", now + timedelta(seconds=2))
+
+        store.insert_attack_event("Woo", "A1", "hit")
+        store.insert_attack_event("Woo", "A2", "miss")
+        store.insert_attack_event("Woo", "A3", "critical_hit")
+
+        assert len(store.events) == 2
+        assert len(store.attacks) == 2
+
+        # First retained row should be the second inserted one after overflow.
+        assert store.events[0].target == "T2"
+        assert [event.target for event in store.events] == ["T2", "T3"]
+        assert store.attacks[0].target == "A2"
+        assert [attack.target for attack in store.attacks] == ["A2", "A3"]
+

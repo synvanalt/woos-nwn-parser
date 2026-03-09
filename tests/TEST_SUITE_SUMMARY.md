@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 9, 2026 (First Timestamp refresh regression tests)
+**Last Updated:** March 9, 2026 (Import IPC backpressure worker coverage update)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **560 tests collected**
+- Result: **566 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 34 modules, 511 tests
+- `tests/unit/`: 34 modules, 517 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 42 test modules, 560 tests
+- Total: 42 test modules, 566 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -30,7 +30,7 @@ Notes:
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
 - `test_storage.py` (45)
-- `test_storage_indices.py` (20)
+- `test_storage_indices.py` (21)
 - `test_utils.py` (37)
 - `test_monitor.py` (19)
 - `test_monitor_debug_mode.py` (9)
@@ -48,7 +48,7 @@ Notes:
 - `test_ui_optimizations.py` (18)
 - `test_death_snippet_panel.py` (24)
 - `test_debug_console_panel.py` (6)
-- `test_main_window_load_parse.py` (13)
+- `test_main_window_load_parse.py` (16)
 - `test_settings.py` (5)
 - `test_main_window_monitoring_switch.py` (5)
 - `test_main_window_debug_tab_unlock.py` (5)
@@ -57,7 +57,7 @@ Notes:
 - `test_queue_processor_resilience.py` (5)
 - `test_sorted_treeview_edge_cases.py` (7)
 - `test_storage_edge_branches.py` (8)
-- `test_utils_worker_pipeline.py` (7)
+- `test_utils_worker_pipeline.py` (9)
 
 ### Integration (`tests/integration`)
 - `test_parser_storage_integration.py` (13)
@@ -91,6 +91,7 @@ Notes:
   - `test_settings.py`
 - Import/worker pipeline behavior:
   - `test_utils.py`, `test_utils_worker_pipeline.py`
+  - Includes streaming chunk payload integrity and queue-full abort responsiveness coverage
 - Full-session/e2e behavior:
   - `test_e2e_combat_session.py`
 
