@@ -5,8 +5,9 @@ using Python dataclasses instead of a database, providing session-only storage.
 """
 
 import threading
+from collections import deque
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 
 from .models import AttackEvent, DamageEvent, EnemyAC, EnemySaves, TargetAttackBonus
 
@@ -24,11 +25,11 @@ class DataStore:
         max_attacks_history: int = 200000,
     ) -> None:
         """Initialize the data store."""
-        self.events: List[DamageEvent] = []
-        self.attacks: List[AttackEvent] = []
-        self.lock = threading.RLock()
         self.max_events_history = max(1, int(max_events_history))
         self.max_attacks_history = max(1, int(max_attacks_history))
+        self.events: Deque[DamageEvent] = deque(maxlen=self.max_events_history)
+        self.attacks: Deque[AttackEvent] = deque(maxlen=self.max_attacks_history)
+        self.lock = threading.RLock()
         # Version counter for change detection (incremented on data modifications)
         self._version: int = 0
         # DPS tracking: character_name -> {'damage': total, 'first_timestamp': datetime, 'last_timestamp': datetime, 'damage_by_type': {type: amount}}
@@ -61,18 +62,6 @@ class DataStore:
         self._target_ac_by_name: Dict[str, EnemyAC] = {}
         self._target_saves_by_name: Dict[str, EnemySaves] = {}
         self._target_attack_bonus_by_name: Dict[str, TargetAttackBonus] = {}
-
-    def _trim_damage_history(self) -> None:
-        """Bound retained raw damage-event history."""
-        overflow = len(self.events) - self.max_events_history
-        if overflow > 0:
-            del self.events[:overflow]
-
-    def _trim_attack_history(self) -> None:
-        """Bound retained raw attack-event history."""
-        overflow = len(self.attacks) - self.max_attacks_history
-        if overflow > 0:
-            del self.attacks[:overflow]
 
     @property
     def version(self) -> int:
@@ -114,7 +103,6 @@ class DataStore:
                 total=total
             )
             self.attacks.append(event)
-            self._trim_attack_history()
             key = (attacker, target)
             if attacker not in self._attack_stats_by_attacker:
                 self._attack_stats_by_attacker[attacker] = {'hits': 0, 'crits': 0, 'misses': 0}
@@ -207,7 +195,6 @@ class DataStore:
                 timestamp=timestamp
             )
             self.events.append(event)
-            self._trim_damage_history()
             self._all_damage_types_cache.add(damage_type)
             # Update targets cache (O(1) set add)
             self._targets_cache.add(target)

@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 9, 2026 (Import apply-loop time-slicing coverage update)
+**Last Updated:** March 9, 2026 (DataStore bounded-history retention coverage update)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **563 tests collected**
+- Result: **564 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 34 modules, 514 tests
+- `tests/unit/`: 34 modules, 515 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 42 test modules, 563 tests
+- Total: 42 test modules, 564 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -30,7 +30,7 @@ Notes:
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
 - `test_storage.py` (45)
-- `test_storage_indices.py` (20)
+- `test_storage_indices.py` (21)
 - `test_utils.py` (37)
 - `test_monitor.py` (19)
 - `test_monitor_debug_mode.py` (9)
