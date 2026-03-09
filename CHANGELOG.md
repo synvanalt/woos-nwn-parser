@@ -11,7 +11,9 @@
 - `Load & Parse` import now checks abort requests more frequently and reports progress in steady intervals
 - `Load & Parse` now applies large import batches in shorter UI time slices to reduce visible stutter during big imports
 - `Load & Parse` import now uses safer queue flow control between background worker and UI to prevent excessive memory growth during very large imports
+- `Load & Parse` and live monitoring now handle large batches of combat events more smoothly, reducing stutter during heavy activity
 - Aborting `Load & Parse` now exits more reliably even under heavy import load
+- Target lists and target summaries now refresh more efficiently in large encounters
 
 ### Fixed
 - Fixed stale DataStore index retention that could cause avoidable long-session slowdowns
