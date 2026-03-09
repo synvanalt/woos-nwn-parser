@@ -208,6 +208,22 @@ class TestSortedTreeviewOptimization:
 
         assert call_count[0] == 1  # Should have called sort_column
 
+    def test_apply_current_sort_skips_scan_when_order_is_authoritative(self, tree, monkeypatch):
+        """Authoritative callers should bypass the pre-sort scan entirely."""
+        tree.insert("", "end", values=("Item1", "300"))
+        tree.insert("", "end", values=("Item2", "200"))
+
+        scan_called = [0]
+
+        def fail_if_called():
+            scan_called[0] += 1
+            raise AssertionError("_is_already_sorted should not run")
+
+        monkeypatch.setattr(tree, "_is_already_sorted", fail_if_called)
+        tree.apply_current_sort(authoritative_order=True)
+
+        assert scan_called[0] == 0
+
 
 @pytest.mark.skipif(not _TK_AVAILABLE, reason="Tkinter display not available")
 class TestBatchVisualUpdates:

@@ -11,6 +11,7 @@ from unittest.mock import Mock
 from app.ui.widgets.dps_panel import DPSPanel
 from app.storage import DataStore
 from app.services.dps_service import DPSCalculationService
+from tests.helpers.store_mutations import apply, attack
 
 
 @pytest.fixture
@@ -265,6 +266,10 @@ class TestIncrementalRefresh:
         dps_panel._cached_breakdown['Woo'] = []
         dps_panel._item_ids['Woo'] = 'item1'
         dps_panel._child_ids['Woo'] = {}
+        dps_panel._cached_row_tokens['Woo'] = (50.0, 500, 75.0, 10)
+        dps_panel._cached_breakdown_tokens['Woo'] = (('Physical', 500),)
+        dps_panel._cached_order_token = ('Woo',)
+        dps_panel._last_refresh_version = 3
 
         # Clear cache
         dps_panel.clear_cache()
@@ -274,6 +279,10 @@ class TestIncrementalRefresh:
         assert len(dps_panel._cached_breakdown) == 0
         assert len(dps_panel._item_ids) == 0
         assert len(dps_panel._child_ids) == 0
+        assert len(dps_panel._cached_row_tokens) == 0
+        assert len(dps_panel._cached_breakdown_tokens) == 0
+        assert dps_panel._cached_order_token == ()
+        assert dps_panel._last_refresh_version == -1
 
     def test_incremental_refresh_no_changes(self, dps_panel) -> None:
         """Test that no updates occur when data hasn't changed."""
@@ -293,12 +302,14 @@ class TestIncrementalRefresh:
         # First refresh
         dps_panel.refresh()
         cache_snapshot = dps_panel._cached_data.copy()
+        dps_panel.dps_service.get_damage_type_breakdowns.reset_mock()
 
         # Second refresh with same data
         dps_panel.refresh()
 
         # Cache should be identical (data not changed)
         assert dps_panel._cached_data == cache_snapshot
+        dps_panel.dps_service.get_damage_type_breakdowns.assert_not_called()
 
     def test_incremental_refresh_skips_breakdown_fetch_for_unchanged_character(self, dps_panel) -> None:
         """Unchanged characters should reuse cached breakdowns."""
@@ -323,6 +334,96 @@ class TestIncrementalRefresh:
         dps_panel.refresh()
 
         dps_panel.dps_service.get_damage_type_breakdowns.assert_not_called()
+
+    def test_refresh_skips_unchanged_view_after_unrelated_store_change(self, dps_panel) -> None:
+        """Store version bumps with identical DPS view should not rebuild caches."""
+        data = [{
+            'character': 'Woo',
+            'total_damage': 500,
+            'time_seconds': 10,
+            'dps': 50.0,
+            'hit_rate': 75.0,
+            'breakdown_token': (('Physical', 500),),
+        }]
+
+        dps_panel.dps_service.get_dps_display_data = Mock(return_value=data)
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={
+            'Woo': [{'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}]
+        })
+
+        dps_panel.refresh()
+        cached_snapshot = dict(dps_panel._cached_data)
+        item_id = dps_panel._item_ids['Woo']
+
+        apply(dps_panel.data_store, attack(attacker="Ally", target="Goblin", outcome="miss"))
+
+        dps_panel.dps_service.get_damage_type_breakdowns.reset_mock()
+        dps_panel.refresh()
+
+        assert dps_panel._cached_data == cached_snapshot
+        assert dps_panel._item_ids['Woo'] == item_id
+        dps_panel.dps_service.get_damage_type_breakdowns.assert_not_called()
+
+    def test_incremental_refresh_reorders_natural_dps_order_without_rebuild(self, dps_panel) -> None:
+        """Natural DPS ordering should move existing rows instead of rebuilding them."""
+        initial_data = [
+            {
+                'character': 'Woo',
+                'total_damage': 500,
+                'time_seconds': 10,
+                'dps': 50.0,
+                'hit_rate': 75.0,
+                'breakdown_token': (('Physical', 500),),
+            },
+            {
+                'character': 'Ally',
+                'total_damage': 300,
+                'time_seconds': 10,
+                'dps': 30.0,
+                'hit_rate': 80.0,
+                'breakdown_token': (('Fire', 300),),
+            },
+        ]
+
+        dps_panel.dps_service.get_dps_display_data = Mock(return_value=initial_data)
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={
+            'Woo': [{'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}],
+            'Ally': [{'damage_type': 'Fire', 'total_damage': 300, 'dps': 30.0}],
+        })
+        dps_panel.refresh()
+        initial_item_ids = dict(dps_panel._item_ids)
+
+        reordered_data = [
+            {
+                'character': 'Ally',
+                'total_damage': 600,
+                'time_seconds': 10,
+                'dps': 60.0,
+                'hit_rate': 80.0,
+                'breakdown_token': (('Fire', 600),),
+            },
+            {
+                'character': 'Woo',
+                'total_damage': 500,
+                'time_seconds': 10,
+                'dps': 50.0,
+                'hit_rate': 75.0,
+                'breakdown_token': (('Physical', 500),),
+            },
+        ]
+
+        dps_panel.dps_service.get_dps_display_data = Mock(return_value=reordered_data)
+        dps_panel.dps_service.get_damage_type_breakdowns = Mock(return_value={
+            'Ally': [{'damage_type': 'Fire', 'total_damage': 600, 'dps': 60.0}],
+        })
+        dps_panel.refresh()
+
+        ordered_names = [
+            dps_panel.tree.item(item_id, "values")[0]
+            for item_id in dps_panel.tree.get_children()
+        ]
+        assert ordered_names == ["Ally", "Woo"]
+        assert dps_panel._item_ids == initial_item_ids
 
     def test_refresh_rebuilds_when_view_key_changes(self, dps_panel) -> None:
         """Changing target filter or mode should force a safe full refresh."""

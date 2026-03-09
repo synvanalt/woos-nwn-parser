@@ -167,14 +167,21 @@ class SortedTreeview(ttk.Treeview):
         # Show the visual indicator immediately
         self._update_headings(col, reverse)
 
-    def apply_current_sort(self) -> None:
+    def apply_current_sort(self, authoritative_order: bool = False) -> None:
         """Reapply the current sort after data has been updated.
 
         Call this after inserting/updating items to maintain sort order.
         Only sorts if a column has been previously sorted by the user.
         Optimized to skip sorting if data is already in correct order.
+
+        Args:
+            authoritative_order: If True, trust the caller's current item order
+                and skip the pre-sort scan entirely.
         """
         if not self._last_sorted_col:
+            return
+
+        if authoritative_order:
             return
 
         # Check if data is already in correct order (skip sorting if so)
