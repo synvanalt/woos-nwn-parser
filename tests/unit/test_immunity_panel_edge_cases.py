@@ -35,6 +35,10 @@ def test_clear_cache_resets_internal_structures(immunity_panel_ctx) -> None:
     panel._cached_target = "Goblin"
     panel._cached_rows = {"Fire": ("Fire", "10", "5", "50%", "1")}
     panel._item_ids = {"Fire": "iid1"}
+    panel._cached_row_tokens = {"Fire": ("Fire", "10", "5", "50%", "1")}
+    panel._cached_order_token = ("Fire",)
+    panel._cached_view_key = ("Goblin", False)
+    panel._last_refresh_version = 3
 
     panel.clear_cache()
 
@@ -42,6 +46,10 @@ def test_clear_cache_resets_internal_structures(immunity_panel_ctx) -> None:
     assert panel._cached_target == ""
     assert panel._cached_rows == {}
     assert panel._item_ids == {}
+    assert panel._cached_row_tokens == {}
+    assert panel._cached_order_token == ()
+    assert panel._cached_view_key == ("", False)
+    assert panel._last_refresh_version == -1
 
 
 def test_refresh_uses_cached_immunity_pct_when_parse_disabled(immunity_panel_ctx) -> None:

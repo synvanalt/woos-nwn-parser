@@ -7,7 +7,7 @@ tracking and percentage calculations for each target and damage type.
 import re
 import tkinter as tk
 from tkinter import ttk
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from ...storage import DataStore
 from ...parser import LogParser
@@ -48,6 +48,10 @@ class ImmunityPanel(ttk.Frame):
         self._cached_target: str = ""
         self._cached_rows: Dict[str, tuple] = {}
         self._item_ids: Dict[str, str] = {}
+        self._cached_row_tokens: Dict[str, tuple[Any, ...]] = {}
+        self._cached_order_token: tuple[str, ...] = ()
+        self._cached_view_key: tuple[str, bool] = ("", False)
+        self._last_refresh_version: int = -1
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -118,11 +122,24 @@ class ImmunityPanel(ttk.Frame):
         Args:
             target: Name of the target to display details for
         """
+        view_key = (target, bool(self.parser.parse_immunity))
+        current_version = self.data_store.version
+        if (
+            self._can_use_store_version_fast_path()
+            and self._cached_view_key == view_key
+            and self._last_refresh_version == current_version
+            and self._item_ids
+            and self._is_natural_order_active()
+        ):
+            return
+
         # Initialize cache for this target if needed
         if target not in self.immunity_pct_cache:
             self.immunity_pct_cache[target] = {}
 
         summaries = self.data_store.get_target_damage_type_summary(target)
+        natural_order = self._is_natural_order_active()
+        order_token = tuple(str(summary["damage_type"]) for summary in summaries)
         new_rows = {}
         for summary in summaries:
             damage_type = str(summary["damage_type"])
@@ -160,23 +177,63 @@ class ImmunityPanel(ttk.Frame):
                 immunity_pct_display,
                 samples_display,
             )
+        new_row_tokens = {
+            damage_type: row_values
+            for damage_type, row_values in new_rows.items()
+        }
 
         needs_full_refresh = (
             self._cached_target != target or
             not self._item_ids or
             set(self._cached_rows.keys()) != set(new_rows.keys())
         )
+        changed_damage_types = {
+            damage_type
+            for damage_type, row_token in new_row_tokens.items()
+            if row_token != self._cached_row_tokens.get(damage_type)
+        }
 
-        if not needs_full_refresh and self.tree.get_children():
-            if self.tree._last_sorted_col == "Damage Type" and not self.tree._sort_reverse:
-                tree_order = [self.tree.item(item, "values")[0] for item in self.tree.get_children()]
-                summary_order = [str(summary["damage_type"]) for summary in summaries]
-                needs_full_refresh = tree_order != summary_order
+        if (
+            not needs_full_refresh
+            and self._cached_view_key == view_key
+            and order_token == self._cached_order_token
+            and not changed_damage_types
+        ):
+            self._cached_row_tokens = new_row_tokens
+            self._cached_order_token = order_token
+            self._last_refresh_version = current_version
+            return
 
         if needs_full_refresh:
             self._full_refresh(target, new_rows)
+            if not natural_order and self.tree._last_sorted_col:
+                self.tree.apply_current_sort()
         else:
-            self._incremental_refresh(target, new_rows)
+            self._incremental_refresh(
+                target,
+                summaries,
+                new_rows,
+                changed_damage_types,
+                natural_order,
+            )
+
+        self._cached_view_key = view_key
+        self._cached_row_tokens = new_row_tokens
+        self._cached_order_token = order_token
+        self._last_refresh_version = current_version
+
+    def _can_use_store_version_fast_path(self) -> bool:
+        """Return whether refresh data is sourced from the live store method."""
+        store_method = getattr(self.data_store, "get_target_damage_type_summary", None)
+        return (
+            getattr(store_method, "__self__", None) is self.data_store
+            and getattr(store_method, "__func__", None)
+            is DataStore.get_target_damage_type_summary
+        )
+
+    def _is_natural_order_active(self) -> bool:
+        """Return whether the active tree sort matches store immunity order."""
+        return self.tree._last_sorted_col == "Damage Type" and not self.tree._sort_reverse
 
     def _full_refresh(self, target: str, new_rows: Dict[str, tuple]) -> None:
         """Rebuild the tree when target or damage-type structure changes."""
@@ -221,7 +278,7 @@ class ImmunityPanel(ttk.Frame):
             # - If user has never sorted, apply default sort
             # - If user has sorted, maintain their sort preference
             # This is efficient: only sorts when structure changes, not on every update
-            if self.tree._last_sorted_col:
+            if self.tree._last_sorted_col and not self._is_natural_order_active():
                 self.tree.apply_current_sort()
 
         finally:
@@ -235,22 +292,34 @@ class ImmunityPanel(ttk.Frame):
         self._cached_target = target
         self._cached_rows = new_rows
 
-    def _incremental_refresh(self, target: str, new_rows: Dict[str, tuple]) -> None:
+    def _incremental_refresh(
+        self,
+        target: str,
+        summaries: list[dict[str, Any]],
+        new_rows: Dict[str, tuple],
+        changed_damage_types: set[str],
+        natural_order: bool,
+    ) -> None:
         """Update existing immunity rows without rebuilding the tree."""
-        for damage_type, row_values in new_rows.items():
-            if row_values == self._cached_rows.get(damage_type):
+        for summary in summaries:
+            damage_type = str(summary["damage_type"])
+            if damage_type not in changed_damage_types:
                 continue
-
+            row_values = new_rows[damage_type]
             item_id = self._item_ids.get(damage_type)
             if item_id:
                 self.tree.item(item_id, values=row_values)
 
+        if natural_order:
+            for index, summary in enumerate(summaries):
+                item_id = self._item_ids.get(str(summary["damage_type"]))
+                if item_id:
+                    self.tree.move(item_id, "", index)
+
         self._cached_target = target
         self._cached_rows = new_rows
 
-        if self.tree._last_sorted_col and self.tree._last_sorted_col != "Damage Type":
-            self.tree.apply_current_sort()
-        elif self.tree._last_sorted_col == "Damage Type" and self.tree._sort_reverse:
+        if not natural_order and self.tree._last_sorted_col:
             self.tree.apply_current_sort()
 
     def update_target_list(self, targets: list) -> None:
@@ -291,4 +360,8 @@ class ImmunityPanel(ttk.Frame):
         self._cached_target = ""
         self._cached_rows.clear()
         self._item_ids.clear()
+        self._cached_row_tokens.clear()
+        self._cached_order_token = ()
+        self._cached_view_key = ("", False)
+        self._last_refresh_version = -1
 
