@@ -144,7 +144,6 @@ def test_import_worker_process_emits_file_error_and_continues(monkeypatch) -> No
                 "mutations": [],
                 "death_snippets": [],
             },
-            "parser_state": {"target_ac": {}, "target_saves": {}, "target_attack_bonus": {}},
         },
     ])
     monkeypatch.setattr("app.utils.parse_file_to_ops", parse_mock)
@@ -195,7 +194,6 @@ def test_import_worker_process_forwards_death_settings(monkeypatch) -> None:
             "mutations": [],
             "death_snippets": [],
         },
-        "parser_state": {"target_ac": {}, "target_saves": {}, "target_attack_bonus": {}},
     })
     monkeypatch.setattr("app.utils.parse_file_to_ops", parse_mock)
 
@@ -232,7 +230,6 @@ def test_import_worker_process_streams_chunk_order_and_payload_integrity(monkeyp
         "error": None,
         "lines_processed": 999,
         "ops": ops,
-        "parser_state": {"target_ac": {}, "target_saves": {}, "target_attack_bonus": {}},
     })
     monkeypatch.setattr("app.utils.parse_file_to_ops", parse_mock)
 
@@ -270,7 +267,6 @@ def test_import_worker_process_exits_promptly_when_queue_full_and_abort_set(monk
             "mutations": [],
             "death_snippets": [],
         },
-        "parser_state": {},
     })
     monkeypatch.setattr("app.utils.parse_file_to_ops", parse_mock)
     monkeypatch.setattr(app.utils, "IMPORT_QUEUE_PUT_TIMEOUT_SEC", 0.001)

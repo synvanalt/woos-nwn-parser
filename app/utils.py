@@ -527,7 +527,6 @@ def parse_file_to_ops(
                 'mutations': mutations,
                 'death_snippets': death_snippets,
             },
-            'parser_state': {},
         }
     except Exception as e:
         return {
@@ -640,7 +639,6 @@ def import_worker_process(
             'index': index,
             'total_files': total_files,
             'file_name': file_name,
-            'parser_state': result.get('parser_state', {}),
         }):
             _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
             return

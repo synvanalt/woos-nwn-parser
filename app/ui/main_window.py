@@ -454,49 +454,6 @@ class WoosNwnParserApp:
 
         self._is_applying_payload = False
 
-    def _merge_parser_state(self, parser_state: Dict[str, Any]) -> None:
-        """Compatibility shim for tests/legacy callers.
-
-        Runtime import flow no longer depends on parser_state; DataStore owns
-        target AC/AB/save aggregation. This method is retained to avoid breaking
-        callers that still provide worker parser snapshots.
-        """
-        worker_target_ac = parser_state.get('target_ac', {})
-        for target, src in worker_target_ac.items():
-            dst = self.parser.target_ac.get(target)
-            if dst is None:
-                self.parser.target_ac[target] = src
-                continue
-            if src.max_miss is not None:
-                dst.record_miss(src.max_miss, was_nat1=False)
-            for hit_total in getattr(src, '_hits', []):
-                dst.record_hit(hit_total, was_nat20=False)
-            if src.has_epic_dodge:
-                dst.mark_epic_dodge()
-
-        worker_saves = parser_state.get('target_saves', {})
-        for target, src in worker_saves.items():
-            dst = self.parser.target_saves.get(target)
-            if dst is None:
-                self.parser.target_saves[target] = src
-                continue
-            if src.fortitude is not None:
-                dst.update_save('fort', src.fortitude)
-            if src.reflex is not None:
-                dst.update_save('ref', src.reflex)
-            if src.will is not None:
-                dst.update_save('will', src.will)
-
-        worker_ab = parser_state.get('target_attack_bonus', {})
-        for target, src in worker_ab.items():
-            dst = self.parser.target_attack_bonus.get(target)
-            if dst is None:
-                self.parser.target_attack_bonus[target] = src
-                continue
-            for bonus, count in getattr(src, '_bonus_counts', {}).items():
-                for _ in range(count):
-                    dst.record_bonus(bonus)
-
     def _poll_import_progress(self) -> None:
         """Update modal with latest import status."""
         if not self.is_importing:

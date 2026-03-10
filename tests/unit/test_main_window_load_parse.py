@@ -168,11 +168,6 @@ class TestLoadAndParseWorkflow:
             "ops": {
                 "mutations": [],
             },
-            "parser_state": {
-                "target_ac": {},
-                "target_saves": {},
-                "target_attack_bonus": {},
-            },
         })
 
         app._drain_import_events()
@@ -180,33 +175,6 @@ class TestLoadAndParseWorkflow:
         assert app._import_status["files_completed"] == 1
         assert len(app._pending_file_payloads) == 1
         app.root.after.assert_called_once()
-
-    def test_merge_parser_state_preserves_and_combines_values(self) -> None:
-        app = _make_app_shell()
-        app.parser = LogParser(parse_immunity=True)
-
-        # Existing state in main parser
-        app.parser.parse_line("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Orc attacks Goblin: *hit*: (14 + 5 = 19)")
-        app.parser.parse_line("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] SAVE: Goblin: Fortitude Save: *success*: (12 + 2 = 14 vs. DC: 20)")
-
-        worker_parser = LogParser(parse_immunity=True)
-        worker_parser.parse_line("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:01] Orc attacks Goblin: *miss*: (15 + 5 = 20)")
-        worker_parser.parse_line("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:02] Goblin : Epic Dodge : Attack evaded")
-        worker_parser.parse_line("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:03] SAVE: Goblin: Fortitude Save: *success*: (13 + 4 = 17 vs. DC: 20)")
-        worker_parser.parse_line("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:04] SAVE: Goblin: Reflex Save: *failed*: (8 + 1 = 9 vs. DC: 20)")
-
-        app._merge_parser_state({
-            "target_ac": worker_parser.target_ac,
-            "target_saves": worker_parser.target_saves,
-            "target_attack_bonus": worker_parser.target_attack_bonus,
-        })
-
-        assert "Goblin" in app.parser.target_ac
-        assert app.parser.target_ac["Goblin"].has_epic_dodge is True
-        assert "Goblin" in app.parser.target_saves
-        assert app.parser.target_saves["Goblin"].fortitude == 4
-        assert app.parser.target_saves["Goblin"].reflex == 1
-        assert "Orc" in app.parser.target_attack_bonus
 
     def test_on_death_snippet_forwards_event_to_panel(self) -> None:
         app = _make_app_shell()
@@ -238,11 +206,6 @@ class TestLoadAndParseWorkflow:
                         "lines": ["line-1", "line-2"],
                     }
                 ],
-            },
-            "parser_state": {
-                "target_ac": {},
-                "target_saves": {},
-                "target_attack_bonus": {},
             },
             "index": 1,
             "progress": {"stage": "death_snippet", "idx": 0},

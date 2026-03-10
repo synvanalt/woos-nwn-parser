@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 9, 2026 (DPS, target-stats, and immunity refresh-token coverage update)
+**Last Updated:** March 10, 2026 (parser/store ownership coverage update)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **579 tests collected**
+- Result: **580 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 34 modules, 530 tests
+- `tests/unit/`: 34 modules, 531 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 42 test modules, 579 tests
+- Total: 42 test modules, 580 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -26,7 +26,7 @@ Notes:
 ### Unit (`tests/unit`)
 - `test_bump_version_script.py` (6)
 - `test_models.py` (52)
-- `test_parser.py` (72)
+- `test_parser.py` (70)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
 - `test_storage.py` (47)
@@ -75,7 +75,7 @@ Notes:
 
 - Parser and models:
   - `test_parser.py`, `test_models.py`, `test_parser_storage_integration.py`
-  - Includes malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, and malformed target-concealed fast-path fallback coverage
+  - Includes malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, malformed target-concealed fast-path fallback coverage, and parser output contracts for store-owned AC/AB/save derivation
 - Storage and indexing performance behavior:
   - `test_storage.py`, `test_storage_indices.py`
   - Direct store setup now uses the real public batch API (`DataStore.apply_mutations(...)`) instead of legacy per-write helper methods
@@ -95,7 +95,7 @@ Notes:
   - `test_settings.py`
 - Import/worker pipeline behavior:
   - `test_utils.py`, `test_utils_worker_pipeline.py`
-  - Includes streaming chunk payload integrity and queue-full abort responsiveness coverage
+  - Includes streaming chunk payload integrity, queue-full abort responsiveness coverage, and import payload coverage after removing legacy parser-state snapshots
 - Full-session/e2e behavior:
   - `test_e2e_combat_session.py`
 

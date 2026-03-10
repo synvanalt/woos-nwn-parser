@@ -96,19 +96,19 @@ class TestCompleteCombatSession:
         assert stats['hit_rate'] == pytest.approx(83.33, abs=0.1)  # 5 successful / 6 total
 
         # 5. AC Estimation
-        assert 'Goblin Chief' in parser.target_ac
-        ac_estimate = parser.target_ac['Goblin Chief'].get_ac_estimate()
+        summary = database.get_all_targets_summary()
+        goblin_summary = next((item for item in summary if item["target"] == "Goblin Chief"), None)
+        assert goblin_summary is not None
+        ac_estimate = goblin_summary['ac']
         # Should be between 14 (miss) and 19 (min hit)
         assert ac_estimate != "?"
 
         # 6. Attack Bonus Tracking
-        assert 'Goblin Chief' in parser.target_attack_bonus
-        ab_display = parser.target_attack_bonus['Goblin Chief'].get_bonus_display()
+        ab_display = goblin_summary['ab']
         assert ab_display == "12"
 
         # 7. Saves Tracking
-        assert 'Goblin Chief' in parser.target_saves
-        assert parser.target_saves['Goblin Chief'].fortitude == 5
+        assert goblin_summary['fortitude'] == '5'
 
         # 8. Immunity Tracking
         immunity_info = database.get_immunity_for_target_and_type("Goblin Chief", "Fire")
@@ -136,7 +136,7 @@ class TestCompleteCombatSession:
         assert acid['total_damage'] == 25  # 10 + 15
 
         # 10. Target Summary
-        summary = database.get_all_targets_summary(parser)
+        summary = database.get_all_targets_summary()
         goblin_summary = next((s for s in summary if s['target'] == 'Goblin Chief'), None)
 
         assert goblin_summary is not None
@@ -235,9 +235,10 @@ class TestCompleteCombatSession:
         parse_and_import_file(str(log_file), parser, database)
 
         # Natural 1 should be ignored for AC
-        assert 'Dragon' in parser.target_ac
-        assert parser.target_ac['Dragon'].min_hit == 25
-        assert parser.target_ac['Dragon'].max_miss == 20  # Not 11 (natural 1)
+        summary = database.get_all_targets_summary()
+        dragon_summary = next((item for item in summary if item["target"] == "Dragon"), None)
+        assert dragon_summary is not None
+        assert dragon_summary['ac'] == "21-25"
 
     def test_time_tracking_modes_comparison(self, temp_log_dir: Path) -> None:
         """Test both time tracking modes produce consistent results."""
