@@ -53,6 +53,8 @@ class EnemyAC:
     @property
     def min_hit(self) -> Optional[int]:
         """Return the minimum hit total, or None if no valid hits recorded."""
+        if self._min_hit is None and self._hits:
+            self._min_hit = min(self._hits)
         return self._min_hit
 
     def record_hit(self, total: int, was_nat20: bool = False) -> None:
