@@ -24,6 +24,9 @@
 - Fixed stale-immunity cleanup timing when processed-event batches jump across cleanup boundaries
 - Fixed DPS panel not refreshing after changing `First Timestamp` while monitoring is paused
 - Fixed malformed timestamp and concealment attack lines being handled less safely than necessary during parsing
+- `Death Snippets` panel:
+  - Fixed character auto-identification so a later nearby `wooparseme` whisper no longer overwrites an already assigned name
+  - Added a quick `Clear Name` action for easy textbox clearing and re-identifying your character
 
 
 ## [1.4.0] - 2026-03-07

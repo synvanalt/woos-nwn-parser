@@ -28,6 +28,11 @@ class ImmunityPanel(ttk.Frame):
     This is a reusable widget that can be placed in any notebook or frame.
     """
 
+    DISCLAIMER_TEXT = (
+        "• Damage and immunity lines are separated in log and may be matched incorrectly.\n"
+        "• Displayed immunity % can be overstated if target also has damage resistance/reduction."
+    )
+
     def __init__(
         self,
         parent: ttk.Notebook,
@@ -88,14 +93,17 @@ class ImmunityPanel(ttk.Frame):
         self.target_combo.bind("<<ComboboxSelected>>", _on_target_selected)
         ttk.Label(selector_frame, text="Select Target:").pack(side="right", padx=5)
 
+        tree_frame = ttk.Frame(self)
+        tree_frame.pack(fill="both", expand=True)
+
         # Scrollbar
-        scrollbar = ttk.Scrollbar(self)
+        scrollbar = ttk.Scrollbar(tree_frame)
         scrollbar.pack(side="right", fill="y")
 
         # Treeview for displaying damage type breakdown
         columns = ("Damage Type", "Max Damage", "Absorbed", "Immunity %", "Samples")
         self.tree = SortedTreeview(
-            self, columns=columns, show="headings", yscrollcommand=scrollbar.set
+            tree_frame, columns=columns, show="headings", yscrollcommand=scrollbar.set
         )
 
         for col in columns:
@@ -115,6 +123,22 @@ class ImmunityPanel(ttk.Frame):
 
         # Set default sort by Damage Type name ascending
         self.tree.set_default_sort("Damage Type", reverse=False)
+
+        self.disclaimer_label = ttk.Label(
+            self,
+            text=self.DISCLAIMER_TEXT,
+            justify="left",
+            anchor="w",
+            wraplength=1,
+        )
+        self.disclaimer_label.pack(fill="x", padx=(10, 10), pady=(8, 0))
+        self.bind("<Configure>", self._on_panel_resize)
+
+    def _on_panel_resize(self, event: tk.Event) -> None:
+        """Keep disclaimer wrapping aligned with the current panel width."""
+        wraplength = max(int(event.width) - 20, 1)
+        if int(self.disclaimer_label.cget("wraplength")) != wraplength:
+            self.disclaimer_label.configure(wraplength=wraplength)
 
     def refresh_target_details(self, target: str) -> None:
         """Display detailed resist data for selected target.
