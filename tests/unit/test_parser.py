@@ -20,9 +20,9 @@ class TestLogParserInitialization:
         assert parser.parse_immunity is False
         assert parser.current_target is None
         assert len(parser.current_damage_types) == 0
-        assert len(parser.target_ac) == 0
-        assert len(parser.target_saves) == 0
-        assert len(parser.target_attack_bonus) == 0
+        assert not hasattr(parser, "target_ac")
+        assert not hasattr(parser, "target_saves")
+        assert not hasattr(parser, "target_attack_bonus")
 
     def test_initialization_with_player_name(self) -> None:
         """Test parser initializes with player name."""
@@ -296,30 +296,33 @@ class TestAttackParsing:
 
         assert result is not None
         assert result['type'] == 'attack_hit'
-        # Natural 20 should not be recorded in AC estimation
-        assert 'Goblin' in parser.target_ac
-        assert parser.target_ac['Goblin'].min_hit is None  # Should be excluded
+        assert result['was_nat20'] is True
 
-    def test_parse_attack_tracks_ac(self, parser: LogParser) -> None:
-        """Test that parsing attacks updates AC tracking."""
+    def test_parse_attack_preserves_totals_for_downstream_ac_tracking(self, parser: LogParser) -> None:
+        """Test attack events preserve totals for downstream AC tracking."""
         hit_line = "Woo attacks Goblin: *hit*: (16 + 5 = 21)"
-        parser.parse_line(hit_line)
-
-        assert 'Goblin' in parser.target_ac
-        assert parser.target_ac['Goblin'].min_hit == 21
+        hit_result = parser.parse_line(hit_line)
 
         miss_line = "Woo attacks Goblin: *miss*: (10 + 5 = 15)"
-        parser.parse_line(miss_line)
+        miss_result = parser.parse_line(miss_line)
 
-        assert parser.target_ac['Goblin'].max_miss == 15
+        assert hit_result is not None
+        assert hit_result['type'] == 'attack_hit'
+        assert hit_result['target'] == 'Goblin'
+        assert hit_result['total'] == 21
+        assert miss_result is not None
+        assert miss_result['type'] == 'attack_miss'
+        assert miss_result['target'] == 'Goblin'
+        assert miss_result['total'] == 15
 
-    def test_parse_attack_tracks_bonus(self, parser: LogParser) -> None:
-        """Test that parsing attacks updates attack bonus tracking."""
+    def test_parse_attack_emits_bonus_for_downstream_tracking(self, parser: LogParser) -> None:
+        """Test that parsing attacks emits bonus data for downstream tracking."""
         line = "Goblin attacks Woo: *hit*: (15 + 8 = 23)"
-        parser.parse_line(line)
+        result = parser.parse_line(line)
 
-        assert 'Goblin' in parser.target_attack_bonus
-        assert parser.target_attack_bonus['Goblin'].max_bonus == 8
+        assert result is not None
+        assert result['attacker'] == 'Goblin'
+        assert result['bonus'] == '8'
 
     def test_parse_concealment_miss_excluded_from_ac(self, parser: LogParser) -> None:
         """Test that concealment misses are excluded from AC estimation.
@@ -328,38 +331,28 @@ class TestAttackParsing:
         the attack roll total doesn't reveal information about the target's AC.
         These should be completely excluded from AC tracking.
         """
-        # First, record a normal hit to establish baseline
-        hit_line = "Orc attacks Hero: *hit*: (10 + 30 = 40)"
-        parser.parse_line(hit_line)
+        hit_result = parser.parse_line("Orc attacks Hero: *hit*: (10 + 30 = 40)")
+        concealment_result = parser.parse_line(
+            "Orc attacks Hero: *attacker miss chance: 50%*: (19 + 60 = 79)"
+        )
 
-        assert 'Hero' in parser.target_ac
-        assert parser.target_ac['Hero'].min_hit == 40
-        assert parser.target_ac['Hero'].max_miss is None
+        assert hit_result is not None
+        assert hit_result['type'] == 'attack_hit'
+        assert hit_result['total'] == 40
+        assert concealment_result is not None
+        assert concealment_result['type'] == 'attack_miss'
+        assert concealment_result['is_concealment'] is True
+        assert concealment_result['total'] == 79
 
-        # Now a concealment miss with a high total
-        concealment_line = "Orc attacks Hero: *attacker miss chance: 50%*: (19 + 60 = 79)"
-        parser.parse_line(concealment_line)
-
-        # Concealment miss should NOT be recorded as max_miss
-        assert parser.target_ac['Hero'].max_miss is None
-        # The hit should still be there
-        assert parser.target_ac['Hero'].min_hit == 40
-
-        # AC estimate should be based only on the hit, not the concealment miss
-        estimate = parser.target_ac['Hero'].get_ac_estimate()
-        assert estimate == "≤40"
-
-    def test_parse_concealment_miss_does_not_initialize_target(self, parser: LogParser) -> None:
-        """Test that concealment-only attacks don't create AC entries.
-
-        If we only see concealment misses for a target (no real hits/misses),
-        we shouldn't create an AC entry since we have no AC information.
-        """
+    def test_parse_concealment_miss_does_not_drop_event(self, parser: LogParser) -> None:
+        """Concealment-only attacks should still emit miss events."""
         line = "Dragon attacks Mage: *attacker miss chance: 50%*: (15 + 70 = 85)"
-        parser.parse_line(line)
+        result = parser.parse_line(line)
 
-        # Should not create target_ac entry for concealment-only attacks
-        assert 'Mage' not in parser.target_ac
+        assert result is not None
+        assert result['type'] == 'attack_miss'
+        assert result['is_concealment'] is True
+        assert result['target'] == 'Mage'
 
     def test_parse_concealment_with_regular_misses(self, parser: LogParser) -> None:
         """Test that concealment misses don't interfere with regular AC estimation.
@@ -368,39 +361,34 @@ class TestAttackParsing:
         others miss due to concealment (high roll but concealment triggers).
         Only the normal misses should affect AC estimation.
         """
-        # Regular miss - should be recorded
-        parser.parse_line("Warrior attacks DisplacedBoss: *miss*: (8 + 30 = 38)")
+        miss_result = parser.parse_line("Warrior attacks DisplacedBoss: *miss*: (8 + 30 = 38)")
+        concealment_result = parser.parse_line(
+            "Warrior attacks DisplacedBoss: *attacker miss chance: 50%*: (18 + 30 = 48)"
+        )
+        hit_result = parser.parse_line("Warrior attacks DisplacedBoss: *hit*: (15 + 30 = 45)")
 
-        assert 'DisplacedBoss' in parser.target_ac
-        assert parser.target_ac['DisplacedBoss'].max_miss == 38
-
-        # Concealment miss - should be ignored
-        parser.parse_line("Warrior attacks DisplacedBoss: *attacker miss chance: 50%*: (18 + 30 = 48)")
-
-        # max_miss should still be 38, not 48
-        assert parser.target_ac['DisplacedBoss'].max_miss == 38
-
-        # Regular hit
-        parser.parse_line("Warrior attacks DisplacedBoss: *hit*: (15 + 30 = 45)")
-
-        # AC should be estimated as 39-45, not affected by concealment miss at 48
-        assert parser.target_ac['DisplacedBoss'].min_hit == 45
-        estimate = parser.target_ac['DisplacedBoss'].get_ac_estimate()
-        assert estimate == "39-45"
+        assert miss_result is not None
+        assert miss_result['type'] == 'attack_miss'
+        assert miss_result['is_concealment'] is False
+        assert miss_result['total'] == 38
+        assert concealment_result is not None
+        assert concealment_result['is_concealment'] is True
+        assert hit_result is not None
+        assert hit_result['type'] == 'attack_hit'
+        assert hit_result['total'] == 45
 
     def test_parse_concealment_percentage_variations(self, parser: LogParser) -> None:
         """Test parsing concealment misses with different percentages."""
-        parser.parse_line("Rogue attacks Target: *hit*: (10 + 40 = 50)")
+        hit_result = parser.parse_line("Rogue attacks Target: *hit*: (10 + 40 = 50)")
+        concealment_results = [
+            parser.parse_line("Rogue attacks Target: *attacker miss chance: 20%*: (15 + 40 = 55)"),
+            parser.parse_line("Rogue attacks Target: *attacker miss chance: 50%*: (18 + 40 = 58)"),
+            parser.parse_line("Rogue attacks Target: *attacker miss chance: 100%*: (19 + 40 = 59)"),
+        ]
 
-        # Test various concealment percentages
-        parser.parse_line("Rogue attacks Target: *attacker miss chance: 20%*: (15 + 40 = 55)")
-        parser.parse_line("Rogue attacks Target: *attacker miss chance: 50%*: (18 + 40 = 58)")
-        parser.parse_line("Rogue attacks Target: *attacker miss chance: 100%*: (19 + 40 = 59)")
-
-        # None of these should affect AC estimation
-        assert parser.target_ac['Target'].max_miss is None
-        assert parser.target_ac['Target'].min_hit == 50
-        assert parser.target_ac['Target'].get_ac_estimate() == "≤50"
+        assert hit_result is not None
+        assert hit_result['type'] == 'attack_hit'
+        assert all(result is not None and result['is_concealment'] is True for result in concealment_results)
 
     def test_parse_target_concealed_without_outcome_is_ignored(self, parser: LogParser) -> None:
         """No-outcome target-concealed lines should not emit attacks or affect stats."""
@@ -411,8 +399,6 @@ class TestAttackParsing:
         result = parser.parse_line(line)
 
         assert result is None
-        assert 'Cerberus' not in parser.target_ac
-        assert 'Woo Whirlwind' not in parser.target_attack_bonus
 
     def test_parse_target_concealed_with_explicit_outcome(self, parser: LogParser) -> None:
         """Target-concealed lines with explicit outcome should parse as attacks."""
@@ -440,8 +426,6 @@ class TestAttackParsing:
         result = parser.parse_line(line)
 
         assert result is None
-        assert 'Cerberus' not in parser.target_ac
-        assert 'Woo Whirlwind' not in parser.target_attack_bonus
 
     def test_parse_concealment_real_world_scenario(self, parser: LogParser) -> None:
         """Test real-world scenario from user's logs.
@@ -449,44 +433,38 @@ class TestAttackParsing:
         This reproduces the bug where Woo Wildrock's AC was incorrectly estimated
         as 97 due to concealment misses being treated as regular misses.
         """
-        # Some regular hits when AC is normal
-        parser.parse_line("Enemy attacks WooWildrock: *hit*: (10 + 50 = 60)")
-        parser.parse_line("Enemy attacks WooWildrock: *hit*: (12 + 45 = 57)")
+        results = [
+            parser.parse_line("Enemy attacks WooWildrock: *hit*: (10 + 50 = 60)"),
+            parser.parse_line("Enemy attacks WooWildrock: *hit*: (12 + 45 = 57)"),
+            parser.parse_line("Enemy attacks WooWildrock: *miss*: (2 + 53 = 55)"),
+            parser.parse_line("Enemy attacks WooWildrock: *attacker miss chance: 50%*: (19 + 60 = 79)"),
+            parser.parse_line("Enemy attacks WooWildrock: *attacker miss chance: 50%*: (18 + 56 = 74)"),
+            parser.parse_line("Enemy attacks WooWildrock: *hit*: (11 + 45 = 56)"),
+        ]
 
-        # Regular miss establishes max_miss
-        parser.parse_line("Enemy attacks WooWildrock: *miss*: (2 + 53 = 55)")
-
-        assert parser.target_ac['WooWildrock'].min_hit == 57
-        assert parser.target_ac['WooWildrock'].max_miss == 55
-
-        # Concealment misses with high totals (from displacement/invisibility)
-        parser.parse_line("Enemy attacks WooWildrock: *attacker miss chance: 50%*: (19 + 60 = 79)")
-        parser.parse_line("Enemy attacks WooWildrock: *attacker miss chance: 50%*: (18 + 56 = 74)")
-
-        # AC should be 56 (based on hit at 57, miss at 55), NOT 79!
-        assert parser.target_ac['WooWildrock'].max_miss == 55  # Not 79!
-
-        # Hit at 56 should survive (not filtered by concealment miss)
-        parser.parse_line("Enemy attacks WooWildrock: *hit*: (11 + 45 = 56)")
-
-        # AC estimate should be exact: 56 (miss at 55, hit at 56)
-        estimate = parser.target_ac['WooWildrock'].get_ac_estimate()
-        assert estimate == "56"
+        assert [result['type'] if result else None for result in results] == [
+            'attack_hit',
+            'attack_hit',
+            'attack_miss',
+            'attack_miss',
+            'attack_miss',
+            'attack_hit',
+        ]
+        assert results[3] is not None and results[3]['is_concealment'] is True
+        assert results[4] is not None and results[4]['is_concealment'] is True
 
 
 class TestEpicDodgeParsing:
     """Test suite for parsing Epic Dodge indicator lines."""
 
     def test_parse_epic_dodge_marks_target(self, parser: LogParser) -> None:
-        """Test parsing Epic Dodge line marks target AC state."""
+        """Test parsing Epic Dodge line emits target info."""
         line = "[CHAT WINDOW TEXT] [Fri Feb 13 11:34:03] Epic Undead Monk : Epic Dodge : Attack evaded"
         result = parser.parse_line(line)
 
         assert result is not None
         assert result["type"] == "epic_dodge"
         assert result["target"] == "Epic Undead Monk"
-        assert 'Epic Undead Monk' in parser.target_ac
-        assert parser.target_ac['Epic Undead Monk'].has_epic_dodge is True
 
     def test_parse_epic_dodge_emits_event(self, parser: LogParser) -> None:
         """Test Epic Dodge line emits a queue event for downstream consumers."""
@@ -499,24 +477,11 @@ class TestEpicDodgeParsing:
     def test_parse_epic_dodge_preserves_target_name(self, parser: LogParser) -> None:
         """Test Epic Dodge parsing preserves complex target names."""
         line = "[CHAT WINDOW TEXT] [Fri Feb 13 11:34:03] 10 AC DUMMY - Chaotic Evil - Boss Damage Reduction : Epic Dodge : Attack evaded"
-        parser.parse_line(line)
+        result = parser.parse_line(line)
 
         target = "10 AC DUMMY - Chaotic Evil - Boss Damage Reduction"
-        assert target in parser.target_ac
-        assert parser.target_ac[target].has_epic_dodge is True
-
-    def test_parse_epic_dodge_prefixes_ac_estimate(self, parser: LogParser) -> None:
-        """Test AC estimate gets Epic Dodge marker after normal attack data."""
-        parser.parse_line("Warrior attacks Epic Undead Monk: *miss*: (10 + 20 = 30)")
-        parser.parse_line("Warrior attacks Epic Undead Monk: *hit*: (11 + 20 = 31)")
-        parser.parse_line("Epic Undead Monk : Epic Dodge : Attack evaded")
-
-        assert parser.target_ac['Epic Undead Monk'].get_ac_estimate() == "~31"
-
-    def test_parse_epic_dodge_only_keeps_dash(self, parser: LogParser) -> None:
-        """Test Epic Dodge-only target keeps '-' estimate until attack data exists."""
-        parser.parse_line("Epic Undead Monk : Epic Dodge : Attack evaded")
-        assert parser.target_ac['Epic Undead Monk'].get_ac_estimate() == "-"
+        assert result is not None
+        assert result["target"] == target
 
 
 class TestAttackPrefixCombinations:
@@ -629,18 +594,18 @@ class TestAttackPrefixCombinations:
         assert result['roll'] == 3
         assert result['total'] == 69
 
-    def test_parse_attack_with_ability_tracks_ac(self, parser: LogParser) -> None:
-        """Test that attacks with ability prefixes correctly update AC tracking."""
+    def test_parse_attack_with_ability_preserves_roll_data(self, parser: LogParser) -> None:
+        """Test that attacks with ability prefixes preserve roll data."""
         hit_line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:22:07] Flurry of Blows : Sneak Attack : Woo Whirlwind attacks 10 AC DUMMY : *hit* : (5 + 57 = 62)"
-        parser.parse_line(hit_line)
-
-        assert '10 AC DUMMY' in parser.target_ac
-        assert parser.target_ac['10 AC DUMMY'].min_hit == 62
+        hit_result = parser.parse_line(hit_line)
 
         miss_line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:22:08] Flurry of Blows : Woo Whirlwind attacks 10 AC DUMMY : *miss* : (2 + 57 = 59)"
-        parser.parse_line(miss_line)
+        miss_result = parser.parse_line(miss_line)
 
-        assert parser.target_ac['10 AC DUMMY'].max_miss == 59
+        assert hit_result is not None
+        assert hit_result['total'] == 62
+        assert miss_result is not None
+        assert miss_result['total'] == 59
 
     def test_parse_attack_with_three_word_ability(self, parser: LogParser) -> None:
         """Test parsing attack with multi-word ability names."""
@@ -687,13 +652,15 @@ class TestSaveParsing:
         assert result['save_type'] == 'will'
         assert result['bonus'] == 10
 
-    def test_parse_save_tracks_bonuses(self, parser: LogParser) -> None:
-        """Test that parsing saves updates save tracking."""
+    def test_parse_save_preserves_bonus_for_downstream_tracking(self, parser: LogParser) -> None:
+        """Test that parsing saves preserves bonus data."""
         line = "SAVE: Goblin: Fortitude Save: *success*: (12 + 5 = 17 vs. DC: 20)"
-        parser.parse_line(line)
+        result = parser.parse_line(line)
 
-        assert 'Goblin' in parser.target_saves
-        assert parser.target_saves['Goblin'].fortitude == 5
+        assert result is not None
+        assert result['target'] == 'Goblin'
+        assert result['save_type'] == 'fort'
+        assert result['bonus'] == 5
 
 
 class TestEdgeCases:

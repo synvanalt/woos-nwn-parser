@@ -9,8 +9,6 @@ from collections import deque
 from datetime import datetime
 from typing import Any, Deque, Dict, Iterable, Iterator, Optional, Pattern
 
-from .models import EnemyAC, EnemySaves, TargetAttackBonus
-
 
 MONTHS = {
     'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
@@ -118,11 +116,6 @@ class LogParser:
         self.pending_resists = {}
         self.damage_type_queue = []  # Track order of damage types to process
         self.current_processing_type = None  # Which damage type we're currently processing resists for
-
-        # Target tracking for AC, Saves, and Attack Bonus
-        self.target_ac: Dict[str, EnemyAC] = {}
-        self.target_saves: Dict[str, EnemySaves] = {}
-        self.target_attack_bonus: Dict[str, TargetAttackBonus] = {}
 
         # Death snippet extraction state (bounded ring buffer for low-memory, low-overhead scanning)
         self.death_lookup_killed_lookback_lines = 500
@@ -577,9 +570,6 @@ class LogParser:
             epic_dodge_match = patterns['epic_dodge'].search(stripped_line)
             if epic_dodge_match:
                 target = epic_dodge_match.group('target').strip()
-                if target not in self.target_ac:
-                    self.target_ac[target] = EnemyAC(name=target)
-                self.target_ac[target].mark_epic_dodge()
                 return {
                     'type': 'epic_dodge',
                     'target': target,
@@ -640,25 +630,6 @@ class LogParser:
                 was_nat20 = roll == 20
                 bonus = int(bonus_str) if bonus_str else None
 
-                # Track AC for all attacks against targets (for AC estimation)
-                # EXCEPT concealment misses which don't reveal AC information
-                # Initialize target tracking if needed
-                if target not in self.target_ac and not is_concealment:
-                    self.target_ac[target] = EnemyAC(name=target)
-
-                if is_hit:
-                    self.target_ac[target].record_hit(total, was_nat20)
-                elif is_miss and not is_concealment:
-                    # Exclude concealment misses from AC estimation
-                    self.target_ac[target].record_miss(total, was_nat1)
-
-                # Track attack bonus for the ATTACKER (when they attack others)
-                # This shows what AB the target uses when it attacks
-                if bonus is not None:
-                    if attacker not in self.target_attack_bonus:
-                        self.target_attack_bonus[attacker] = TargetAttackBonus(name=attacker)
-                    self.target_attack_bonus[attacker].record_bonus(bonus)
-
                 # Track all attacks for hit rate calculation (all characters)
                 if is_hit:
                     return {
@@ -697,10 +668,6 @@ class LogParser:
             if bonus_str:
                 bonus = int(bonus_str)
 
-                # Initialize target tracking if needed
-                if target not in self.target_saves:
-                    self.target_saves[target] = EnemySaves(name=target)
-
                 # Map save type to key
                 if save_type in ('fort', 'fortitude'):
                     save_key = 'fort'
@@ -708,8 +675,6 @@ class LogParser:
                     save_key = 'ref'
                 else:
                     save_key = 'will'
-
-                self.target_saves[target].update_save(save_key, bonus)
 
                 return {
                     'type': 'save',

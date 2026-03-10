@@ -48,11 +48,14 @@ class EnemyAC:
     max_miss: Optional[int] = None
     has_epic_dodge: bool = False
     _hits: list[int] = field(default_factory=list, repr=False)
+    _min_hit: Optional[int] = field(default=None, init=False, repr=False)
 
     @property
     def min_hit(self) -> Optional[int]:
         """Return the minimum hit total, or None if no valid hits recorded."""
-        return min(self._hits) if self._hits else None
+        if self._min_hit is None and self._hits:
+            self._min_hit = min(self._hits)
+        return self._min_hit
 
     def record_hit(self, total: int, was_nat20: bool = False) -> None:
         """Record a successful attack roll total, excluding natural 20s.
@@ -66,6 +69,8 @@ class EnemyAC:
             # This prevents adding hits that are already invalidated
             if self.max_miss is None or total > self.max_miss:
                 self._hits.append(total)
+                if self._min_hit is None or total < self._min_hit:
+                    self._min_hit = total
 
     def record_miss(self, attack_total: int, was_nat1: bool = False) -> None:
         """Record a failed attack roll total, excluding natural 1s.
@@ -82,13 +87,13 @@ class EnemyAC:
             if self.max_miss is None or attack_total > self.max_miss:
                 self.max_miss = attack_total
 
-                # Optimization: Only rebuild the list if the new max_miss
-                # actually overlaps with our lowest recorded hit
-                min_hit = self.min_hit
-                if min_hit is not None and self.max_miss >= min_hit:
+                # Only rebuild the list if the new max_miss overlaps
+                # the cached lowest valid hit.
+                if self._min_hit is not None and self.max_miss >= self._min_hit:
                     # Remove all hits that are now invalidated by this miss
                     # (hits <= max_miss shouldn't have hit if target had true AC)
                     self._hits = [h for h in self._hits if h > self.max_miss]
+                    self._min_hit = min(self._hits) if self._hits else None
 
     def mark_epic_dodge(self) -> None:
         """Mark this target as having Epic Dodge."""
@@ -132,6 +137,7 @@ class TargetAttackBonus:
     name: str
     max_bonus: Optional[int] = None
     _bonus_counts: dict[int, int] = field(default_factory=dict, repr=False)
+    _max_bonus_count: int = field(default=0, init=False, repr=False)
 
     def record_bonus(self, bonus: int) -> None:
         """Record an attack bonus and update to the most frequent value.
@@ -140,12 +146,18 @@ class TargetAttackBonus:
             bonus: The attack bonus value
         """
         # Increment count for this bonus value
-        self._bonus_counts[bonus] = self._bonus_counts.get(bonus, 0) + 1
+        new_count = self._bonus_counts.get(bonus, 0) + 1
+        self._bonus_counts[bonus] = new_count
 
-        # Update max_bonus to the most frequent value
-        # In case of tie, prefer the higher bonus
-        most_common_bonus = max(self._bonus_counts.items(), key=lambda x: (x[1], x[0]))[0]
-        self.max_bonus = most_common_bonus
+        # Keep the winning mode incrementally.
+        # In case of tie, prefer the higher bonus.
+        if (
+            self.max_bonus is None
+            or new_count > self._max_bonus_count
+            or (new_count == self._max_bonus_count and bonus > self.max_bonus)
+        ):
+            self.max_bonus = bonus
+            self._max_bonus_count = new_count
 
     def get_bonus_display(self) -> str:
         """Return the most common attack bonus found for this target.

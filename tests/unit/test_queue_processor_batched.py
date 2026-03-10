@@ -265,3 +265,28 @@ class TestBatchedProcessingPerformance:
         assert len(store.attacks) == 100
         assert len(store.events) == 100
 
+    def test_process_queue_reports_pressure_state_from_remaining_backlog(self) -> None:
+        """Backlog classification should be derived from the queue after draining."""
+        store = DataStore()
+        parser = LogParser()
+        processor = QueueProcessor(store, parser)
+
+        data_queue = queue.Queue(maxsize=4000)
+        now = datetime.now()
+
+        for _ in range(2501):
+            data_queue.put({
+                'type': 'damage_dealt',
+                'attacker': 'Woo',
+                'target': 'Goblin',
+                'total_damage': 50,
+                'timestamp': now,
+                'damage_types': {'Physical': 50}
+            })
+
+        result = processor.process_queue(data_queue, Mock(), max_events=1)
+
+        assert result.backlog_count == 2500
+        assert result.has_backlog is True
+        assert result.pressure_state == 'pressured'
+

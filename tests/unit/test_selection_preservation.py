@@ -11,10 +11,8 @@ import pytest
 from datetime import datetime
 
 from app.storage import DataStore
-from app.parser import LogParser
 from app.services import DPSCalculationService
 from app.ui.widgets import DPSPanel, TargetStatsPanel, ImmunityPanel
-from app.models import EnemyAC, TargetAttackBonus
 from tests.helpers.store_mutations import apply, damage_row, dps_update, immunity
 
 
@@ -98,22 +96,11 @@ def test_target_stats_panel_selection_preservation(shared_tk_root, notebook) -> 
 
     # Setup
     data_store = DataStore()
-    parser = LogParser()
-    panel = TargetStatsPanel(notebook, data_store, parser)
-
-    # Add some test data - properly create EnemyAC and TargetAttackBonus objects
-    # TargetStatsPanel shows stats about targets that were ATTACKED (not attackers)
-    ac1 = EnemyAC(name="Monster1")
-    ac1.record_hit(20)
-    ac2 = EnemyAC(name="Monster2")
-    ac2.record_hit(25)
-    parser.target_ac["Monster1"] = ac1
-    parser.target_ac["Monster2"] = ac2
-
-    bonus1 = TargetAttackBonus(name="Monster1", max_bonus=15)
-    bonus2 = TargetAttackBonus(name="Monster2", max_bonus=18)
-    parser.target_attack_bonus["Monster1"] = bonus1
-    parser.target_attack_bonus["Monster2"] = bonus2
+    panel = TargetStatsPanel(notebook, data_store)
+    data_store.record_target_attack_roll("Hero", "Monster1", "hit", 15, 15, 30)
+    data_store.record_target_attack_roll("Monster1", "Hero", "hit", 15, 15, 30)
+    data_store.record_target_attack_roll("Hero", "Monster2", "hit", 18, 18, 36)
+    data_store.record_target_attack_roll("Monster2", "Hero", "hit", 18, 18, 36)
 
     timestamp1 = datetime.now()
     apply(data_store, damage_row(target="Monster1", damage_type="Physical", total_damage=10, attacker="Hero", timestamp=timestamp1))
@@ -159,8 +146,7 @@ def test_immunity_panel_selection_preservation(shared_tk_root, notebook) -> None
 
     # Setup
     data_store = DataStore()
-    parser = LogParser()
-    panel = ImmunityPanel(notebook, data_store, parser)
+    panel = ImmunityPanel(notebook, data_store, type("ParserStub", (), {"parse_immunity": False})())
 
     # Add some test data with immunity
     timestamp1 = datetime.now()
@@ -219,17 +205,13 @@ def test_multiple_selection_preservation(shared_tk_root, notebook) -> None:
 
     # Setup Target Stats Panel for multi-select test
     data_store = DataStore()
-    parser = LogParser()
-    panel = TargetStatsPanel(notebook, data_store, parser)
+    panel = TargetStatsPanel(notebook, data_store)
 
     # Add test data for multiple targets - Hero attacking multiple Monsters
     for i in range(1, 4):
         target = f"Monster{i}"
-        ac = EnemyAC(name=target)
-        ac.record_hit(20 + i)
-        parser.target_ac[target] = ac
-        bonus = TargetAttackBonus(name=target, max_bonus=15 + i)
-        parser.target_attack_bonus[target] = bonus
+        data_store.record_target_attack_roll("Hero", target, "hit", 5 + i, 15 + i, 20 + i)
+        data_store.record_target_attack_roll(target, "Hero", "hit", 5 + i, 15 + i, 20 + i)
         timestamp = datetime.now()
         apply(data_store, damage_row(target=target, damage_type="Physical", total_damage=10 + i, attacker="Hero", timestamp=timestamp))
 

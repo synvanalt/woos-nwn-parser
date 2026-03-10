@@ -17,6 +17,8 @@ class LogDirectoryMonitor:
     and handles switching to the next file when rotation occurs.
     """
 
+    IDLE_RESCAN_INTERVAL_POLLS = 10
+
     def __init__(self, log_directory: str) -> None:
         """Initialize the directory monitor.
 
@@ -24,9 +26,35 @@ class LogDirectoryMonitor:
             log_directory: Path to the directory containing nwclientLog*.txt files
         """
         self.log_directory = Path(log_directory)
+        self._candidate_files = tuple(
+            self.log_directory / f"nwclientLog{index}.txt"
+            for index in range(1, 5)
+        )
         self.current_log_file: Optional[Path] = None
         self.last_position = 0
         self.last_mtime = 0.0  # Track file modification time
+        self._last_directory_mtime = 0.0
+        self._idle_polls_until_rescan = 0
+
+    def _get_directory_mtime(self) -> float:
+        """Return the directory mtime or 0.0 when it is unavailable."""
+        try:
+            return self.log_directory.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    def _reset_idle_rescan_state(self) -> None:
+        """Reset the idle-poll tracker after activity or a full rescan."""
+        self._idle_polls_until_rescan = 0
+
+    def _note_idle_poll(self) -> None:
+        """Track idle polls without letting the counter grow unbounded."""
+        if self._idle_polls_until_rescan > 0:
+            self._idle_polls_until_rescan -= 1
+
+    def _idle_rescan_due(self) -> bool:
+        """Return True when the next idle poll should force a candidate rescan."""
+        return self._idle_polls_until_rescan == 0
 
     def find_active_log_file(self) -> Optional[Path]:
         """Find the currently active log file based on most recent modification time.
@@ -35,16 +63,22 @@ class LogDirectoryMonitor:
             Path to the active log file, or None if no log files found
         """
         if not self.log_directory.exists():
+            self._last_directory_mtime = 0.0
             return None
 
-        # Find all nwclientLog*.txt files
-        log_files = sorted(self.log_directory.glob('nwclientLog[1-4].txt'))
+        active_file: Optional[Path] = None
+        active_mtime = float("-inf")
 
-        if not log_files:
-            return None
+        for candidate in self._candidate_files:
+            try:
+                candidate_mtime = candidate.stat().st_mtime
+            except OSError:
+                continue
+            if candidate_mtime >= active_mtime:
+                active_file = candidate
+                active_mtime = candidate_mtime
 
-        # Return the file with the most recent modification time
-        active_file = max(log_files, key=lambda f: f.stat().st_mtime)
+        self._last_directory_mtime = self._get_directory_mtime()
         return active_file
 
     def get_active_log_file(self) -> Optional[Path]:
@@ -53,7 +87,43 @@ class LogDirectoryMonitor:
         Returns:
             Path to the active log file, or None if no log files found
         """
-        return self.find_active_log_file()
+        if self.current_log_file is None:
+            active_file = self.find_active_log_file()
+            self._idle_polls_until_rescan = self.IDLE_RESCAN_INTERVAL_POLLS
+            return active_file
+
+        try:
+            current_stat = self.current_log_file.stat()
+        except OSError:
+            active_file = self.find_active_log_file()
+            self._idle_polls_until_rescan = self.IDLE_RESCAN_INTERVAL_POLLS
+            return active_file
+
+        current_size = current_stat.st_size
+        current_mtime = current_stat.st_mtime
+
+        # Truncation is handled in the steady-state path; no rediscovery required.
+        if current_size < self.last_position:
+            self._reset_idle_rescan_state()
+            return self.current_log_file
+
+        if current_size > self.last_position or current_mtime > self.last_mtime:
+            self._reset_idle_rescan_state()
+            return self.current_log_file
+
+        directory_mtime = self._get_directory_mtime()
+        if directory_mtime != self._last_directory_mtime:
+            active_file = self.find_active_log_file()
+            self._idle_polls_until_rescan = self.IDLE_RESCAN_INTERVAL_POLLS
+            return active_file
+
+        if self._idle_rescan_due():
+            active_file = self.find_active_log_file()
+            self._idle_polls_until_rescan = self.IDLE_RESCAN_INTERVAL_POLLS
+            return active_file
+        self._note_idle_poll()
+
+        return self.current_log_file
 
     def start_monitoring(self) -> None:
         """Initialize file position for incremental reading.
@@ -61,6 +131,7 @@ class LogDirectoryMonitor:
         Finds the currently active log file and sets up position tracking.
         """
         self.current_log_file = self.get_active_log_file()
+        self._reset_idle_rescan_state()
         if self.current_log_file and self.current_log_file.exists():
             file_stat = self.current_log_file.stat()
             self.last_position = file_stat.st_size
@@ -88,6 +159,7 @@ class LogDirectoryMonitor:
         """
         try:
             active_file = self.get_active_log_file()
+            queue_saturated = False
 
             # Handle rotation: if we switched to a new file, reset position and notify
             if active_file != self.current_log_file:
@@ -104,6 +176,7 @@ class LogDirectoryMonitor:
                     )
                 self.current_log_file = active_file
                 self.last_position = 0
+                self._reset_idle_rescan_state()
 
             if not self.current_log_file or not self.current_log_file.exists():
                 return False
@@ -134,6 +207,9 @@ class LogDirectoryMonitor:
                 handle.seek(self.last_position)
                 if hasattr(handle, "readline"):
                     while parsed_lines < max_lines_per_poll:
+                        if getattr(data_queue, "maxsize", 0) > 0 and data_queue.full():
+                            queue_saturated = True
+                            break
                         line = handle.readline()
                         if not line:
                             break
@@ -144,27 +220,44 @@ class LogDirectoryMonitor:
 
                         parsed_data = parser.parse_line(line)
                         if parsed_data:
-                            data_queue.put(parsed_data)
+                            try:
+                                data_queue.put_nowait(parsed_data)
+                            except queue.Full:
+                                queue_saturated = True
+                                break
                 else:
                     # Compatibility path for mocked file handles in tests.
                     lines = list(handle.readlines())[:max_lines_per_poll]
                     for line in lines:
+                        if getattr(data_queue, "maxsize", 0) > 0 and data_queue.full():
+                            queue_saturated = True
+                            break
                         parsed_lines += 1
                         if debug_enabled and on_log_message:
                             on_log_message(f"Raw line: {line.strip()}", 'info')
                         parsed_data = parser.parse_line(line)
                         if parsed_data:
-                            data_queue.put(parsed_data)
+                            try:
+                                data_queue.put_nowait(parsed_data)
+                            except queue.Full:
+                                queue_saturated = True
+                                break
 
                 self.last_position = handle.tell()
                 self.last_mtime = current_mtime
+                self._last_directory_mtime = self._get_directory_mtime()
 
-            has_more_pending = self.last_position < current_size
+            has_more_pending = queue_saturated or self.last_position < current_size
 
             if parsed_lines and debug_enabled and on_log_message:
                 on_log_message(
                     f"Read {parsed_lines} line(s) from {self.current_log_file.name}",
                     'debug',
+                )
+            if queue_saturated and on_log_message:
+                on_log_message(
+                    f"Realtime queue saturated while reading {self.current_log_file.name}; deferring remaining lines",
+                    'warning',
                 )
 
             return has_more_pending

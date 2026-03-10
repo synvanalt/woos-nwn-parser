@@ -143,3 +143,20 @@ class TestTargetStatsIncrementalRefresh:
             panel.refresh()
         except tk.TclError as exc:  # pragma: no cover - regression guard
             pytest.fail(f"refresh should recover from stale tree item ids, got {exc}")
+
+    def test_refresh_uses_case_insensitive_default_target_order(self, target_stats_panel) -> None:
+        panel, store, _ = target_stats_panel
+        apply(
+            store,
+            damage_row(target="zombie", damage_type="Fire", total_damage=50, attacker="Woo"),
+            damage_row(target="TYRMON risen", damage_type="Cold", total_damage=40, attacker="Rogue"),
+            damage_row(target="Tyrmon scout", damage_type="Physical", total_damage=30, attacker="Woo"),
+        )
+
+        panel.refresh()
+
+        ordered_targets = [
+            panel.tree.item(item_id, "values")[0]
+            for item_id in panel.tree.get_children()
+        ]
+        assert ordered_targets == ["TYRMON risen", "Tyrmon scout", "zombie"]

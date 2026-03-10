@@ -118,7 +118,9 @@ class DataStore:
     def _get_sorted_targets_locked(self) -> tuple[str, ...]:
         """Return cached sorted targets while lock is held."""
         if self._sorted_targets_dirty:
-            self._sorted_targets_cache = tuple(sorted(self._targets_cache))
+            self._sorted_targets_cache = tuple(
+                sorted(self._targets_cache, key=str.casefold)
+            )
             self._sorted_targets_dirty = False
         return self._sorted_targets_cache
 

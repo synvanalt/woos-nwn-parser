@@ -6,11 +6,14 @@
 - Improved long-session responsiveness while keeping combat totals accurate across the session
 - Combat event history now auto-limits in long sessions to keep memory use and responsiveness stable (oldest raw entries are removed first while summaries and totals stay intact)
 - DPS damage-type breakdown updates are more efficient during active fights and target filtering
+- Target AC and attack-bonus estimates now update more efficiently during heavy combat without changing displayed values
+- Live monitoring now avoids repeated log-file rediscovery during steady polling while still detecting rotation and truncation safely
 - Table refreshes now skip more no-op work and preserve default order more efficiently during active sessions
 - Death snippet lookup on large logs is more efficient during backward scans
 - Combat log timestamp handling is more resilient when a log line contains a malformed date or time
 - `Load & Parse` import now checks abort requests more frequently and reports progress in steady intervals
 - `Load & Parse` now applies large import batches in shorter UI time slices to reduce visible stutter during big imports
+- `Load & Parse` now applies queued import updates in small batches per UI frame, which makes large imports feel smoother and finish UI updates faster
 - `Load & Parse` import now uses safer queue flow control between background worker and UI to prevent excessive memory growth during very large imports
 - `Load & Parse` and live monitoring now handle large batches of combat events more smoothly, reducing stutter during heavy activity
 - Aborting `Load & Parse` now exits more reliably even under heavy import load

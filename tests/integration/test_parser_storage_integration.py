@@ -69,10 +69,10 @@ class TestParserStorageIntegration:
         assert result['success'] is True
         assert len(database.attacks) == 3
 
-        # Check AC was tracked
-        assert 'Goblin' in parser.target_ac
-        assert parser.target_ac['Goblin'].min_hit == 21
-        assert parser.target_ac['Goblin'].max_miss == 15
+        summary = database.get_all_targets_summary()
+        goblin_summary = next((item for item in summary if item["target"] == "Goblin"), None)
+        assert goblin_summary is not None
+        assert goblin_summary["ac"] == "16-21"
 
     def test_parse_and_store_save_events(self, temp_log_dir: Path) -> None:
         """Test parsing save events and tracking."""
@@ -89,10 +89,11 @@ class TestParserStorageIntegration:
 
         assert result['success'] is True
 
-        # Check saves were tracked
-        assert 'Goblin' in parser.target_saves
-        assert parser.target_saves['Goblin'].fortitude == 5
-        assert parser.target_saves['Goblin'].reflex == 3
+        summary = database.get_all_targets_summary()
+        goblin_summary = next((item for item in summary if item["target"] == "Goblin"), None)
+        assert goblin_summary is not None
+        assert goblin_summary["fortitude"] == "5"
+        assert goblin_summary["reflex"] == "3"
 
     def test_parse_complete_combat_session(self, sample_combat_session: Path) -> None:
         """Test parsing a complete combat session."""
@@ -227,7 +228,7 @@ class TestParserStorageIntegration:
         assert result['success'] is True
 
         # Get target summary
-        summary = database.get_all_targets_summary(parser)
+        summary = database.get_all_targets_summary()
 
         goblin_summary = next((s for s in summary if s['target'] == 'Goblin'), None)
         assert goblin_summary is not None
@@ -251,7 +252,7 @@ class TestParserStorageIntegration:
         result = parse_and_import_file(str(log_file), parser, database)
 
         assert result['success'] is True
-        summary = database.get_all_targets_summary(parser)
+        summary = database.get_all_targets_summary()
         monk_summary = next((s for s in summary if s['target'] == 'Epic Undead Monk'), None)
 
         assert monk_summary is not None

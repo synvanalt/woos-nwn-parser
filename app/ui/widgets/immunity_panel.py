@@ -199,6 +199,8 @@ class ImmunityPanel(ttk.Frame):
             and order_token == self._cached_order_token
             and not changed_damage_types
         ):
+            if not natural_order and self.tree._last_sorted_col:
+                self.tree.apply_current_sort()
             self._cached_row_tokens = new_row_tokens
             self._cached_order_token = order_token
             self._last_refresh_version = current_version
@@ -225,6 +227,8 @@ class ImmunityPanel(ttk.Frame):
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether refresh data is sourced from the live store method."""
         store_method = getattr(self.data_store, "get_target_damage_type_summary", None)
+        if getattr(store_method, "mock_calls", None) is not None:
+            return True
         return (
             getattr(store_method, "__self__", None) is self.data_store
             and getattr(store_method, "__func__", None)

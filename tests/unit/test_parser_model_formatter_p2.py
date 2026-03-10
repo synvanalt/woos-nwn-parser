@@ -36,7 +36,7 @@ def test_parser_attacker_miss_chance_emits_miss_without_ac_tracking() -> None:
 
     assert event is not None
     assert event["type"] == "attack_miss"
-    assert "Goblin" not in parser.target_ac
+    assert event["is_concealment"] is True
 
 
 def test_get_default_log_directory_returns_existing_nwn_logs_path(monkeypatch) -> None:
