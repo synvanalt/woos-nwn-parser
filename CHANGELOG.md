@@ -3,21 +3,16 @@
 ## [Unreleased]
 
 ### Changed
-- Improved long-session responsiveness while keeping combat totals accurate across the session
 - Combat event history now auto-limits in long sessions to keep memory use and responsiveness stable (oldest raw entries are removed first while summaries and totals stay intact)
-- DPS damage-type breakdown updates are more efficient during active fights and target filtering
+- DPS damage-type breakdown updates are more efficient during heavy combat and target filtering
 - Target AC and attack-bonus estimates now update more efficiently during heavy combat without changing displayed values
 - Live monitoring now avoids repeated log-file rediscovery during steady polling while still detecting rotation and truncation safely
-- Table refreshes now skip more no-op work and preserve default order more efficiently during active sessions
 - Death snippet lookup on large logs is more efficient during backward scans
-- Combat log timestamp handling is more resilient when a log line contains a malformed date or time
-- `Load & Parse` import now checks abort requests more frequently and reports progress in steady intervals
-- `Load & Parse` now applies large import batches in shorter UI time slices to reduce visible stutter during big imports
-- `Load & Parse` now applies queued import updates in small batches per UI frame, which makes large imports feel smoother and finish UI updates faster
-- `Load & Parse` import now uses safer queue flow control between background worker and UI to prevent excessive memory growth during very large imports
-- `Load & Parse` and live monitoring now handle large batches of combat events more smoothly, reducing stutter during heavy activity
-- Aborting `Load & Parse` now exits more reliably even under heavy import load
-- Target lists and target summaries now refresh more efficiently in large encounters
+- Combat log timestamp handling is now more resilient when a log line contains a malformed date or time
+- `Load & Parse` feature:
+  - Import now checks abort requests more frequently and reports progress in steady intervals
+  - Now applies queued import updates in small batches per UI frame, which makes large imports feel smoother and finish UI updates faster
+  - Import now uses safer queue flow control between background worker and UI to prevent excessive memory growth during very large imports
 
 ### Fixed
 - Fixed stale DataStore index retention that could cause avoidable long-session slowdowns
@@ -89,11 +84,11 @@
   - Column is sortable like all other columns in the panel
 
 ### Changed
-- **UI Performance Optimizations** - Improved tab switching and panel refresh responsiveness
-  - **Dirty Flag Refresh**: `poll_log_file()` now only calls `refresh_targets()` when data has actually changed, using a version counter in DataStore. Eliminates redundant refreshes every 500ms when idle
-  - **Optimized Sorting**: `SortedTreeview.apply_current_sort()` now checks if data is already in correct order before sorting, skipping O(n log n) sort operations when unnecessary
-  - **Batch Visual Updates**: Target Stats and Immunity panels now suppress Treeview repaints during bulk insert operations using `tree.configure(show="")` pattern, reducing layout recalculations
-  - **DataStore Version Tracking**: Added `version` property to DataStore that increments on every data modification, enabling efficient change detection
+- Improved overall UI responsiveness, especially when switching tabs and viewing updated combat data
+  - Target-related panels now refresh only when their data actually changes, reducing unnecessary background work
+  - Sorting is more efficient, which helps tables feel smoother during repeated updates
+  - Large table updates now redraw more cleanly, improving responsiveness in Target Stats and Immunities
+  - Internal data change tracking was improved to keep refresh behavior accurate and efficient
 
 
 ## [1.1.0] - 2026-01-20
@@ -105,7 +100,6 @@
   - Intelligent type detection (numeric vs string) for optimal sorting
   - Sort preferences persist during data updates
   - Handles formatted numbers (percentages, commas, decimals)
-  - New `SortedTreeview` widget component (`app/ui/widgets/sorted_treeview.py`)
 
 ### Changed
 - **Target Stats Panel** - Unknown AB and AC values now display as "-" instead of "?" for consistency
@@ -114,14 +108,14 @@
   - Example: Enemy with mostly +71 AB and occasional +77 buff now correctly shows +71
   - In case of tie frequency, prefers the higher bonus value
 - **Performance Optimizations** - Implemented 9 major optimizations across all application layers:
-  - **Parser**: Pre-compiled regex patterns (6-31% faster)
-  - **Storage**: O(1) caches for targets and damage dealers (95-99% faster lookups)
+  - **Parser**: Pre-compiled regex patterns
+  - **Storage**: O(1) caches for targets and damage dealers
   - **Storage**: O(1) indices for attacks/events by attacker/target
-  - **Storage**: Single-pass counting for attack stats (10-40% faster)
+  - **Storage**: Single-pass counting for attack stats
   - **Monitor**: Optional debug_mode flag (saves 42k+ queue operations per 21k lines)
-  - **Models**: Added `__slots__` to dataclasses (20-30% memory reduction)
+  - **Models**: Added `__slots__` to dataclasses (memory reduction)
   - **Queue Processor**: Batched UI callbacks (O(n) → O(1) per poll cycle)
-  - **DPS Panel**: Incremental tree refresh (30-50% faster UI updates)
+  - **DPS Panel**: Incremental tree refresh
 - **UI Panels** - All panels now use `SortedTreeview` instead of `ttk.Treeview`
   - DPS Panel with hierarchical parent/child structure
   - Target Stats Panel for target statistics

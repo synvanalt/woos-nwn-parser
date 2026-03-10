@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 10, 2026 (death-snippet name autofill guard coverage update)
+**Last Updated:** March 10, 2026 (suite count and fixture inventory refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **595 tests collected**
+- Result: **597 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 546 tests
+- `tests/unit/`: 35 modules, 548 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 595 tests
+- Total: 43 test modules, 597 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -29,7 +29,7 @@ Notes:
 - `test_parser.py` (70)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
-- `test_storage.py` (47)
+- `test_storage.py` (48)
 - `test_storage_indices.py` (21)
 - `test_utils.py` (37)
 - `test_monitor.py` (22)
@@ -39,12 +39,12 @@ Notes:
 - `test_queue_processor.py` (10)
 - `test_dps_service.py` (14)
 - `test_formatters.py` (22)
-- `test_immunity_panel_additional.py` (5)
+- `test_immunity_panel_additional.py` (7)
 - `test_immunity_panel_edge_cases.py` (6)
 - `test_selection_preservation.py` (4)
 - `test_dps_panel_incremental.py` (13)
 - `test_immunity_panel_incremental.py` (5)
-- `test_target_stats_panel_incremental.py` (8)
+- `test_target_stats_panel_incremental.py` (9)
 - `test_ui_optimizations.py` (19)
 - `test_death_snippet_panel.py` (26)
 - `test_debug_console_panel.py` (6)
@@ -108,6 +108,7 @@ Notes:
 
 Current shared fixtures include:
 - `cleanup_tkinter` (autouse)
+- `cleanup_persisted_app_settings` (autouse)
 - `shared_tk_root` (session)
 - `log_capture`
 - `parser`
