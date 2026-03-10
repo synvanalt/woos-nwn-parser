@@ -1145,6 +1145,8 @@ class WoosNwnParserApp:
         character_name = str(event.get("character_name", "")).strip()
         if not character_name:
             return
+        if self.death_snippet_panel.get_character_name():
+            return
         self.death_snippet_panel.set_character_name(character_name)
 
     def _on_death_character_name_changed(self, name: str) -> None:

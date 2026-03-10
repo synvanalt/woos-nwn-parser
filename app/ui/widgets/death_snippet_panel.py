@@ -110,6 +110,12 @@ class DeathSnippetPanel(ttk.Frame):
             textvariable=self.character_name_var,
         )
         self.character_name_entry.pack(side="left", fill="x", expand=True)
+        self.clear_name_button = ttk.Button(
+            character_row,
+            text="Clear Name",
+            command=self.clear_character_name,
+        )
+        self.clear_name_button.pack(side="left", padx=(8, 0))
         self.character_name_entry.bind("<FocusIn>", self._on_character_name_focus_in)
         self.character_name_entry.bind("<FocusOut>", self._on_character_name_focus_out)
 
@@ -304,6 +310,10 @@ class DeathSnippetPanel(ttk.Frame):
             self._enable_character_name_hint_if_empty()
         self._suppress_identity_callbacks = False
         self._notify_character_name_changed()
+
+    def clear_character_name(self) -> None:
+        """Clear the assigned character name and restore the hint state."""
+        self.set_character_name("")
 
     def get_fallback_death_line(self) -> str:
         """Return fallback death-line text."""

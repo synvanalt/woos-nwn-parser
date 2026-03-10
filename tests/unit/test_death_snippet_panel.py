@@ -67,6 +67,17 @@ class _FakeBoolVar:
         self.value = bool(value)
 
 
+class _FakeStringVar:
+    def __init__(self, value: str = "") -> None:
+        self.value = value
+
+    def get(self) -> str:
+        return self.value
+
+    def set(self, value: str) -> None:
+        self.value = value
+
+
 class _FakeScrollbar:
     def __init__(self) -> None:
         self.mapped = False
@@ -166,6 +177,14 @@ class TestDeathSnippetPanel:
         panel._name_pattern_cache = {}
         panel.line_wrap_var = _FakeBoolVar(True)
         panel.hscroll = _FakeScrollbar()
+        panel.character_name_var = _FakeStringVar("")
+        panel._character_hint_active = False
+        panel._suppress_identity_callbacks = False
+        panel._on_character_name_changed = None
+        panel._character_entry_foreground = None
+        panel._set_character_entry_foreground = (
+            lambda color: setattr(panel, "_character_entry_foreground", color)
+        )
         return panel
 
     @staticmethod
@@ -387,6 +406,28 @@ class TestDeathSnippetPanel:
         assert "Ash-Tusk Clan Sniper" in opponent_tagged_text
         assert "GENERAL KORGAN" in opponent_tagged_text
         assert "HYDROXIS" in opponent_tagged_text
+
+    def test_clear_character_name_restores_hint_and_empty_value(self) -> None:
+        panel = self._make_panel()
+        panel.set_character_name("Woo Wildrock")
+
+        panel.clear_character_name()
+
+        assert panel.get_character_name() == ""
+        assert panel.character_name_var.get() == DeathSnippetPanel.CHARACTER_NAME_HINT
+        assert panel._character_hint_active is True
+        assert panel._character_entry_foreground == "gray"
+
+    def test_clear_character_name_notifies_callback_with_empty_name(self) -> None:
+        panel = self._make_panel()
+        callback = []
+        panel._on_character_name_changed = callback.append
+        panel.set_character_name("Woo Wildrock")
+        callback.clear()
+
+        panel.clear_character_name()
+
+        assert callback == [""]
 
     def test_apply_line_wrap_setting_defaults_to_wrapped_without_horizontal_scroll(self) -> None:
         panel = self._make_panel()

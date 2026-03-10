@@ -354,12 +354,35 @@ class TestLoadAndParseWorkflow:
     def test_on_death_character_identified_sets_panel_character(self) -> None:
         app = _make_app_shell()
         app.death_snippet_panel = Mock()
+        app.death_snippet_panel.get_character_name.return_value = ""
 
         app._on_death_character_identified(
             {"type": "death_character_identified", "character_name": "Woo Wildrock"}
         )
 
         app.death_snippet_panel.set_character_name.assert_called_once_with("Woo Wildrock")
+
+    def test_on_death_character_identified_does_not_overwrite_existing_name(self) -> None:
+        app = _make_app_shell()
+        app.death_snippet_panel = Mock()
+        app.death_snippet_panel.get_character_name.return_value = "Existing Name"
+
+        app._on_death_character_identified(
+            {"type": "death_character_identified", "character_name": "Woo Wildrock"}
+        )
+
+        app.death_snippet_panel.set_character_name.assert_not_called()
+
+    def test_on_death_character_identified_ignores_empty_name(self) -> None:
+        app = _make_app_shell()
+        app.death_snippet_panel = Mock()
+
+        app._on_death_character_identified(
+            {"type": "death_character_identified", "character_name": "   "}
+        )
+
+        app.death_snippet_panel.get_character_name.assert_not_called()
+        app.death_snippet_panel.set_character_name.assert_not_called()
 
     def test_identity_and_fallback_callbacks_update_parser(self) -> None:
         app = _make_app_shell()
