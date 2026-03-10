@@ -44,6 +44,8 @@ class WoosNwnParserApp:
     MONITOR_SLEEP_IDLE_NORMAL = 0.5
     MONITOR_SLEEP_IDLE_PRESSURED = 0.35
     MONITOR_SLEEP_IDLE_SATURATED = 0.12
+    IMPORT_APPLY_FRAME_BUDGET_MS = 4.0
+    IMPORT_APPLY_MUTATION_BATCH_SIZE = 128
 
     def __init__(self, root: tk.Tk) -> None:
         """Initialize the application.
@@ -430,7 +432,8 @@ class WoosNwnParserApp:
 
     def _apply_pending_payloads_incremental(self) -> None:
         """Apply completed-file payloads in small slices on the Tk thread."""
-        budget_ms = 4.0
+        budget_ms = self.IMPORT_APPLY_FRAME_BUDGET_MS
+        mutation_batch_size = max(1, int(self.IMPORT_APPLY_MUTATION_BATCH_SIZE))
         deadline = perf_counter() + (budget_ms / 1000.0)
         while perf_counter() < deadline and self._pending_file_payloads:
             item = self._pending_file_payloads[0]
@@ -442,8 +445,9 @@ class WoosNwnParserApp:
             if stage == 'mutations':
                 mutations = ops.get('mutations', [])
                 if idx < len(mutations):
-                    self.data_store.apply_mutations([mutations[idx]])
-                    progress['idx'] += 1
+                    batch_end = min(idx + mutation_batch_size, len(mutations))
+                    self.data_store.apply_mutations(mutations[idx:batch_end])
+                    progress['idx'] = batch_end
                     continue
                 progress['stage'] = 'death_snippet'
                 progress['idx'] = 0

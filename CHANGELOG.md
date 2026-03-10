@@ -13,6 +13,7 @@
 - Combat log timestamp handling is more resilient when a log line contains a malformed date or time
 - `Load & Parse` import now checks abort requests more frequently and reports progress in steady intervals
 - `Load & Parse` now applies large import batches in shorter UI time slices to reduce visible stutter during big imports
+- `Load & Parse` now applies queued import updates in small batches per UI frame, which makes large imports feel smoother and finish UI updates faster
 - `Load & Parse` import now uses safer queue flow control between background worker and UI to prevent excessive memory growth during very large imports
 - `Load & Parse` and live monitoring now handle large batches of combat events more smoothly, reducing stutter during heavy activity
 - Aborting `Load & Parse` now exits more reliably even under heavy import load

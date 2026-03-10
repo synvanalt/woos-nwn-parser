@@ -222,6 +222,7 @@ class TestLoadAndParseWorkflow:
         app.root.after = Mock()
         app.data_store = Mock()
         app.death_snippet_panel = Mock()
+        app.IMPORT_APPLY_MUTATION_BATCH_SIZE = 1
         app._is_applying_payload = True
         app._pending_file_payloads.append({
             "ops": {
@@ -255,6 +256,7 @@ class TestLoadAndParseWorkflow:
         app.root.after = Mock()
         app.data_store = Mock()
         app.death_snippet_panel = Mock()
+        app.IMPORT_APPLY_MUTATION_BATCH_SIZE = 1
         app._is_applying_payload = True
         app._pending_file_payloads.append({
             "ops": {
@@ -274,6 +276,39 @@ class TestLoadAndParseWorkflow:
         app._apply_pending_payloads_incremental()
         assert app._is_applying_payload is False
         assert len(app._pending_file_payloads) == 0
+
+    def test_apply_pending_payloads_batches_multiple_mutations_per_apply_call(self, monkeypatch) -> None:
+        app = _make_app_shell()
+        app.root = Mock()
+        app.root.after = Mock()
+        app.data_store = Mock()
+        app.death_snippet_panel = Mock()
+        app.IMPORT_APPLY_MUTATION_BATCH_SIZE = 2
+        app._is_applying_payload = True
+        mutations = [
+            SaveMutation(target="Goblin", save_key="fort", bonus=4),
+            SaveMutation(target="Goblin", save_key="reflex", bonus=5),
+            SaveMutation(target="Goblin", save_key="will", bonus=6),
+        ]
+        app._pending_file_payloads.append({
+            "ops": {
+                "mutations": mutations,
+                "death_snippets": [],
+            },
+            "index": 1,
+            "progress": {"stage": "mutations", "idx": 0},
+        })
+
+        _patch_perf_counter(monkeypatch, [0.0] * 20)
+        app._apply_pending_payloads_incremental()
+
+        assert app.data_store.apply_mutations.call_count == 2
+        first_call = app.data_store.apply_mutations.call_args_list[0].args[0]
+        second_call = app.data_store.apply_mutations.call_args_list[1].args[0]
+        assert first_call == mutations[:2]
+        assert second_call == mutations[2:]
+        assert len(app._pending_file_payloads) == 0
+        assert app._is_applying_payload is False
 
     def test_poll_import_progress_waits_for_streaming_apply_before_finalize(self, monkeypatch) -> None:
         app = _make_app_shell()
