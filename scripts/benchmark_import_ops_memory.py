@@ -7,12 +7,13 @@ import statistics
 import sys
 import tracemalloc
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.utils import _iter_file_ops_chunks
+from app.parser import LogParser
 
 
 DEFAULT_FIXTURES = (
@@ -21,15 +22,7 @@ DEFAULT_FIXTURES = (
     Path("tests/fixtures/real_tod_risen_save_dense.txt"),
 )
 
-OPS_KEYS = (
-    "dps_updates",
-    "damage_events",
-    "immunity_records",
-    "attack_events",
-    "save_events",
-    "epic_dodge_targets",
-    "death_snippets",
-)
+OPS_KEYS = ("mutations", "death_snippets")
 
 
 def _peak_mib(run_once) -> float:
@@ -38,6 +31,148 @@ def _peak_mib(run_once) -> float:
     _current, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     return peak / (1024 * 1024)
+
+
+def _normalize_damage_types(raw_damage_types: dict[str, Any]) -> dict[str, int]:
+    return {key: int(value or 0) for key, value in raw_damage_types.items()}
+
+
+def _append_parsed_op(
+    parsed_data: dict[str, Any],
+    mutations: list[dict[str, Any]],
+    death_snippets: list[dict[str, Any]],
+    last_damage_dealt: dict[str, dict[str, dict[str, int]]],
+) -> None:
+    event_type = parsed_data["type"]
+
+    if event_type == "damage_dealt":
+        target = parsed_data["target"]
+        attacker = parsed_data["attacker"]
+        timestamp = parsed_data["timestamp"]
+        total_damage = int(parsed_data["total_damage"] or 0)
+        damage_types = _normalize_damage_types(parsed_data.get("damage_types", {}))
+
+        mutations.append(
+            {
+                "kind": "damage",
+                "target": target,
+                "total_damage": total_damage,
+                "attacker": attacker,
+                "timestamp": timestamp,
+                "count_for_dps": True,
+                "damage_types": damage_types,
+            }
+        )
+        for damage_type, amount in damage_types.items():
+            mutations.append(
+                {
+                    "kind": "damage",
+                    "target": target,
+                    "damage_type": damage_type,
+                    "total_damage": amount,
+                    "attacker": attacker,
+                    "timestamp": timestamp,
+                    "count_for_dps": False,
+                }
+            )
+
+        last_damage_dealt[target] = {"damage_types": damage_types}
+        return
+
+    if event_type == "immunity":
+        target = parsed_data["target"]
+        damage_type = parsed_data["damage_type"]
+        if target in last_damage_dealt and damage_type in last_damage_dealt[target]["damage_types"]:
+            mutations.append(
+                {
+                    "kind": "immunity",
+                    "target": target,
+                    "damage_type": damage_type,
+                    "immunity_points": int(parsed_data["immunity_points"] or 0),
+                    "damage_dealt": last_damage_dealt[target]["damage_types"][damage_type],
+                }
+            )
+        return
+
+    if event_type in {"attack_hit", "attack_hit_critical", "attack_miss"}:
+        mutations.append(
+            {
+                "kind": "attack",
+                "attacker": parsed_data["attacker"],
+                "target": parsed_data["target"],
+                "outcome": (
+                    "critical_hit"
+                    if event_type == "attack_hit_critical"
+                    else ("hit" if event_type == "attack_hit" else "miss")
+                ),
+                "roll": parsed_data.get("roll"),
+                "bonus": parsed_data.get("bonus"),
+                "total": parsed_data.get("total"),
+                "was_nat1": bool(parsed_data.get("was_nat1", False)),
+                "was_nat20": bool(parsed_data.get("was_nat20", False)),
+                "is_concealment": bool(parsed_data.get("is_concealment", False)),
+            }
+        )
+        return
+
+    if event_type == "save":
+        mutations.append(
+            {
+                "kind": "save",
+                "target": parsed_data.get("target"),
+                "save_key": parsed_data.get("save_type"),
+                "bonus": int(parsed_data.get("bonus") or 0),
+            }
+        )
+        return
+
+    if event_type == "epic_dodge":
+        mutations.append({"kind": "epic_dodge", "target": parsed_data.get("target")})
+        return
+
+    if event_type == "death_snippet":
+        death_snippets.append(
+            {
+                "type": "death_snippet",
+                "target": parsed_data.get("target", ""),
+                "killer": parsed_data.get("killer", ""),
+                "lines": parsed_data.get("lines", []),
+                "timestamp": parsed_data.get("timestamp"),
+            }
+        )
+
+
+def _iter_file_ops_chunks(path: str | Path, parse_immunity: bool, chunk_size: int) -> Any:
+    parser = LogParser(parse_immunity=parse_immunity)
+    path = Path(path)
+    chunk_size = max(1, int(chunk_size))
+    pending_mutations: list[dict[str, Any]] = []
+    pending_death_snippets: list[dict[str, Any]] = []
+    last_damage_dealt: dict[str, dict[str, dict[str, int]]] = {}
+
+    def flush_pending(force: bool = False) -> Any:
+        nonlocal pending_mutations, pending_death_snippets
+        while (
+            len(pending_mutations) >= chunk_size
+            or len(pending_death_snippets) >= chunk_size
+            or (force and (pending_mutations or pending_death_snippets))
+        ):
+            yield {
+                "mutations": pending_mutations[:chunk_size],
+                "death_snippets": pending_death_snippets[:chunk_size],
+            }
+            pending_mutations = pending_mutations[chunk_size:]
+            pending_death_snippets = pending_death_snippets[chunk_size:]
+
+    with path.open("r", encoding="utf-8", errors="ignore") as handle:
+        for line in handle:
+            parsed_data = parser.parse_line(line)
+            if not parsed_data:
+                continue
+            _append_parsed_op(parsed_data, pending_mutations, pending_death_snippets, last_damage_dealt)
+            yield from flush_pending()
+
+    yield from flush_pending(force=True)
 
 
 def _consume_streaming(path: Path, parse_immunity: bool, chunk_size: int) -> int:
