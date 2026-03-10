@@ -8,6 +8,7 @@ import pytest
 import queue
 import time
 from pathlib import Path
+from typing import Optional
 from unittest.mock import Mock
 
 from app.monitor import LogDirectoryMonitor
@@ -206,6 +207,76 @@ class TestIncrementalReading:
         assert data_queue.qsize() == 1
         assert monitor.last_position < log1.stat().st_size
         assert any(msg_type == 'warning' and 'saturated' in msg.lower() for msg, msg_type in messages)
+
+    def test_read_new_lines_skips_candidate_rediscovery_while_current_file_is_active(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        temp_log_dir: Path,
+    ) -> None:
+        """Steady-state polling should reuse the current file when it is still growing."""
+        log1 = temp_log_dir / "nwclientLog1.txt"
+        log1.write_text("")
+
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
+        monitor.start_monitoring()
+
+        parser = LogParser()
+        data_queue = queue.Queue()
+        original_find_active = monitor.find_active_log_file
+        discovery_calls = 0
+
+        def counting_find_active() -> Optional[Path]:
+            nonlocal discovery_calls
+            discovery_calls += 1
+            return original_find_active()
+
+        monkeypatch.setattr(monitor, "find_active_log_file", counting_find_active)
+
+        with open(log1, 'a') as f:
+            f.write("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 12 (12 Physical)\n")
+
+        monitor.read_new_lines(parser, data_queue)
+
+        assert discovery_calls == 0
+
+    def test_read_new_lines_idle_rotation_falls_back_to_rescan_without_directory_signal(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        temp_log_dir: Path,
+    ) -> None:
+        """Idle polling should eventually rescan even when directory mtime does not help."""
+        log1 = temp_log_dir / "nwclientLog1.txt"
+        log2 = temp_log_dir / "nwclientLog2.txt"
+        log1.write_text("Log 1 content\n")
+
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
+        monitor.start_monitoring()
+
+        original_find_active = monitor.find_active_log_file
+        discovery_calls = 0
+
+        def counting_find_active() -> Optional[Path]:
+            nonlocal discovery_calls
+            discovery_calls += 1
+            return original_find_active()
+
+        frozen_directory_mtime = monitor._last_directory_mtime
+        monkeypatch.setattr(monitor, "find_active_log_file", counting_find_active)
+        monkeypatch.setattr(monitor, "_get_directory_mtime", lambda: frozen_directory_mtime)
+
+        time.sleep(0.05)
+        log2.write_text("Log 2 content\n")
+
+        parser = LogParser()
+        data_queue = queue.Queue()
+
+        for _ in range(monitor.IDLE_RESCAN_INTERVAL_POLLS + 1):
+            monitor.read_new_lines(parser, data_queue)
+            if monitor.current_log_file == log2:
+                break
+
+        assert discovery_calls >= 1
+        assert monitor.current_log_file == log2
 
 
 class TestFileRotation:

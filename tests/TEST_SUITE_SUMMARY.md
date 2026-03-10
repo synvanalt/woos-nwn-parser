@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 10, 2026 (model hot-path coverage update)
+**Last Updated:** March 10, 2026 (monitor polling coverage update)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **586 tests collected**
+- Result: **588 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 537 tests
+- `tests/unit/`: 35 modules, 539 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 586 tests
+- Total: 43 test modules, 588 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -32,7 +32,7 @@ Notes:
 - `test_storage.py` (47)
 - `test_storage_indices.py` (21)
 - `test_utils.py` (37)
-- `test_monitor.py` (20)
+- `test_monitor.py` (22)
 - `test_monitor_debug_mode.py` (9)
 - `test_queue_processor_unit.py` (33)
 - `test_queue_processor_batched.py` (10)
@@ -87,6 +87,7 @@ Notes:
   - `test_bump_version_script.py`
 - Monitor behavior (rotation/truncation/debug):
   - `test_monitor.py`, `test_monitor_debug_mode.py`, `test_monitor_edge_cases.py`, `test_log_rotation.py`, `test_file_truncation.py`, `test_monitor_parser_integration.py`, `test_integration_real_scenario.py`, `test_final_verification.py`
+  - Includes steady-state active-file cache coverage plus idle fallback rescans when directory metadata does not surface rotation immediately
 - DPS service/pipeline:
   - `test_dps_service.py`, `test_dps_pipeline_integration.py`
 - UI widget/main-window behavior and refresh optimizations:

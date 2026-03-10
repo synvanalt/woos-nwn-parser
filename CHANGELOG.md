@@ -7,6 +7,7 @@
 - Combat event history now auto-limits in long sessions to keep memory use and responsiveness stable (oldest raw entries are removed first while summaries and totals stay intact)
 - DPS damage-type breakdown updates are more efficient during active fights and target filtering
 - Target AC and attack-bonus estimates now update more efficiently during heavy combat without changing displayed values
+- Live monitoring now avoids repeated log-file rediscovery during steady polling while still detecting rotation and truncation safely
 - Table refreshes now skip more no-op work and preserve default order more efficiently during active sessions
 - Death snippet lookup on large logs is more efficient during backward scans
 - Combat log timestamp handling is more resilient when a log line contains a malformed date or time
