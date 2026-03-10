@@ -324,6 +324,19 @@ class TestTargetFiltering:
         assert "Goblin" in targets
         assert "Orc" in targets
 
+    def test_get_all_targets_sorts_case_insensitively(self, data_store: DataStore) -> None:
+        """Target names should sort alphabetically without case sensitivity."""
+        apply(
+            data_store,
+            damage_row(target="zombie", damage_type="Fire", total_damage=50, attacker="Woo"),
+            damage_row(target="TYRMON risen", damage_type="Cold", total_damage=40, attacker="Rogue"),
+            damage_row(target="Tyrmon scout", damage_type="Physical", total_damage=30, attacker="Woo"),
+        )
+
+        targets = data_store.get_all_targets()
+
+        assert targets == ["TYRMON risen", "Tyrmon scout", "zombie"]
+
     def test_get_target_stats(self, data_store: DataStore) -> None:
         """Test getting stats for a specific target."""
         apply(
