@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 10, 2026 (parser/store ownership coverage update)
+**Last Updated:** March 10, 2026 (model hot-path coverage update)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **580 tests collected**
+- Result: **586 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 34 modules, 531 tests
+- `tests/unit/`: 35 modules, 537 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 42 test modules, 580 tests
+- Total: 43 test modules, 586 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -25,17 +25,17 @@ Notes:
 
 ### Unit (`tests/unit`)
 - `test_bump_version_script.py` (6)
-- `test_models.py` (52)
+- `test_models.py` (54)
 - `test_parser.py` (70)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
 - `test_storage.py` (47)
 - `test_storage_indices.py` (21)
 - `test_utils.py` (37)
-- `test_monitor.py` (19)
+- `test_monitor.py` (20)
 - `test_monitor_debug_mode.py` (9)
 - `test_queue_processor_unit.py` (33)
-- `test_queue_processor_batched.py` (9)
+- `test_queue_processor_batched.py` (10)
 - `test_queue_processor.py` (10)
 - `test_dps_service.py` (14)
 - `test_formatters.py` (22)
@@ -44,7 +44,7 @@ Notes:
 - `test_selection_preservation.py` (4)
 - `test_dps_panel_incremental.py` (13)
 - `test_immunity_panel_incremental.py` (5)
-- `test_target_stats_panel_incremental.py` (5)
+- `test_target_stats_panel_incremental.py` (8)
 - `test_ui_optimizations.py` (19)
 - `test_death_snippet_panel.py` (24)
 - `test_debug_console_panel.py` (6)
@@ -52,9 +52,10 @@ Notes:
 - `test_settings.py` (5)
 - `test_main_window_monitoring_switch.py` (5)
 - `test_main_window_debug_tab_unlock.py` (5)
-- `test_main_window_orchestration.py` (15)
+- `test_main_window_orchestration.py` (16)
 - `test_monitor_edge_cases.py` (4)
 - `test_queue_processor_resilience.py` (5)
+- `test_realtime_backpressure.py` (1)
 - `test_sorted_treeview_edge_cases.py` (7)
 - `test_storage_edge_branches.py` (8)
 - `test_utils_worker_pipeline.py` (9)
@@ -75,12 +76,12 @@ Notes:
 
 - Parser and models:
   - `test_parser.py`, `test_models.py`, `test_parser_storage_integration.py`
-  - Includes malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, malformed target-concealed fast-path fallback coverage, and parser output contracts for store-owned AC/AB/save derivation
+  - Includes malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, malformed target-concealed fast-path fallback coverage, parser output contracts for store-owned AC/AB/save derivation, and model-level hot-path regressions for AB tie handling plus AC nat1/nat20 and hit-invalidation behavior
 - Storage and indexing performance behavior:
   - `test_storage.py`, `test_storage_indices.py`
   - Direct store setup now uses the real public batch API (`DataStore.apply_mutations(...)`) instead of legacy per-write helper methods
 - Queue processor logic and batching:
-  - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`
+  - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`, `test_realtime_backpressure.py`
   - Queue/import tests validate the public-first mutation payload flow used by production ingestion
 - Release/version automation:
   - `test_bump_version_script.py`
@@ -89,8 +90,9 @@ Notes:
 - DPS service/pipeline:
   - `test_dps_service.py`, `test_dps_pipeline_integration.py`
 - UI widget/main-window behavior and refresh optimizations:
-  - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
+  - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
   - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, and tree-sort scan bypass when callers already control order
+  - Includes a dedicated realtime backlog stress test covering bounded queue saturation, monitor backpressure pacing, aggressive UI draining, and coalesced refresh behavior under producer-faster-than-consumer load
 - App settings persistence:
   - `test_settings.py`
 - Import/worker pipeline behavior:

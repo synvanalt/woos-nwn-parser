@@ -112,14 +112,17 @@ class TestEnemyAC:
     def test_record_miss_ignores_natural_1(self) -> None:
         """Test that natural 1 misses are ignored."""
         ac = EnemyAC(name="TestEnemy")
+        ac.record_hit(18)
         ac.record_miss(5, was_nat1=True)
         assert ac.max_miss is None  # Should not record natural 1
+        assert ac.min_hit == 18
 
         ac.record_miss(15, was_nat1=False)
         assert ac.max_miss == 15
 
         ac.record_miss(3, was_nat1=True)
         assert ac.max_miss == 15  # Should not change
+        assert ac.min_hit == 18
 
     def test_record_hit_ignores_natural_20(self) -> None:
         """Test that natural 20 hits are ignored."""
@@ -132,6 +135,21 @@ class TestEnemyAC:
 
         ac.record_hit(22, was_nat20=True)
         assert ac.min_hit == 30  # Should not change
+
+    def test_record_miss_only_recomputes_when_hit_is_invalidated(self) -> None:
+        """Test that misses below the cached minimum hit leave the estimate unchanged."""
+        ac = EnemyAC(name="TestEnemy")
+
+        ac.record_hit(30)
+        ac.record_hit(40)
+        ac.record_miss(20)
+
+        assert ac.max_miss == 20
+        assert ac.min_hit == 30
+
+        ac.record_miss(25)
+        assert ac.max_miss == 25
+        assert ac.min_hit == 30
 
     def test_get_ac_estimate_exact(self) -> None:
         """Test AC estimation when max_miss + 1 == min_hit."""
@@ -397,6 +415,18 @@ class TestTargetAttackBonus:
         tab.record_bonus(15)
 
         # Should prefer higher value (15) in tie
+        assert tab.max_bonus == 15
+
+    def test_most_frequent_tie_prefers_higher_after_existing_winner(self) -> None:
+        """Test tie-breaking stays stable after the winner changes over time."""
+        tab = TargetAttackBonus(name="TestEnemy")
+
+        tab.record_bonus(10)
+        tab.record_bonus(10)
+        tab.record_bonus(15)
+        assert tab.max_bonus == 10
+
+        tab.record_bonus(15)
         assert tab.max_bonus == 15
 
     def test_most_frequent_updates_dynamically(self) -> None:
