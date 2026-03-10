@@ -29,8 +29,8 @@ class ImmunityPanel(ttk.Frame):
     """
 
     DISCLAIMER_TEXT = (
-        "• Damage and immunity lines are separated in log and may be matched incorrectly.\n"
-        "• Displayed immunity % can be overstated if target also has damage resistance/reduction."
+        "• Damage and immunity lines are separated in log and may be matched incorrectly\n"
+        "• Displayed immunity % can be overstated if target also has damage resistance/reduction"
     )
 
     def __init__(
@@ -71,7 +71,6 @@ class ImmunityPanel(ttk.Frame):
         def _on_toggle_immunity() -> None:
             val = bool(self.parse_immunity_var.get())
             self.parser.parse_immunity = val
-            # Refresh the display when Parse Immunities is toggled
             self.refresh_display()
 
         ttk.Checkbutton(
@@ -96,7 +95,6 @@ class ImmunityPanel(ttk.Frame):
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True)
 
-        # Scrollbar
         scrollbar = ttk.Scrollbar(tree_frame)
         scrollbar.pack(side="right", fill="y")
 
@@ -121,7 +119,6 @@ class ImmunityPanel(ttk.Frame):
         self.tree.pack(fill="both", expand=True)
         scrollbar.config(command=self.tree.yview)
 
-        # Set default sort by Damage Type name ascending
         self.tree.set_default_sort("Damage Type", reverse=False)
 
         self.disclaimer_label = ttk.Label(
@@ -130,6 +127,7 @@ class ImmunityPanel(ttk.Frame):
             justify="left",
             anchor="w",
             wraplength=1,
+            foreground="gray",
         )
         self.disclaimer_label.pack(fill="x", padx=(10, 10), pady=(8, 0))
         self.bind("<Configure>", self._on_panel_resize)
@@ -207,9 +205,9 @@ class ImmunityPanel(ttk.Frame):
         }
 
         needs_full_refresh = (
-            self._cached_target != target or
-            not self._item_ids or
-            set(self._cached_rows.keys()) != set(new_rows.keys())
+            self._cached_target != target
+            or not self._item_ids
+            or set(self._cached_rows.keys()) != set(new_rows.keys())
         )
         changed_damage_types = {
             damage_type
@@ -270,7 +268,7 @@ class ImmunityPanel(ttk.Frame):
         for item in self.tree.selection():
             values = self.tree.item(item, "values")
             if values and len(values) > 0:
-                selected_damage_types.add(values[0])  # Damage type is first column
+                selected_damage_types.add(values[0])
 
         # Suppress visual updates during bulk operations
         original_show = self.tree.cget("show")
@@ -392,4 +390,3 @@ class ImmunityPanel(ttk.Frame):
         self._cached_order_token = ()
         self._cached_view_key = ("", False)
         self._last_refresh_version = -1
-
