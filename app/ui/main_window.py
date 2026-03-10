@@ -30,6 +30,21 @@ from .widgets import DPSPanel, TargetStatsPanel, ImmunityPanel, DeathSnippetPane
 class WoosNwnParserApp:
     """Main application window."""
 
+    DATA_QUEUE_MAXSIZE = 4000
+    DATA_QUEUE_PRESSURED_THRESHOLD = 2000
+    DATA_QUEUE_SATURATED_THRESHOLD = 3400
+    QUEUE_TICK_MS_NORMAL = 50
+    QUEUE_TICK_MS_PRESSURED = 10
+    QUEUE_TICK_MS_SATURATED = 1
+    MONITOR_LINES_PER_POLL_NORMAL = 2000
+    MONITOR_LINES_PER_POLL_PRESSURED = 600
+    MONITOR_SLEEP_ACTIVE_NORMAL = 0.05
+    MONITOR_SLEEP_ACTIVE_PRESSURED = 0.08
+    MONITOR_SLEEP_ACTIVE_SATURATED = 0.12
+    MONITOR_SLEEP_IDLE_NORMAL = 0.5
+    MONITOR_SLEEP_IDLE_PRESSURED = 0.35
+    MONITOR_SLEEP_IDLE_SATURATED = 0.12
+
     def __init__(self, root: tk.Tk) -> None:
         """Initialize the application.
 
@@ -48,7 +63,7 @@ class WoosNwnParserApp:
         self.dps_service = DPSCalculationService(self.data_store)
 
         # Queue and monitoring
-        self.data_queue = queue.Queue()
+        self.data_queue = queue.Queue(maxsize=self.DATA_QUEUE_MAXSIZE)
         self.directory_monitor: Optional[LogDirectoryMonitor] = None
         self.is_monitoring = False
         self._settings = load_app_settings()
@@ -75,7 +90,8 @@ class WoosNwnParserApp:
         self._dps_dirty = False
         self._targets_dirty = False
         self._immunity_dirty_targets: set[str] = set()
-        self._queue_tick_ms = 50
+        self._queue_tick_ms = self.QUEUE_TICK_MS_NORMAL
+        self._queue_pressure_state = "normal"
 
         # Debug mode
         self.debug_mode = False
@@ -742,24 +758,35 @@ class WoosNwnParserApp:
                 directory_monitor = self.directory_monitor
                 if directory_monitor is None:
                     break
+                pressure_state = self._get_queue_pressure_state()
+                has_more_pending = False
 
-                try:
-                    has_more_pending = directory_monitor.read_new_lines(
-                        self.parser,
-                        self.data_queue,
-                        on_log_message=self._enqueue_monitor_log,
-                        debug_enabled=bool(self._debug_monitor_enabled),
-                    )
-                except Exception as exc:
-                    self._enqueue_monitor_log(f"I/O Error: {exc}", "error")
-                    has_more_pending = False
+                if pressure_state != "saturated":
+                    try:
+                        has_more_pending = directory_monitor.read_new_lines(
+                            self.parser,
+                            self.data_queue,
+                            on_log_message=self._enqueue_monitor_log,
+                            debug_enabled=bool(self._debug_monitor_enabled),
+                            max_lines_per_poll=self._get_monitor_max_lines_per_poll(
+                                pressure_state
+                            ),
+                        )
+                    except Exception as exc:
+                        self._enqueue_monitor_log(f"I/O Error: {exc}", "error")
+                        has_more_pending = False
 
                 current_file = directory_monitor.current_log_file
                 self._monitor_active_file_name = current_file.name if current_file is not None else "-"
 
                 if self.monitor_stop_event.is_set():
                     break
-                time.sleep(0.05 if has_more_pending else 0.5)
+                time.sleep(
+                    self._get_monitor_sleep_seconds(
+                        pressure_state=pressure_state,
+                        has_more_pending=has_more_pending,
+                    )
+                )
         finally:
             if self.monitor_thread is current_thread:
                 self.monitor_thread = None
@@ -943,6 +970,13 @@ class WoosNwnParserApp:
             self.data_queue,
             **process_kwargs,
         )
+        pressure_state_value = getattr(result, "pressure_state", "normal")
+        pressure_state = (
+            pressure_state_value
+            if pressure_state_value in {"normal", "pressured", "saturated"}
+            else "normal"
+        )
+        self._queue_pressure_state = pressure_state
 
         # Apply non-tree events immediately.
         death_events = result.death_events if isinstance(getattr(result, "death_events", None), list) else []
@@ -989,11 +1023,56 @@ class WoosNwnParserApp:
             self._schedule_coalesced_refresh()
 
         # Schedule next check
-        backlog_value = getattr(result, "has_backlog", False)
-        has_backlog = backlog_value if isinstance(backlog_value, bool) else False
-        default_tick = getattr(self, "_queue_tick_ms", 100)
-        next_tick = 10 if has_backlog else default_tick
+        next_tick = self._get_next_queue_tick_ms(pressure_state)
         self.root.after(next_tick, self.process_queue)
+
+    def _get_queue_depth_hint(self) -> int:
+        """Return an approximate queue depth for scheduling decisions."""
+        try:
+            size = int(self.data_queue.qsize())
+        except (AttributeError, NotImplementedError):
+            return 0
+        return max(size, 0)
+
+    def _get_queue_pressure_state(self) -> str:
+        """Classify queue pressure bands used for monitor pacing."""
+        queue_depth = self._get_queue_depth_hint()
+        if queue_depth >= self.DATA_QUEUE_SATURATED_THRESHOLD:
+            return "saturated"
+        if queue_depth >= self.DATA_QUEUE_PRESSURED_THRESHOLD:
+            return "pressured"
+        return "normal"
+
+    def _get_monitor_max_lines_per_poll(self, pressure_state: str) -> int:
+        """Cap background ingestion according to current queue pressure."""
+        if pressure_state == "pressured":
+            return self.MONITOR_LINES_PER_POLL_PRESSURED
+        return self.MONITOR_LINES_PER_POLL_NORMAL
+
+    def _get_monitor_sleep_seconds(self, pressure_state: str, has_more_pending: bool) -> float:
+        """Sleep policy for background monitor loop.
+
+        normal: full ingestion, short sleep while unread lines remain
+        pressured: reduced ingestion cap, slightly slower polling
+        saturated: skip ingestion until UI drains backlog
+        """
+        if pressure_state == "saturated":
+            return self.MONITOR_SLEEP_ACTIVE_SATURATED
+        if has_more_pending:
+            if pressure_state == "pressured":
+                return self.MONITOR_SLEEP_ACTIVE_PRESSURED
+            return self.MONITOR_SLEEP_ACTIVE_NORMAL
+        if pressure_state == "pressured":
+            return self.MONITOR_SLEEP_IDLE_PRESSURED
+        return self.MONITOR_SLEEP_IDLE_NORMAL
+
+    def _get_next_queue_tick_ms(self, pressure_state: str) -> int:
+        """Adjust Tk queue-drain cadence based on current backlog pressure."""
+        if pressure_state == "saturated":
+            return self.QUEUE_TICK_MS_SATURATED
+        if pressure_state == "pressured":
+            return self.QUEUE_TICK_MS_PRESSURED
+        return int(getattr(self, "_queue_tick_ms", self.QUEUE_TICK_MS_NORMAL))
 
     def _schedule_coalesced_refresh(self) -> None:
         """Schedule a batched UI refresh for heavy panels."""

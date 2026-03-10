@@ -8,6 +8,7 @@ import pytest
 import queue
 import time
 from pathlib import Path
+from unittest.mock import Mock
 
 from app.monitor import LogDirectoryMonitor
 from app.parser import LogParser
@@ -179,6 +180,32 @@ class TestIncrementalReading:
         monitor.read_new_lines(parser, data_queue)
 
         assert monitor.last_position > initial_position
+
+    def test_read_new_lines_stops_before_queue_saturation(self, temp_log_dir: Path) -> None:
+        """A bounded queue should stop ingestion without losing unread file content."""
+        log1 = temp_log_dir / "nwclientLog1.txt"
+        log1.write_text("line 1\nline 2\nline 3\n")
+
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
+        monitor.current_log_file = log1
+        monitor.last_position = 0
+
+        parser = Mock()
+        parser.parse_line.return_value = {'type': 'debug', 'message': 'parsed'}
+        data_queue = queue.Queue(maxsize=1)
+        messages = []
+
+        has_more_pending = monitor.read_new_lines(
+            parser,
+            data_queue,
+            on_log_message=lambda msg, msg_type: messages.append((msg, msg_type)),
+            max_lines_per_poll=10,
+        )
+
+        assert has_more_pending is True
+        assert data_queue.qsize() == 1
+        assert monitor.last_position < log1.stat().st_size
+        assert any(msg_type == 'warning' and 'saturated' in msg.lower() for msg, msg_type in messages)
 
 
 class TestFileRotation:

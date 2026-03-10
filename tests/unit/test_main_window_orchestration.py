@@ -43,6 +43,11 @@ def app_shell(shared_tk_root) -> WoosNwnParserApp:
     app.data_store = Mock()
     app.data_store.version = 0
     app._last_refresh_version = 0
+    app._dps_dirty = False
+    app._targets_dirty = False
+    app._immunity_dirty_targets = set()
+    app._queue_tick_ms = 50
+    app._refresh_job = None
     app.data_queue = queue.Queue()
     app.parser = Mock()
     app.monitor_thread = None
@@ -228,7 +233,24 @@ def test_process_queue_wires_callbacks_and_reschedules(app_shell) -> None:
     assert kwargs["on_damage_dealt"] == app_shell._on_damage_dealt
     assert kwargs["on_death_snippet"] == app_shell._on_death_snippet
     assert kwargs["on_character_identified"] == app_shell._on_death_character_identified
-    app_shell.root.after.assert_called_with(100, app_shell.process_queue)
+    app_shell.root.after.assert_called_with(50, app_shell.process_queue)
+
+
+def test_process_queue_reschedules_aggressively_under_pressure(app_shell) -> None:
+    app_shell.root.after.reset_mock()
+    app_shell.queue_processor.process_queue.return_value = Mock(
+        dps_updated=False,
+        death_events=[],
+        character_identity_events=[],
+        targets_to_refresh=set(),
+        immunity_targets=set(),
+        damage_targets=set(),
+        pressure_state="saturated",
+    )
+
+    app_shell.process_queue()
+
+    app_shell.root.after.assert_called_with(1, app_shell.process_queue)
 
 
 def test_on_closing_terminates_active_import_process(app_shell) -> None:

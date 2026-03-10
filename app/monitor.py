@@ -88,6 +88,7 @@ class LogDirectoryMonitor:
         """
         try:
             active_file = self.get_active_log_file()
+            queue_saturated = False
 
             # Handle rotation: if we switched to a new file, reset position and notify
             if active_file != self.current_log_file:
@@ -134,6 +135,9 @@ class LogDirectoryMonitor:
                 handle.seek(self.last_position)
                 if hasattr(handle, "readline"):
                     while parsed_lines < max_lines_per_poll:
+                        if getattr(data_queue, "maxsize", 0) > 0 and data_queue.full():
+                            queue_saturated = True
+                            break
                         line = handle.readline()
                         if not line:
                             break
@@ -144,27 +148,43 @@ class LogDirectoryMonitor:
 
                         parsed_data = parser.parse_line(line)
                         if parsed_data:
-                            data_queue.put(parsed_data)
+                            try:
+                                data_queue.put_nowait(parsed_data)
+                            except queue.Full:
+                                queue_saturated = True
+                                break
                 else:
                     # Compatibility path for mocked file handles in tests.
                     lines = list(handle.readlines())[:max_lines_per_poll]
                     for line in lines:
+                        if getattr(data_queue, "maxsize", 0) > 0 and data_queue.full():
+                            queue_saturated = True
+                            break
                         parsed_lines += 1
                         if debug_enabled and on_log_message:
                             on_log_message(f"Raw line: {line.strip()}", 'info')
                         parsed_data = parser.parse_line(line)
                         if parsed_data:
-                            data_queue.put(parsed_data)
+                            try:
+                                data_queue.put_nowait(parsed_data)
+                            except queue.Full:
+                                queue_saturated = True
+                                break
 
                 self.last_position = handle.tell()
                 self.last_mtime = current_mtime
 
-            has_more_pending = self.last_position < current_size
+            has_more_pending = queue_saturated or self.last_position < current_size
 
             if parsed_lines and debug_enabled and on_log_message:
                 on_log_message(
                     f"Read {parsed_lines} line(s) from {self.current_log_file.name}",
                     'debug',
+                )
+            if queue_saturated and on_log_message:
+                on_log_message(
+                    f"Realtime queue saturated while reading {self.current_log_file.name}; deferring remaining lines",
+                    'warning',
                 )
 
             return has_more_pending

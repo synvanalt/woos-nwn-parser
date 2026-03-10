@@ -35,6 +35,8 @@ class QueueDrainResult:
     death_events: List[Dict[str, Any]] = field(default_factory=list)
     character_identity_events: List[Dict[str, Any]] = field(default_factory=list)
     has_backlog: bool = False
+    backlog_count: int = 0
+    pressure_state: str = "normal"
 
 
 class QueueProcessor:
@@ -127,7 +129,12 @@ class QueueProcessor:
             except Exception as e:
                 on_log_message(f"Data store batch error: {e}", 'error')
 
-        result.has_backlog = not data_queue.empty()
+        result.backlog_count = self._get_queue_size_hint(data_queue)
+        result.has_backlog = result.backlog_count > 0
+        result.pressure_state = self._classify_backpressure(
+            backlog_count=result.backlog_count,
+            queue_maxsize=getattr(data_queue, "maxsize", 0),
+        )
 
         # Periodic cleanup of stale immunity entries (every 100 processed events)
         self.parsed_event_count += result.events_processed
@@ -140,6 +147,34 @@ class QueueProcessor:
                 self.next_immunity_cleanup_event_count += 100
 
         return result
+
+    @staticmethod
+    def _get_queue_size_hint(data_queue: queue.Queue) -> int:
+        """Return an approximate queue size without relying on exactness."""
+        try:
+            size = int(data_queue.qsize())
+        except (AttributeError, NotImplementedError):
+            return 0
+        return max(size, 0)
+
+    @staticmethod
+    def _classify_backpressure(backlog_count: int, queue_maxsize: int) -> str:
+        """Classify queue pressure for scheduling decisions only."""
+        if backlog_count <= 0:
+            return "normal"
+
+        if queue_maxsize and queue_maxsize > 0:
+            pressured_threshold = max(1, queue_maxsize // 2)
+            saturated_threshold = max(pressured_threshold + 1, int(queue_maxsize * 0.85))
+        else:
+            pressured_threshold = 2000
+            saturated_threshold = 3400
+
+        if backlog_count >= saturated_threshold:
+            return "saturated"
+        if backlog_count >= pressured_threshold:
+            return "pressured"
+        return "normal"
 
     def _handle_event_batched(
         self,
