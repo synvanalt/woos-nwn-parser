@@ -216,12 +216,40 @@ class TestLoadAndParseWorkflow:
 
         app.death_snippet_panel.add_death_event.assert_called_once()
 
+    def test_apply_pending_payloads_forwards_death_character_identified_events(self) -> None:
+        app = _make_app_shell()
+        app.root = Mock()
+        app._on_death_character_identified = Mock()
+        app._is_applying_payload = True
+        app._pending_file_payloads.append({
+            "ops": {
+                "death_character_identified": [
+                    {
+                        "type": "death_character_identified",
+                        "character_name": "Woo Wildrock",
+                    }
+                ],
+            },
+            "index": 1,
+            "progress": {"stage": "death_character_identified", "idx": 0},
+        })
+
+        app._apply_pending_payloads_incremental()
+
+        app._on_death_character_identified.assert_called_once_with(
+            {
+                "type": "death_character_identified",
+                "character_name": "Woo Wildrock",
+            }
+        )
+
     def test_apply_pending_payloads_incremental_spans_ticks_and_drains(self, monkeypatch) -> None:
         app = _make_app_shell()
         app.root = Mock()
         app.root.after = Mock()
         app.data_store = Mock()
         app.death_snippet_panel = Mock()
+        app._on_death_character_identified = Mock()
         app.IMPORT_APPLY_MUTATION_BATCH_SIZE = 1
         app._is_applying_payload = True
         app._pending_file_payloads.append({
@@ -256,6 +284,7 @@ class TestLoadAndParseWorkflow:
         app.root.after = Mock()
         app.data_store = Mock()
         app.death_snippet_panel = Mock()
+        app._on_death_character_identified = Mock()
         app.IMPORT_APPLY_MUTATION_BATCH_SIZE = 1
         app._is_applying_payload = True
         app._pending_file_payloads.append({

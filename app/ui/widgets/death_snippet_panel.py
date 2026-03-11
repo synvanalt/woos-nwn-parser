@@ -74,7 +74,7 @@ class DeathSnippetPanel(ttk.Frame):
         self.killed_by_var = tk.StringVar(value=self.EMPTY_DROPDOWN_PLACEHOLDER)
         self.character_name_var = tk.StringVar(value="")
         self.fallback_death_line_var = tk.StringVar(value=self.DEFAULT_FALLBACK_DEATH_LINE)
-        self.line_wrap_var = tk.BooleanVar(value=True)
+        self.line_wrap_var = tk.BooleanVar(value=False)
         self._text_tags_by_color: Dict[str, str] = {}
         self._last_render_key: Optional[tuple] = None
         self._name_pattern_cache: Dict[str, re.Pattern[str]] = {}

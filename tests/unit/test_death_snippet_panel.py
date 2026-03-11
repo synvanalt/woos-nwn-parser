@@ -175,7 +175,7 @@ class TestDeathSnippetPanel:
         panel._text_tags_by_color = {}
         panel._last_render_key = None
         panel._name_pattern_cache = {}
-        panel.line_wrap_var = _FakeBoolVar(True)
+        panel.line_wrap_var = _FakeBoolVar(False)
         panel.hscroll = _FakeScrollbar()
         panel.character_name_var = _FakeStringVar("")
         panel._character_hint_active = False
@@ -429,14 +429,15 @@ class TestDeathSnippetPanel:
 
         assert callback == [""]
 
-    def test_apply_line_wrap_setting_defaults_to_wrapped_without_horizontal_scroll(self) -> None:
+    def test_apply_line_wrap_setting_defaults_to_unwrapped_with_horizontal_scroll(self) -> None:
         panel = self._make_panel()
 
         panel._apply_line_wrap_setting()
 
-        assert panel.text.config["wrap"] == "word"
-        assert panel.text.config["xscrollcommand"] == ""
-        assert panel.hscroll.winfo_ismapped() is False
+        assert panel.text.config["wrap"] == "none"
+        assert panel.text.config["xscrollcommand"] == panel.hscroll.set
+        assert panel.hscroll.command == panel.text.xview
+        assert panel.hscroll.winfo_ismapped() is True
 
     def test_line_wrap_toggle_off_disables_wrap_and_shows_horizontal_scrollbar(self) -> None:
         panel = self._make_panel()

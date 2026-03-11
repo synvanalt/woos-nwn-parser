@@ -460,6 +460,16 @@ class WoosNwnParserApp:
                     self.death_snippet_panel.add_death_event(event)
                     progress['idx'] += 1
                     continue
+                progress['stage'] = 'death_character_identified'
+                progress['idx'] = 0
+                continue
+
+            if stage == 'death_character_identified':
+                identity_events = ops.get('death_character_identified', [])
+                if idx < len(identity_events):
+                    self._on_death_character_identified(identity_events[idx])
+                    progress['idx'] += 1
+                    continue
                 progress['stage'] = 'done'
                 progress['idx'] = 0
                 continue

@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 10, 2026 (suite count and fixture inventory refresh)
+**Last Updated:** March 11, 2026 (import regression coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **597 tests collected**
+- Result: **599 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 548 tests
+- `tests/unit/`: 35 modules, 550 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 597 tests
+- Total: 43 test modules, 599 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -48,7 +48,7 @@ Notes:
 - `test_ui_optimizations.py` (19)
 - `test_death_snippet_panel.py` (26)
 - `test_debug_console_panel.py` (6)
-- `test_main_window_load_parse.py` (19)
+- `test_main_window_load_parse.py` (20)
 - `test_settings.py` (5)
 - `test_main_window_monitoring_switch.py` (5)
 - `test_main_window_debug_tab_unlock.py` (5)
@@ -58,7 +58,7 @@ Notes:
 - `test_realtime_backpressure.py` (1)
 - `test_sorted_treeview_edge_cases.py` (7)
 - `test_storage_edge_branches.py` (8)
-- `test_utils_worker_pipeline.py` (9)
+- `test_utils_worker_pipeline.py` (10)
 
 ### Integration (`tests/integration`)
 - `test_parser_storage_integration.py` (13)
@@ -93,14 +93,14 @@ Notes:
 - UI widget/main-window behavior and refresh optimizations:
   - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
   - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, and tree-sort scan bypass when callers already control order
-  - Includes import payload application coverage for batched mutation submission on the Tk thread while preserving death-snippet event delivery and queue-drain lifecycle behavior
+  - Includes import payload application coverage for batched mutation submission on the Tk thread while preserving death-snippet delivery, death-character auto-identification, and queue-drain lifecycle behavior
   - Includes Death Snippets coverage for guarded `wooparseme` auto-identification and one-click character-name clearing back to the hint state
   - Includes a dedicated realtime backlog stress test covering bounded queue saturation, monitor backpressure pacing, aggressive UI draining, and coalesced refresh behavior under producer-faster-than-consumer load
 - App settings persistence:
   - `test_settings.py`
 - Import/worker pipeline behavior:
   - `test_utils.py`, `test_utils_worker_pipeline.py`
-  - Includes streaming chunk payload integrity, queue-full abort responsiveness coverage, and import payload coverage after removing legacy parser-state snapshots
+  - Includes streaming chunk payload integrity, queue-full abort responsiveness coverage, import payload coverage after removing legacy parser-state snapshots, and preserved `wooparseme` identity events during manual import
 - Full-session/e2e behavior:
   - `test_e2e_combat_session.py`
 
