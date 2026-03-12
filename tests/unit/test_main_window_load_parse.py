@@ -165,16 +165,13 @@ class TestLoadAndParseWorkflow:
             "event": "file_completed",
             "index": 1,
             "file_name": "alpha.txt",
-            "ops": {
-                "mutations": [],
-            },
         })
 
         app._drain_import_events()
 
         assert app._import_status["files_completed"] == 1
-        assert len(app._pending_file_payloads) == 1
-        app.root.after.assert_called_once()
+        assert len(app._pending_file_payloads) == 0
+        app.root.after.assert_not_called()
 
     def test_on_death_snippet_forwards_event_to_panel(self) -> None:
         app = _make_app_shell()
@@ -196,25 +193,24 @@ class TestLoadAndParseWorkflow:
         app.death_snippet_panel = Mock()
         app._is_applying_payload = True
         app._pending_file_payloads.append({
-            "ops": {
-                "death_snippets": [
-                    {
-                        "type": "death_snippet",
-                        "timestamp": None,
-                        "killer": "HYDROXIS",
-                        "target": "Woo Wildrock",
-                        "lines": ["line-1", "line-2"],
-                    }
-                ],
-            },
+            "mutations": [],
+            "death_snippets": [
+                {
+                    "type": "death_snippet",
+                    "timestamp": None,
+                    "killer": "HYDROXIS",
+                    "target": "Woo Wildrock",
+                    "lines": ["line-1", "line-2"],
+                }
+            ],
+            "death_character_identified": [],
             "index": 1,
-            "progress": {"stage": "death_snippet", "idx": 0},
-            "state_merged": False,
+            "mutation_idx": 0,
         })
 
         app._apply_pending_payloads_incremental()
 
-        app.death_snippet_panel.add_death_event.assert_called_once()
+        app.death_snippet_panel.add_death_events.assert_called_once()
 
     def test_apply_pending_payloads_forwards_death_character_identified_events(self) -> None:
         app = _make_app_shell()
@@ -222,16 +218,16 @@ class TestLoadAndParseWorkflow:
         app._on_death_character_identified = Mock()
         app._is_applying_payload = True
         app._pending_file_payloads.append({
-            "ops": {
-                "death_character_identified": [
-                    {
-                        "type": "death_character_identified",
-                        "character_name": "Woo Wildrock",
-                    }
-                ],
-            },
+            "mutations": [],
+            "death_snippets": [],
+            "death_character_identified": [
+                {
+                    "type": "death_character_identified",
+                    "character_name": "Woo Wildrock",
+                }
+            ],
             "index": 1,
-            "progress": {"stage": "death_character_identified", "idx": 0},
+            "mutation_idx": 0,
         })
 
         app._apply_pending_payloads_incremental()
@@ -253,19 +249,19 @@ class TestLoadAndParseWorkflow:
         app.IMPORT_APPLY_MUTATION_BATCH_SIZE = 1
         app._is_applying_payload = True
         app._pending_file_payloads.append({
-            "ops": {
-                "mutations": [DamageMutation(target="Goblin", total_damage=10, attacker="Orc", timestamp=1.0, count_for_dps=True, damage_types={"slashing": 10})],
-            },
+            "mutations": [DamageMutation(target="Goblin", total_damage=10, attacker="Orc", timestamp=1.0, count_for_dps=True, damage_types={"slashing": 10})],
+            "death_snippets": [],
+            "death_character_identified": [],
             "index": 1,
-            "progress": {"stage": "mutations", "idx": 0},
+            "mutation_idx": 0,
         })
 
         # Tick 1: process one operation then run out of time.
-        _patch_perf_counter(monkeypatch, [0.0, 0.0, 0.005])
+        _patch_perf_counter(monkeypatch, [0.0, 0.0, 0.007])
         app._apply_pending_payloads_incremental()
 
         assert len(app._pending_file_payloads) == 1
-        assert app._pending_file_payloads[0]["progress"] == {"stage": "mutations", "idx": 1}
+        assert app._pending_file_payloads[0]["mutation_idx"] == 1
         assert app._is_applying_payload is True
         app.root.after.assert_called_once_with(1, app._apply_pending_payloads_incremental)
         app.data_store.apply_mutations.assert_called_once()
@@ -288,12 +284,11 @@ class TestLoadAndParseWorkflow:
         app.IMPORT_APPLY_MUTATION_BATCH_SIZE = 1
         app._is_applying_payload = True
         app._pending_file_payloads.append({
-            "ops": {
-                "mutations": [SaveMutation(target="Goblin", save_key="fort", bonus=4)],
-                "death_snippets": [],
-            },
+            "mutations": [SaveMutation(target="Goblin", save_key="fort", bonus=4)],
+            "death_snippets": [],
+            "death_character_identified": [],
             "index": 1,
-            "progress": {"stage": "mutations", "idx": 0},
+            "mutation_idx": 0,
         })
 
         _patch_perf_counter(monkeypatch, [0.0, 0.0, 0.01])
@@ -320,12 +315,11 @@ class TestLoadAndParseWorkflow:
             SaveMutation(target="Goblin", save_key="will", bonus=6),
         ]
         app._pending_file_payloads.append({
-            "ops": {
-                "mutations": mutations,
-                "death_snippets": [],
-            },
+            "mutations": mutations,
+            "death_snippets": [],
+            "death_character_identified": [],
             "index": 1,
-            "progress": {"stage": "mutations", "idx": 0},
+            "mutation_idx": 0,
         })
 
         _patch_perf_counter(monkeypatch, [0.0] * 20)

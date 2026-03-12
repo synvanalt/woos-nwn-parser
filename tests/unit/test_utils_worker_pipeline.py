@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import app.utils
 from app.models import AttackMutation, DamageMutation, EpicDodgeMutation, ImmunityMutation, SaveMutation
-from app.utils import parse_file_to_ops, import_worker_process
+from app.utils import iter_file_ops_chunks, parse_file_to_ops, import_worker_process
 
 
 class _CaptureQueue:
@@ -153,20 +153,17 @@ def test_parse_file_to_ops_can_abort_mid_file(monkeypatch) -> None:
 
 
 def test_import_worker_process_emits_file_error_and_continues(monkeypatch) -> None:
-    parse_mock = Mock(side_effect=[
-        {"success": False, "aborted": False, "error": "bad file", "lines_processed": 0},
-        {
-            "success": True,
-            "aborted": False,
-            "error": None,
-            "lines_processed": 10,
-            "ops": {
-                "mutations": [],
-                "death_snippets": [],
-            },
-        },
-    ])
-    monkeypatch.setattr("app.utils.parse_file_to_ops", parse_mock)
+    def chunk_stream(*args, **kwargs):
+        file_path = args[0]
+        if file_path == "a.txt":
+            raise RuntimeError("bad file")
+        yield {
+            "mutations": [],
+            "death_snippets": [],
+            "death_character_identified": [],
+        }
+
+    monkeypatch.setattr("app.utils.iter_file_ops_chunks", chunk_stream)
 
     result_queue = _CaptureQueue()
     import_worker_process(
@@ -181,22 +178,27 @@ def test_import_worker_process_emits_file_error_and_continues(monkeypatch) -> No
         "file_started",
         "file_error",
         "file_started",
+        "ops_chunk",
         "file_completed",
         "done",
     ]
 
 
-def test_import_worker_process_stops_when_parser_reports_aborted(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "app.utils.parse_file_to_ops",
-        Mock(return_value={"success": True, "aborted": True, "error": None, "lines_processed": 2}),
-    )
+def test_import_worker_process_stops_when_abort_is_set_mid_stream(monkeypatch) -> None:
+    abort_event = _AbortEvent(False)
+
+    def chunk_stream(*args, **kwargs):
+        abort_event.set()
+        if False:
+            yield {}
+
+    monkeypatch.setattr("app.utils.iter_file_ops_chunks", chunk_stream)
 
     result_queue = _CaptureQueue()
     import_worker_process(
         file_paths=["a.txt", "b.txt"],
         parse_immunity=False,
-        abort_event=_AbortEvent(False),
+        abort_event=abort_event,
         result_queue=result_queue,
     )
 
@@ -205,18 +207,12 @@ def test_import_worker_process_stops_when_parser_reports_aborted(monkeypatch) ->
 
 
 def test_import_worker_process_forwards_death_settings(monkeypatch) -> None:
-    parse_mock = Mock(return_value={
-        "success": True,
-        "aborted": False,
-        "error": None,
-        "lines_processed": 1,
-        "ops": {
+    chunk_mock = Mock(return_value=iter([{
             "mutations": [],
             "death_snippets": [],
             "death_character_identified": [],
-        },
-    })
-    monkeypatch.setattr("app.utils.parse_file_to_ops", parse_mock)
+        }]))
+    monkeypatch.setattr("app.utils.iter_file_ops_chunks", chunk_mock)
 
     result_queue = _CaptureQueue()
     import_worker_process(
@@ -228,7 +224,7 @@ def test_import_worker_process_forwards_death_settings(monkeypatch) -> None:
         death_fallback_line="Custom fallback",
     )
 
-    _args, kwargs = parse_mock.call_args
+    _args, kwargs = chunk_mock.call_args
     assert kwargs["death_character_name"] == "Foo Bar"
     assert kwargs["death_fallback_line"] == "Custom fallback"
 
@@ -248,14 +244,21 @@ def test_import_worker_process_streams_chunk_order_and_payload_integrity(monkeyp
             {"type": "death_character_identified", "character_name": "Woo Wildrock"}
         ],
     }
-    parse_mock = Mock(return_value={
-        "success": True,
-        "aborted": False,
-        "error": None,
-        "lines_processed": 999,
-        "ops": ops,
-    })
-    monkeypatch.setattr("app.utils.parse_file_to_ops", parse_mock)
+    monkeypatch.setattr(
+        "app.utils.iter_file_ops_chunks",
+        lambda *args, **kwargs: iter([
+            {
+                "mutations": ops["mutations"][:4000],
+                "death_snippets": ops["death_snippets"],
+                "death_character_identified": ops["death_character_identified"],
+            },
+            {
+                "mutations": ops["mutations"][4000:],
+                "death_snippets": [],
+                "death_character_identified": [],
+            },
+        ]),
+    )
 
     result_queue = _CaptureQueue()
     import_worker_process(
@@ -271,7 +274,7 @@ def test_import_worker_process_streams_chunk_order_and_payload_integrity(monkeyp
     assert events[-1] == "done"
 
     chunk_events = [item for item in result_queue.items if item["event"] == "ops_chunk"]
-    assert len(chunk_events) == 3
+    assert len(chunk_events) == 2
 
     reconstructed = {"mutations": [], "death_snippets": [], "death_character_identified": []}
     for chunk in chunk_events:
@@ -282,17 +285,14 @@ def test_import_worker_process_streams_chunk_order_and_payload_integrity(monkeyp
 
 
 def test_import_worker_process_exits_promptly_when_queue_full_and_abort_set(monkeypatch) -> None:
-    parse_mock = Mock(return_value={
-        "success": True,
-        "aborted": False,
-        "error": None,
-        "lines_processed": 1,
-        "ops": {
+    monkeypatch.setattr(
+        "app.utils.iter_file_ops_chunks",
+        lambda *args, **kwargs: iter([{
             "mutations": [],
             "death_snippets": [],
-        },
-    })
-    monkeypatch.setattr("app.utils.parse_file_to_ops", parse_mock)
+            "death_character_identified": [],
+        }]),
+    )
     monkeypatch.setattr(app.utils, "IMPORT_QUEUE_PUT_TIMEOUT_SEC", 0.001)
     monkeypatch.setattr(app.utils, "IMPORT_QUEUE_ABORT_PUT_GRACE_SEC", 0.01)
 
@@ -310,3 +310,18 @@ def test_import_worker_process_exits_promptly_when_queue_full_and_abort_set(monk
 
     assert elapsed < 0.25
     assert full_queue.put_calls > 0
+
+
+def test_iter_file_ops_chunks_streams_large_parse_without_materializing(monkeypatch) -> None:
+    log_data = "".join(
+        "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 50 (50 Physical)\n"
+        for _ in range(2500)
+    )
+    monkeypatch.setattr("builtins.open", lambda *args, **kwargs: io.StringIO(log_data))
+
+    chunks = list(iter_file_ops_chunks("ignored.txt", parse_immunity=False, chunk_size=2000))
+
+    assert len(chunks) == 3
+    assert len(chunks[0]["mutations"]) == 2000
+    assert len(chunks[1]["mutations"]) == 2000
+    assert len(chunks[2]["mutations"]) == 1000

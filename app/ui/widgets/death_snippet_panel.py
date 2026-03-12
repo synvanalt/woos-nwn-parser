@@ -710,14 +710,25 @@ class DeathSnippetPanel(ttk.Frame):
 
     def add_death_event(self, event: Dict[str, Any]) -> None:
         """Add a death snippet event and select newest entry."""
-        lines = event.get("lines", [])
-        if not lines:
+        self.add_death_events([event])
+
+    def add_death_events(self, events: list[Dict[str, Any]]) -> None:
+        """Add one or more death snippet events and select the newest entry."""
+        added = False
+        for event in events:
+            lines = event.get("lines", [])
+            if not lines:
+                continue
+
+            event_copy = dict(event)
+            event_copy["_seq"] = self._event_sequence
+            self._event_sequence += 1
+            self.death_events.append(event_copy)
+            added = True
+
+        if not added:
             return
 
-        event_copy = dict(event)
-        event_copy["_seq"] = self._event_sequence
-        self._event_sequence += 1
-        self.death_events.append(event_copy)
         self.death_events.sort(
             key=lambda item: (self._event_sort_timestamp(item), int(item.get("_seq", 0))),
             reverse=True,
