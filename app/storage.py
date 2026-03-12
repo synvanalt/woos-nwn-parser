@@ -31,14 +31,23 @@ class DataStore:
     All data is stored in memory and lost when the app closes (session-only).
     """
 
+    DEFAULT_MAX_EVENTS_HISTORY = 200000
+    DEFAULT_MAX_ATTACKS_HISTORY = 200000
+
     def __init__(
         self,
-        max_events_history: int = 200000,
-        max_attacks_history: int = 200000,
+        max_events_history: int | None = None,
+        max_attacks_history: int | None = None,
     ) -> None:
         """Initialize the data store."""
-        self.max_events_history = max(1, int(max_events_history))
-        self.max_attacks_history = max(1, int(max_attacks_history))
+        self.max_events_history = self._normalize_history_limit(
+            max_events_history,
+            self.DEFAULT_MAX_EVENTS_HISTORY,
+        )
+        self.max_attacks_history = self._normalize_history_limit(
+            max_attacks_history,
+            self.DEFAULT_MAX_ATTACKS_HISTORY,
+        )
         self.events: Deque[DamageEvent] = deque(maxlen=self.max_events_history)
         self.attacks: Deque[AttackEvent] = deque(maxlen=self.max_attacks_history)
         self.lock = threading.RLock()
@@ -96,6 +105,13 @@ class DataStore:
             str,
             tuple[Dict[str, int | str], ...],
         ] = {}
+
+    @staticmethod
+    def _normalize_history_limit(value: int | None, default: int) -> int:
+        """Clamp a configured raw-history retention limit to a safe integer."""
+        if value is None:
+            return default
+        return max(1, int(value))
 
     @property
     def version(self) -> int:
@@ -1052,6 +1068,7 @@ class DataStore:
     def clear_all_data(self) -> None:
         """Clear all data from the store."""
         with self.lock:
+            self._version += 1
             self.events.clear()
             self.attacks.clear()
             self.dps_data.clear()

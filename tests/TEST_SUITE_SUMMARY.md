@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 12, 2026 (parser hot-path coverage refresh)
+**Last Updated:** March 12, 2026 (reset cache invalidation regression coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **614 tests collected**
+- Result: **622 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 565 tests
+- `tests/unit/`: 35 modules, 573 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 614 tests
+- Total: 43 test modules, 622 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -25,11 +25,11 @@ Notes:
 
 ### Unit (`tests/unit`)
 - `test_bump_version_script.py` (6)
-- `test_models.py` (54)
+- `test_models.py` (56)
 - `test_parser.py` (73)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
-- `test_storage.py` (52)
+- `test_storage.py` (57)
 - `test_storage_indices.py` (21)
 - `test_utils.py` (37)
 - `test_monitor.py` (22)
@@ -44,7 +44,7 @@ Notes:
 - `test_selection_preservation.py` (4)
 - `test_dps_panel_incremental.py` (13)
 - `test_immunity_panel_incremental.py` (6)
-- `test_target_stats_panel_incremental.py` (10)
+- `test_target_stats_panel_incremental.py` (11)
 - `test_ui_optimizations.py` (19)
 - `test_death_snippet_panel.py` (26)
 - `test_debug_console_panel.py` (6)
@@ -76,11 +76,11 @@ Notes:
 
 - Parser and models:
   - `test_parser.py`, `test_models.py`, `test_parser_storage_integration.py`
-  - Includes malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, malformed target-concealed fast-path fallback coverage, parser output contracts for store-owned AC/AB/save derivation, whitespace-heavy multi-word damage-breakdown coverage, and hot-path regression coverage for threat-roll/basic attack fast paths plus `+`-prefixed ability chains
+  - Includes malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, malformed target-concealed fast-path fallback coverage, parser output contracts for store-owned AC/AB/save derivation, whitespace-heavy multi-word damage-breakdown coverage, hot-path regression coverage for threat-roll/basic attack fast paths plus `+`-prefixed ability chains, and explicit AC/AB regression coverage for duplicate-hit invalidation and higher-bonus tie winners
 - Storage and indexing performance behavior:
   - `test_storage.py`, `test_storage_indices.py`
   - Direct store setup now uses the real public batch API (`DataStore.apply_mutations(...)`) instead of legacy per-write helper methods
-  - Includes explicit coverage for version-scoped read-cache invalidation and defensive-copy behavior on cached summary getters
+  - Includes explicit coverage for version-scoped read-cache invalidation, clear-all reset invalidation of cached target summaries, defensive-copy behavior on cached summary getters, and raw-history retention default/normalization behavior
 - Queue processor logic and batching:
   - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`, `test_realtime_backpressure.py`
   - Queue/import tests validate the public-first mutation payload flow used by production ingestion
@@ -93,7 +93,7 @@ Notes:
   - `test_dps_service.py`, `test_dps_pipeline_integration.py`
 - UI widget/main-window behavior and refresh optimizations:
   - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
-  - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, and tree-sort scan bypass when callers already control order
+  - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, tree-sort scan bypass when callers already control order, and Target Stats staying empty after Clear Data-style store clears
   - Includes main-window orchestration coverage for single-read target-list fanout and panel refresh coordination, plus regression coverage that full tree rebuilds do not reapply sort more than necessary
   - Includes import payload application coverage for batched mutation submission on the Tk thread while preserving death-snippet delivery, death-character auto-identification, and queue-drain lifecycle behavior
   - Includes Death Snippets coverage for guarded `wooparseme` auto-identification and one-click character-name clearing back to the hint state

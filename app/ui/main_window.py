@@ -184,8 +184,8 @@ class WoosNwnParserApp:
         )
         self.monitoring_switch.pack(side="left", padx=5)
 
-        self.reset_button = ttk.Button(buttons_frame, text="Reset Data", command=self.reset_data)
-        self.reset_button.pack(side="right", padx=5)
+        self.clear_button = ttk.Button(buttons_frame, text="Clear Data", command=self.clear_data)
+        self.clear_button.pack(side="right", padx=5)
 
         self.load_parse_button = ttk.Button(buttons_frame, text="Load & Parse Logs", command=self.load_and_parse_selected_files)
         self.load_parse_button.pack(side="right", padx=5)
@@ -308,7 +308,7 @@ class WoosNwnParserApp:
         self.monitoring_switch.config(state=state)
         self.browse_button.config(state=state)
         self.load_parse_button.config(state=state)
-        self.reset_button.config(state=state)
+        self.clear_button.config(state=state)
 
     def _show_import_modal(self) -> None:
         """Show a modal with import progress and abort button."""
@@ -802,7 +802,7 @@ class WoosNwnParserApp:
         else:
             self.active_file_text.set(value="-")
 
-    def reset_data(self) -> None:
+    def clear_data(self) -> None:
         """Clear all collected data."""
         # Cancel any pending refresh from Global mode
         if self.dps_refresh_job is not None:

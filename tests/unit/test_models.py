@@ -316,6 +316,21 @@ class TestEnemyAC:
         ac.record_miss(35)
         assert ac.min_hit is None  # 30 removed
 
+    def test_duplicate_hits_survive_until_all_matching_totals_invalidated(self) -> None:
+        """Duplicate valid hit totals should not disappear early during cleanup."""
+        ac = EnemyAC(name="TestEnemy")
+
+        ac.record_hit(30)
+        ac.record_hit(30)
+        ac.record_hit(35)
+        assert ac.min_hit == 30
+
+        ac.record_miss(29)
+        assert ac.min_hit == 30
+
+        ac.record_miss(30)
+        assert ac.min_hit == 35
+
     def test_hits_property_returns_minimum(self) -> None:
         """Test that min_hit property correctly returns minimum of hits list."""
         ac = EnemyAC(name="TestEnemy")
@@ -488,6 +503,18 @@ class TestTargetAttackBonus:
 
         # Should prefer highest (20) when all tied
         assert tab.max_bonus == 20
+
+    def test_higher_bonus_wins_when_tie_frequency_is_reached_later(self) -> None:
+        """Tie winner should update to the higher bonus as counts equalize."""
+        tab = TargetAttackBonus(name="TestEnemy")
+
+        tab.record_bonus(10)
+        tab.record_bonus(10)
+        tab.record_bonus(15)
+        assert tab.max_bonus == 10
+
+        tab.record_bonus(15)
+        assert tab.max_bonus == 15
 
 
 class TestDamageEvent:

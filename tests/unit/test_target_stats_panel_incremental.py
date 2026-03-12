@@ -127,6 +127,22 @@ class TestTargetStatsIncrementalRefresh:
         assert panel._cached_order_token == ()
         assert panel._last_refresh_version == -1
 
+    def test_refresh_stays_empty_after_store_clear_and_cache_reset(self, target_stats_panel) -> None:
+        panel, store, _ = target_stats_panel
+        apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
+        panel.refresh()
+        assert len(panel.tree.get_children()) == 1
+
+        store.clear_all_data()
+        panel.tree.delete(*panel.tree.get_children())
+        panel.clear_cache()
+
+        panel.refresh()
+
+        assert panel.tree.get_children() == ()
+        assert panel._item_ids == {}
+        assert panel._cached_rows == {}
+
     def test_refresh_falls_back_to_full_rebuild_when_cached_item_is_stale(self, target_stats_panel) -> None:
         panel, store, _ = target_stats_panel
         apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))

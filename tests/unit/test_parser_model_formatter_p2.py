@@ -18,7 +18,7 @@ def test_enemy_saves_ignores_unknown_save_type() -> None:
 def test_enemy_ac_warning_estimate_branch_for_conflicting_state() -> None:
     ac = EnemyAC(name="Orc")
     ac.max_miss = 25
-    ac._hits = [20]
+    ac._min_hit = 20
 
     estimate = ac.get_ac_estimate()
     assert "20" in estimate

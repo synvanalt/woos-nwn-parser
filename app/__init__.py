@@ -12,7 +12,7 @@ Main modules:
     - utils: Utility functions for file processing
 """
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 __author__ = "Synvan"
 
 from .constants import DAMAGE_TYPE_PALETTE
