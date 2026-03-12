@@ -36,6 +36,12 @@ class WoosNwnParserApp:
     QUEUE_TICK_MS_NORMAL = 50
     QUEUE_TICK_MS_PRESSURED = 10
     QUEUE_TICK_MS_SATURATED = 1
+    QUEUE_DRAIN_MAX_EVENTS_NORMAL = 1200
+    QUEUE_DRAIN_MAX_EVENTS_PRESSURED = 2000
+    QUEUE_DRAIN_MAX_EVENTS_SATURATED = 2600
+    QUEUE_DRAIN_MAX_TIME_MS_NORMAL = 8.0
+    QUEUE_DRAIN_MAX_TIME_MS_PRESSURED = 10.0
+    QUEUE_DRAIN_MAX_TIME_MS_SATURATED = 12.0
     MONITOR_LINES_PER_POLL_NORMAL = 2000
     MONITOR_LINES_PER_POLL_PRESSURED = 600
     MONITOR_SLEEP_ACTIVE_NORMAL = 0.05
@@ -790,6 +796,8 @@ class WoosNwnParserApp:
                         self._enqueue_monitor_log(f"I/O Error: {exc}", "error")
                         has_more_pending = False
 
+                sleep_pressure_state = self._get_queue_pressure_state()
+
                 current_file = directory_monitor.current_log_file
                 self._monitor_active_file_name = current_file.name if current_file is not None else "-"
 
@@ -797,7 +805,7 @@ class WoosNwnParserApp:
                     break
                 time.sleep(
                     self._get_monitor_sleep_seconds(
-                        pressure_state=pressure_state,
+                        pressure_state=sleep_pressure_state,
                         has_more_pending=has_more_pending,
                     )
                 )
@@ -953,11 +961,13 @@ class WoosNwnParserApp:
         This method delegates the actual event processing to the QueueProcessor service
         and schedules itself to run periodically.
         """
+        starting_pressure_state = self._get_queue_pressure_state()
+        max_events, max_time_ms = self._get_queue_drain_limits(starting_pressure_state)
         process_kwargs = {
             "on_log_message": self.log_debug,
             "debug_enabled": self.debug_panel.get_debug_enabled(),
-            "max_events": 2000,
-            "max_time_ms": 12.0,
+            "max_events": max_events,
+            "max_time_ms": max_time_ms,
         }
         process_fn = self.queue_processor.process_queue
         if hasattr(process_fn, "mock_calls"):
@@ -1079,6 +1089,14 @@ class WoosNwnParserApp:
         if pressure_state == "pressured":
             return self.MONITOR_SLEEP_IDLE_PRESSURED
         return self.MONITOR_SLEEP_IDLE_NORMAL
+
+    def _get_queue_drain_limits(self, pressure_state: str) -> tuple[int, float]:
+        """Return Tk-thread queue-drain limits for the current pressure band."""
+        if pressure_state == "saturated":
+            return self.QUEUE_DRAIN_MAX_EVENTS_SATURATED, self.QUEUE_DRAIN_MAX_TIME_MS_SATURATED
+        if pressure_state == "pressured":
+            return self.QUEUE_DRAIN_MAX_EVENTS_PRESSURED, self.QUEUE_DRAIN_MAX_TIME_MS_PRESSURED
+        return self.QUEUE_DRAIN_MAX_EVENTS_NORMAL, self.QUEUE_DRAIN_MAX_TIME_MS_NORMAL
 
     def _get_next_queue_tick_ms(self, pressure_state: str) -> int:
         """Adjust Tk queue-drain cadence based on current backlog pressure."""
