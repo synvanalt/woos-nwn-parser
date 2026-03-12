@@ -44,9 +44,6 @@ class LogParser:
         self.timestamp_pattern = re.compile(r'\[CHAT WINDOW TEXT] \[([^]]+)]')
         self.chat_prefix_pattern = re.compile(r'^\[CHAT WINDOW TEXT]\s*\[[^]]+]\s*')
 
-        # Pre-compile damage breakdown pattern for better performance
-        self.damage_breakdown_pattern = re.compile(r"(\d+)\s+(\D+?)(?=\s+\d+|$)")
-
         # Patterns for parsing the log format
         self.patterns = {
             # Flexible damage pattern - skip [CHAT WINDOW TEXT] and timestamp, then capture attacker
@@ -335,19 +332,26 @@ class LogParser:
         Returns:
             Dictionary mapping damage type names to amounts
         """
-        damage_types = {}
+        damage_types: Dict[str, int] = {}
         if not breakdown_str:
             return damage_types
 
-        # Match sequences like: <number><space><damage type words> (until next number or end)
-        # Example matches: '21 Physical', '13 Positive Energy', '1 Pure'
-        # Use pre-compiled pattern for better performance
-        for m in self.damage_breakdown_pattern.finditer(breakdown_str):
-            amt = int(m.group(1))
-            # Damage type string may have trailing/leading spaces; normalize internal whitespace
-            raw_dtype = m.group(2).strip()
-            dtype = ' '.join(raw_dtype.split()) if '  ' in raw_dtype else raw_dtype
-            damage_types[dtype] = amt
+        tokens = breakdown_str.split()
+        index = 0
+        token_count = len(tokens)
+        while index < token_count:
+            while index < token_count and not tokens[index].isdigit():
+                index += 1
+            if index >= token_count:
+                break
+
+            amount = int(tokens[index])
+            index += 1
+            type_start = index
+            while index < token_count and not tokens[index].isdigit():
+                index += 1
+            if type_start < index:
+                damage_types[" ".join(tokens[type_start:index])] = amount
 
         return damage_types
 
@@ -358,6 +362,144 @@ class LogParser:
         if " : " in attacker:
             attacker = attacker.rsplit(" : ", 1)[-1].strip()
         return attacker
+
+    def _parse_attack_threat_fast(self, s: str) -> tuple[Optional[Dict[str, Any]], bool]:
+        """Fast-path parser for threat-roll attack lines."""
+        if self._attack_marker not in s or self._threat_roll_marker not in s:
+            return None, True
+
+        attack_idx = s.find(self._attack_marker)
+        if attack_idx < 0:
+            return None, True
+
+        attacker = self._normalize_attack_attacker_name(s[:attack_idx])
+        rest = s[attack_idx + len(self._attack_marker):]
+
+        star_start = rest.find("*")
+        if star_start < 0:
+            return None, True
+
+        target = rest[:star_start].rstrip(" :").strip()
+        if not target:
+            return None, True
+
+        star_end = rest.find("*", star_start + 1)
+        if star_end < 0:
+            return None, True
+
+        outcome = rest[star_start + 1:star_end].strip().lower()
+        if outcome not in {"hit", "critical hit", "miss", "parried", "resisted"}:
+            return None, True
+
+        roll_start = rest.find("(", star_end)
+        roll_end = rest.find(")", roll_start + 1)
+        if roll_start < 0 or roll_end < 0:
+            return None, True
+
+        roll_expr = rest[roll_start + 1:roll_end]
+        plus_idx = roll_expr.find("+")
+        equals_idx = roll_expr.find("=", plus_idx + 1)
+        if plus_idx < 0 or equals_idx < 0:
+            return None, True
+
+        roll_str = roll_expr[:plus_idx].strip()
+        bonus_str = roll_expr[plus_idx + 1:equals_idx].strip()
+        total_tail = roll_expr[equals_idx + 1:].strip()
+        if not roll_str or not bonus_str or not total_tail:
+            return None, True
+
+        total_end = 0
+        total_len = len(total_tail)
+        while total_end < total_len and total_tail[total_end].isdigit():
+            total_end += 1
+        if total_end == 0:
+            return None, True
+
+        total_str = total_tail[:total_end]
+        return {
+            "attacker": attacker,
+            "target": target,
+            "outcome": outcome,
+            "roll": roll_str,
+            "bonus": bonus_str,
+            "total": total_str,
+        }, False
+
+    def _parse_attack_basic_fast(self, s: str) -> tuple[Optional[Dict[str, Any]], bool]:
+        """Fast-path parser for basic hit/miss/parry/resist attack lines."""
+        if self._attack_marker not in s:
+            return None, True
+
+        attack_idx = s.find(self._attack_marker)
+        if attack_idx < 0:
+            return None, True
+
+        attacker = self._normalize_attack_attacker_name(s[:attack_idx])
+        rest = s[attack_idx + len(self._attack_marker):]
+
+        star_start = rest.find("*")
+        if star_start < 0:
+            return None, True
+
+        target = rest[:star_start].rstrip(" :").strip()
+        if not target:
+            return None, True
+
+        star_end = rest.find("*", star_start + 1)
+        if star_end < 0:
+            return None, True
+
+        outcome = rest[star_start + 1:star_end].strip().lower()
+        if outcome not in {"hit", "critical hit", "miss", "parried", "resisted"}:
+            return None, True
+
+        tail = rest[star_end + 1:].strip()
+        if not tail:
+            return {
+                "attacker": attacker,
+                "target": target,
+                "outcome": outcome,
+                "roll": None,
+                "bonus": None,
+                "total": None,
+            }, False
+        if tail.startswith(":"):
+            tail = tail[1:].strip()
+        if not tail:
+            return {
+                "attacker": attacker,
+                "target": target,
+                "outcome": outcome,
+                "roll": None,
+                "bonus": None,
+                "total": None,
+            }, False
+
+        roll_start = tail.find("(")
+        roll_end = tail.find(")", roll_start + 1)
+        if roll_start < 0 or roll_end < 0:
+            return None, True
+
+        roll_expr = tail[roll_start + 1:roll_end]
+        plus_idx = roll_expr.find("+")
+        equals_idx = roll_expr.find("=", plus_idx + 1)
+        if plus_idx < 0 or equals_idx < 0:
+            return None, True
+
+        roll_str = roll_expr[:plus_idx].strip()
+        bonus_str = roll_expr[plus_idx + 1:equals_idx].strip()
+        total_str = roll_expr[equals_idx + 1:].strip()
+        if not roll_str or not bonus_str or not total_str:
+            return None, True
+
+        return {
+            "attacker": attacker,
+            "target": target,
+            "outcome": outcome,
+            "roll": roll_str,
+            "bonus": bonus_str,
+            "total": total_str,
+        }, False
 
     def _parse_attack_conceal_fast(self, s: str) -> tuple[Optional[Dict[str, Any]], bool]:
         """Fast-path parser for conceal lines.
@@ -583,13 +725,14 @@ class LogParser:
             if self._target_concealed_marker in stripped_line:
                 attack_fast_data, should_fallback = self._parse_attack_conceal_fast(stripped_line)
                 attack_match = patterns['attack_conceal'].search(stripped_line) if should_fallback else None
-            elif (
-                self._threat_roll_marker in stripped_line or
-                self._attacker_miss_chance_marker in stripped_line
-            ):
+            elif self._threat_roll_marker in stripped_line:
+                attack_fast_data, should_fallback = self._parse_attack_threat_fast(stripped_line)
+                attack_match = patterns['attack_with_threat'].search(stripped_line) if should_fallback else None
+            elif self._attacker_miss_chance_marker in stripped_line:
                 attack_match = patterns['attack_with_threat'].search(stripped_line)
             else:
-                attack_match = patterns['attack'].search(stripped_line)
+                attack_fast_data, should_fallback = self._parse_attack_basic_fast(stripped_line)
+                attack_match = patterns['attack'].search(stripped_line) if should_fallback else None
         else:
             attack_match = None
 

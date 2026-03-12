@@ -77,6 +77,11 @@ class TestDamageBreakdownParsing:
         result = parser.parse_damage_breakdown("  30  Physical   20  Fire  ")
         assert result == {"Physical": 30, "Fire": 20}
 
+    def test_parse_multiword_damage_types_with_extra_whitespace(self, parser: LogParser) -> None:
+        """Whitespace normalization should preserve multi-word damage types."""
+        result = parser.parse_damage_breakdown("  50   Positive   Energy   20   Negative  Energy ")
+        assert result == {"Positive Energy": 50, "Negative Energy": 20}
+
 
 class TestTimestampExtraction:
     """Test suite for extract_timestamp_from_line method."""
@@ -543,6 +548,22 @@ class TestAttackPrefixCombinations:
         assert result['bonus'] == '65'
         assert result['total'] == 83
 
+    def test_parse_attack_with_threat_roll_hit(self, parser: LogParser) -> None:
+        """Threat-roll hit lines should still parse as hits."""
+        line = (
+            "[CHAT WINDOW TEXT] [Sat Oct 18 21:15:19] Tyrmon's Fighter attacks Cerberus : "
+            "*hit* : (20 + 50 = 70 : Threat Roll: 1 + 50 = 51)"
+        )
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result["type"] == "attack_hit"
+        assert result["attacker"] == "Tyrmon's Fighter"
+        assert result["target"] == "Cerberus"
+        assert result["roll"] == 20
+        assert result["bonus"] == "50"
+        assert result["total"] == 70
+
     def test_parse_attack_off_hand_with_two_abilities(self, parser: LogParser) -> None:
         """Test parsing off-hand attack with two abilities (Flurry of Blows + Sneak Attack)."""
         line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:23:38] Off Hand : Flurry of Blows : Sneak Attack : Woo Whirlwind attacks 10 AC DUMMY - Chaotic Evil - Boss Damage Reduction : *hit* : (9 + 45 = 54)"
@@ -618,6 +639,22 @@ class TestAttackPrefixCombinations:
         assert result['target'] == 'Training Dummy'
         assert result['roll'] == 15
         assert result['total'] == 65
+
+    def test_parse_attack_with_plus_sign_ability_prefix(self, parser: LogParser) -> None:
+        """Ability prefixes containing '+' should still preserve the attacker name."""
+        line = (
+            "[CHAT WINDOW TEXT] [Fri May 23 20:41:07] Sneak Attack + Death Attack : "
+            "SpecialistBuby attacks Cursed Beholder Tyrant : *hit* : (12 + 62 = 74)"
+        )
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result["type"] == "attack_hit"
+        assert result["attacker"] == "SpecialistBuby"
+        assert result["target"] == "Cursed Beholder Tyrant"
+        assert result["roll"] == 12
+        assert result["bonus"] == "62"
+        assert result["total"] == 74
 
 
 class TestSaveParsing:

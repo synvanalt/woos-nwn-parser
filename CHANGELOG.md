@@ -4,6 +4,7 @@
 
 ### Changed
 - Combat event history now auto-limits in long sessions to keep memory use and responsiveness stable (oldest raw entries are removed first while summaries and totals stay intact)
+- Combat log parsing is now faster during heavy attack spam and large imports, especially on standard attack rolls and critical-threat lines
 - DPS damage-type breakdown updates are more efficient during heavy combat and target filtering
 - Target AC and attack-bonus estimates now update more efficiently during heavy combat without changing displayed values
 - Target lists and live table refreshes now do less redundant work, which helps combat updates stay smoother without changing displayed values or selection state

@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 12, 2026 (import streaming/apply coverage refresh)
+**Last Updated:** March 12, 2026 (parser hot-path coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **611 tests collected**
+- Result: **614 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 562 tests
+- `tests/unit/`: 35 modules, 565 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 611 tests
+- Total: 43 test modules, 614 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -26,7 +26,7 @@ Notes:
 ### Unit (`tests/unit`)
 - `test_bump_version_script.py` (6)
 - `test_models.py` (54)
-- `test_parser.py` (70)
+- `test_parser.py` (73)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
 - `test_storage.py` (52)
@@ -76,7 +76,7 @@ Notes:
 
 - Parser and models:
   - `test_parser.py`, `test_models.py`, `test_parser_storage_integration.py`
-  - Includes malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, malformed target-concealed fast-path fallback coverage, parser output contracts for store-owned AC/AB/save derivation, and model-level hot-path regressions for AB tie handling plus AC nat1/nat20 and hit-invalidation behavior
+  - Includes malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, malformed target-concealed fast-path fallback coverage, parser output contracts for store-owned AC/AB/save derivation, whitespace-heavy multi-word damage-breakdown coverage, and hot-path regression coverage for threat-roll/basic attack fast paths plus `+`-prefixed ability chains
 - Storage and indexing performance behavior:
   - `test_storage.py`, `test_storage_indices.py`
   - Direct store setup now uses the real public batch API (`DataStore.apply_mutations(...)`) instead of legacy per-write helper methods
