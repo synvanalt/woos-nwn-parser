@@ -73,6 +73,26 @@ def test_parse_file_to_ops_collects_damage_immunity_attacks_and_death_snippet(mo
     assert ops["death_snippets"][0]["target"] == "Goblin"
 
 
+def test_parse_file_to_ops_collects_death_character_identified(monkeypatch) -> None:
+    log_data = "\n".join([
+        "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:01] Woo Wildrock: [Whisper] wooparseme",
+        "",
+    ])
+    monkeypatch.setattr("builtins.open", lambda *args, **kwargs: io.StringIO(log_data))
+
+    result = parse_file_to_ops("ignored.txt", parse_immunity=False)
+
+    assert result["success"] is True
+    assert result["aborted"] is False
+    assert result["ops"]["death_snippets"] == []
+    assert result["ops"]["death_character_identified"] == [
+        {
+            "type": "death_character_identified",
+            "character_name": "Woo Wildrock",
+        }
+    ]
+
+
 def test_parse_file_to_ops_respects_custom_fallback_line(monkeypatch) -> None:
     log_data = "\n".join([
         "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:02] Woo killed Goblin",
@@ -193,6 +213,7 @@ def test_import_worker_process_forwards_death_settings(monkeypatch) -> None:
         "ops": {
             "mutations": [],
             "death_snippets": [],
+            "death_character_identified": [],
         },
     })
     monkeypatch.setattr("app.utils.parse_file_to_ops", parse_mock)
@@ -223,6 +244,9 @@ def test_import_worker_process_streams_chunk_order_and_payload_integrity(monkeyp
             + [EpicDodgeMutation(target="Goblin"), EpicDodgeMutation(target="Dragon")]
         ),
         "death_snippets": [{"type": "death_snippet", "target": "Goblin", "killer": "Woo", "lines": ["a"]}],
+        "death_character_identified": [
+            {"type": "death_character_identified", "character_name": "Woo Wildrock"}
+        ],
     }
     parse_mock = Mock(return_value={
         "success": True,
@@ -249,7 +273,7 @@ def test_import_worker_process_streams_chunk_order_and_payload_integrity(monkeyp
     chunk_events = [item for item in result_queue.items if item["event"] == "ops_chunk"]
     assert len(chunk_events) == 3
 
-    reconstructed = {"mutations": [], "death_snippets": []}
+    reconstructed = {"mutations": [], "death_snippets": [], "death_character_identified": []}
     for chunk in chunk_events:
         for key in reconstructed:
             reconstructed[key].extend(chunk["ops"].get(key, []))

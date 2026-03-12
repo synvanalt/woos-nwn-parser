@@ -28,6 +28,11 @@ class ImmunityPanel(ttk.Frame):
     This is a reusable widget that can be placed in any notebook or frame.
     """
 
+    DISCLAIMER_TEXT = (
+        "• Damage and immunity lines are separated in log and may be matched incorrectly\n"
+        "• Displayed immunity % can be overstated if target also has damage resistance/reduction"
+    )
+
     def __init__(
         self,
         parent: ttk.Notebook,
@@ -66,7 +71,6 @@ class ImmunityPanel(ttk.Frame):
         def _on_toggle_immunity() -> None:
             val = bool(self.parse_immunity_var.get())
             self.parser.parse_immunity = val
-            # Refresh the display when Parse Immunities is toggled
             self.refresh_display()
 
         ttk.Checkbutton(
@@ -88,14 +92,16 @@ class ImmunityPanel(ttk.Frame):
         self.target_combo.bind("<<ComboboxSelected>>", _on_target_selected)
         ttk.Label(selector_frame, text="Select Target:").pack(side="right", padx=5)
 
-        # Scrollbar
-        scrollbar = ttk.Scrollbar(self)
+        tree_frame = ttk.Frame(self)
+        tree_frame.pack(fill="both", expand=True)
+
+        scrollbar = ttk.Scrollbar(tree_frame)
         scrollbar.pack(side="right", fill="y")
 
         # Treeview for displaying damage type breakdown
         columns = ("Damage Type", "Max Damage", "Absorbed", "Immunity %", "Samples")
         self.tree = SortedTreeview(
-            self, columns=columns, show="headings", yscrollcommand=scrollbar.set
+            tree_frame, columns=columns, show="headings", yscrollcommand=scrollbar.set
         )
 
         for col in columns:
@@ -113,8 +119,24 @@ class ImmunityPanel(ttk.Frame):
         self.tree.pack(fill="both", expand=True)
         scrollbar.config(command=self.tree.yview)
 
-        # Set default sort by Damage Type name ascending
         self.tree.set_default_sort("Damage Type", reverse=False)
+
+        self.disclaimer_label = ttk.Label(
+            self,
+            text=self.DISCLAIMER_TEXT,
+            justify="left",
+            anchor="w",
+            wraplength=1,
+            foreground="gray",
+        )
+        self.disclaimer_label.pack(fill="x", padx=(10, 10), pady=(8, 0))
+        self.bind("<Configure>", self._on_panel_resize)
+
+    def _on_panel_resize(self, event: tk.Event) -> None:
+        """Keep disclaimer wrapping aligned with the current panel width."""
+        wraplength = max(int(event.width) - 20, 1)
+        if int(self.disclaimer_label.cget("wraplength")) != wraplength:
+            self.disclaimer_label.configure(wraplength=wraplength)
 
     def refresh_target_details(self, target: str) -> None:
         """Display detailed resist data for selected target.
@@ -183,9 +205,9 @@ class ImmunityPanel(ttk.Frame):
         }
 
         needs_full_refresh = (
-            self._cached_target != target or
-            not self._item_ids or
-            set(self._cached_rows.keys()) != set(new_rows.keys())
+            self._cached_target != target
+            or not self._item_ids
+            or set(self._cached_rows.keys()) != set(new_rows.keys())
         )
         changed_damage_types = {
             damage_type
@@ -246,7 +268,7 @@ class ImmunityPanel(ttk.Frame):
         for item in self.tree.selection():
             values = self.tree.item(item, "values")
             if values and len(values) > 0:
-                selected_damage_types.add(values[0])  # Damage type is first column
+                selected_damage_types.add(values[0])
 
         # Suppress visual updates during bulk operations
         original_show = self.tree.cget("show")
@@ -368,4 +390,3 @@ class ImmunityPanel(ttk.Frame):
         self._cached_order_token = ()
         self._cached_view_key = ("", False)
         self._last_refresh_version = -1
-

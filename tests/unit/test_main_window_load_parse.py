@@ -216,12 +216,40 @@ class TestLoadAndParseWorkflow:
 
         app.death_snippet_panel.add_death_event.assert_called_once()
 
+    def test_apply_pending_payloads_forwards_death_character_identified_events(self) -> None:
+        app = _make_app_shell()
+        app.root = Mock()
+        app._on_death_character_identified = Mock()
+        app._is_applying_payload = True
+        app._pending_file_payloads.append({
+            "ops": {
+                "death_character_identified": [
+                    {
+                        "type": "death_character_identified",
+                        "character_name": "Woo Wildrock",
+                    }
+                ],
+            },
+            "index": 1,
+            "progress": {"stage": "death_character_identified", "idx": 0},
+        })
+
+        app._apply_pending_payloads_incremental()
+
+        app._on_death_character_identified.assert_called_once_with(
+            {
+                "type": "death_character_identified",
+                "character_name": "Woo Wildrock",
+            }
+        )
+
     def test_apply_pending_payloads_incremental_spans_ticks_and_drains(self, monkeypatch) -> None:
         app = _make_app_shell()
         app.root = Mock()
         app.root.after = Mock()
         app.data_store = Mock()
         app.death_snippet_panel = Mock()
+        app._on_death_character_identified = Mock()
         app.IMPORT_APPLY_MUTATION_BATCH_SIZE = 1
         app._is_applying_payload = True
         app._pending_file_payloads.append({
@@ -256,6 +284,7 @@ class TestLoadAndParseWorkflow:
         app.root.after = Mock()
         app.data_store = Mock()
         app.death_snippet_panel = Mock()
+        app._on_death_character_identified = Mock()
         app.IMPORT_APPLY_MUTATION_BATCH_SIZE = 1
         app._is_applying_payload = True
         app._pending_file_payloads.append({
@@ -354,12 +383,35 @@ class TestLoadAndParseWorkflow:
     def test_on_death_character_identified_sets_panel_character(self) -> None:
         app = _make_app_shell()
         app.death_snippet_panel = Mock()
+        app.death_snippet_panel.get_character_name.return_value = ""
 
         app._on_death_character_identified(
             {"type": "death_character_identified", "character_name": "Woo Wildrock"}
         )
 
         app.death_snippet_panel.set_character_name.assert_called_once_with("Woo Wildrock")
+
+    def test_on_death_character_identified_does_not_overwrite_existing_name(self) -> None:
+        app = _make_app_shell()
+        app.death_snippet_panel = Mock()
+        app.death_snippet_panel.get_character_name.return_value = "Existing Name"
+
+        app._on_death_character_identified(
+            {"type": "death_character_identified", "character_name": "Woo Wildrock"}
+        )
+
+        app.death_snippet_panel.set_character_name.assert_not_called()
+
+    def test_on_death_character_identified_ignores_empty_name(self) -> None:
+        app = _make_app_shell()
+        app.death_snippet_panel = Mock()
+
+        app._on_death_character_identified(
+            {"type": "death_character_identified", "character_name": "   "}
+        )
+
+        app.death_snippet_panel.get_character_name.assert_not_called()
+        app.death_snippet_panel.set_character_name.assert_not_called()
 
     def test_identity_and_fallback_callbacks_update_parser(self) -> None:
         app = _make_app_shell()

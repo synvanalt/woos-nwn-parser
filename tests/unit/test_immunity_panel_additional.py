@@ -107,3 +107,25 @@ def test_refresh_display_no_selected_target_is_noop(panel_ctx) -> None:
     panel.refresh_target_details = fake_refresh_target_details  # type: ignore[assignment]
     panel.refresh_display()
     assert called["count"] == 0
+
+
+def test_disclaimer_label_is_present_and_persistent(panel_ctx) -> None:
+    panel, _store, parser = panel_ctx
+
+    assert panel.disclaimer_label.cget("text") == ImmunityPanel.DISCLAIMER_TEXT
+    assert panel.disclaimer_label.winfo_manager() == "pack"
+
+    parser.parse_immunity = True
+    panel.refresh_display()
+
+    assert panel.disclaimer_label.cget("text") == ImmunityPanel.DISCLAIMER_TEXT
+
+
+def test_disclaimer_label_is_below_tree(panel_ctx) -> None:
+    panel, _store, _parser = panel_ctx
+
+    children = panel.winfo_children()
+
+    assert panel.disclaimer_label in children
+    assert panel.tree.master in children
+    assert children.index(panel.disclaimer_label) > children.index(panel.tree.master)

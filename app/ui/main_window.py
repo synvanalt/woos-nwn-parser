@@ -460,6 +460,16 @@ class WoosNwnParserApp:
                     self.death_snippet_panel.add_death_event(event)
                     progress['idx'] += 1
                     continue
+                progress['stage'] = 'death_character_identified'
+                progress['idx'] = 0
+                continue
+
+            if stage == 'death_character_identified':
+                identity_events = ops.get('death_character_identified', [])
+                if idx < len(identity_events):
+                    self._on_death_character_identified(identity_events[idx])
+                    progress['idx'] += 1
+                    continue
                 progress['stage'] = 'done'
                 progress['idx'] = 0
                 continue
@@ -1144,6 +1154,8 @@ class WoosNwnParserApp:
         """Callback when parser auto-identifies player character via whisper token."""
         character_name = str(event.get("character_name", "")).strip()
         if not character_name:
+            return
+        if self.death_snippet_panel.get_character_name():
             return
         self.death_snippet_panel.set_character_name(character_name)
 

@@ -382,6 +382,7 @@ def parse_file_to_ops(
 
         mutations: List[StoreMutation] = []
         death_snippets = []
+        death_character_identified = []
 
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             if should_abort and should_abort():
@@ -517,6 +518,11 @@ def parse_file_to_ops(
                         'timestamp': parsed_data.get('timestamp'),
                         'type': 'death_snippet',
                     })
+                elif parsed_data['type'] == 'death_character_identified':
+                    death_character_identified.append({
+                        'type': 'death_character_identified',
+                        'character_name': parsed_data.get('character_name', ''),
+                    })
 
         return {
             'success': True,
@@ -526,6 +532,7 @@ def parse_file_to_ops(
             'ops': {
                 'mutations': mutations,
                 'death_snippets': death_snippets,
+                'death_character_identified': death_character_identified,
             },
         }
     except Exception as e:
@@ -613,10 +620,12 @@ def import_worker_process(
         ops = result.get('ops', {})
         mutation_chunks = _slice_chunks(ops.get('mutations', []), chunk_size)
         death_chunks = _slice_chunks(ops.get('death_snippets', []), chunk_size)
+        identity_chunks = _slice_chunks(ops.get('death_character_identified', []), chunk_size)
 
         max_chunk_count = max(
             len(mutation_chunks),
             len(death_chunks),
+            len(identity_chunks),
             0,
         )
 
@@ -629,6 +638,9 @@ def import_worker_process(
                 'ops': {
                     'mutations': mutation_chunks[chunk_idx] if chunk_idx < len(mutation_chunks) else [],
                     'death_snippets': death_chunks[chunk_idx] if chunk_idx < len(death_chunks) else [],
+                    'death_character_identified': (
+                        identity_chunks[chunk_idx] if chunk_idx < len(identity_chunks) else []
+                    ),
                 },
             }):
                 _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
