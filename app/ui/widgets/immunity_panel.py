@@ -221,6 +221,12 @@ class ImmunityPanel(ttk.Frame):
             and order_token == self._cached_order_token
             and not changed_damage_types
         ):
+            if (
+                current_version != self._last_refresh_version
+                and not natural_order
+                and self.tree._last_sorted_col
+            ):
+                self.tree.apply_current_sort()
             self._cached_row_tokens = new_row_tokens
             self._cached_order_token = order_token
             self._last_refresh_version = current_version
