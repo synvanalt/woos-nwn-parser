@@ -1068,6 +1068,7 @@ class DataStore:
     def clear_all_data(self) -> None:
         """Clear all data from the store."""
         with self.lock:
+            self._version += 1
             self.events.clear()
             self.attacks.clear()
             self.dps_data.clear()

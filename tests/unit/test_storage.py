@@ -844,6 +844,26 @@ class TestClearData:
         assert data_store.get_target_damage_type_summary("Goblin") == []
         assert data_store.last_damage_timestamp is None
 
+    def test_clear_all_data_increments_version(self, data_store: DataStore) -> None:
+        """Clearing the store should invalidate version-keyed read caches."""
+        apply(data_store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
+        start_version = data_store.version
+
+        data_store.clear_all_data()
+
+        assert data_store.version == start_version + 1
+
+    def test_clear_all_data_invalidates_target_summary_cache(self, data_store: DataStore) -> None:
+        """Target summary reads should not return stale rows after a reset."""
+        apply(data_store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
+
+        summary_before_clear = data_store.get_all_targets_summary()
+        assert [row["target"] for row in summary_before_clear] == ["Goblin"]
+
+        data_store.clear_all_data()
+
+        assert data_store.get_all_targets_summary() == []
+
 
 class TestUtilityMethods:
     """Test suite for utility methods."""
