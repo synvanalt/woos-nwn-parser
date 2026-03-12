@@ -251,6 +251,22 @@ class TestDPSCalculations:
         assert dps_list[1]["character"] == "Mage"
         assert dps_list[2]["character"] == "Woo"
 
+    def test_get_dps_data_cache_invalidates_after_version_change(self, data_store: DataStore) -> None:
+        """Cached DPS rows should refresh automatically after a store mutation."""
+        ts = datetime.now()
+        apply(data_store, dps_update(attacker="Woo", total_damage=100, timestamp=ts))
+        data_store.last_damage_timestamp = ts + timedelta(seconds=10)
+
+        first = data_store.get_dps_data(time_tracking_mode="per_character")
+        assert first[0]["total_damage"] == 100
+
+        apply(data_store, dps_update(attacker="Woo", total_damage=50, timestamp=ts + timedelta(seconds=5)))
+        data_store.last_damage_timestamp = ts + timedelta(seconds=15)
+
+        second = data_store.get_dps_data(time_tracking_mode="per_character")
+        assert second[0]["total_damage"] == 150
+        assert second[0]["dps"] == 10.0
+
     def test_get_dps_breakdown_by_type(self, data_store: DataStore) -> None:
         """Test getting DPS breakdown by damage type."""
         ts = datetime.now()
@@ -383,6 +399,20 @@ class TestTargetFiltering:
         assert cold["immunity_absorbed"] == 0
         assert cold["sample_count"] == 0
 
+    def test_get_target_damage_type_summary_returns_defensive_copies(self, data_store: DataStore) -> None:
+        """Mutating a returned summary row should not taint the cache."""
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", total_damage=20, attacker="Woo"),
+            immunity(target="Goblin", damage_type="Fire", immunity_points=5, damage_dealt=20),
+        )
+
+        first = data_store.get_target_damage_type_summary("Goblin")
+        first[0]["max_event_damage"] = 999
+
+        second = data_store.get_target_damage_type_summary("Goblin")
+        assert second[0]["max_event_damage"] == 20
+
     def test_get_dps_data_for_target(self, data_store: DataStore) -> None:
         """Test getting DPS data filtered by target."""
         ts = datetime.now()
@@ -508,6 +538,22 @@ class TestAttackStats:
 
         assert "Woo" in hit_rates
         assert "Rogue" not in hit_rates  # No damage dealt
+
+    def test_get_hit_rate_for_damage_dealers_cache_invalidates_after_attack(self, data_store: DataStore) -> None:
+        """Cached hit rates should refresh automatically after attack mutations."""
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"),
+            attack(attacker="Woo", target="Goblin", outcome="hit"),
+        )
+
+        first = data_store.get_hit_rate_for_damage_dealers()
+        assert first["Woo"] == 100.0
+
+        apply(data_store, attack(attacker="Woo", target="Goblin", outcome="miss"))
+
+        second = data_store.get_hit_rate_for_damage_dealers()
+        assert second["Woo"] == 50.0
 
 
 class TestImmunityTracking:
@@ -684,6 +730,16 @@ class TestTargetSummary:
         assert goblin_summary["ab"] == "8"
         assert goblin_summary["ac"] == "~31"
         assert goblin_summary["fortitude"] == "5"
+
+    def test_get_all_targets_summary_returns_defensive_copies(self, data_store: DataStore) -> None:
+        """Mutating a returned target summary should not taint later reads."""
+        apply(data_store, damage_row(target="Goblin", damage_type="Physical", total_damage=10, attacker="Woo"))
+
+        first = data_store.get_all_targets_summary()
+        first[0]["damage_taken"] = "999"
+
+        second = data_store.get_all_targets_summary()
+        assert second[0]["damage_taken"] == "10"
 
     def test_concealment_miss_does_not_affect_ac_estimate(self, data_store: DataStore) -> None:
         """Test concealment misses are excluded from AC inference in DataStore."""
