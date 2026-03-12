@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 12, 2026 (realtime monitor backpressure coverage refresh)
+**Last Updated:** March 12, 2026 (UI refresh scheduling coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **606 tests collected**
+- Result: **610 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 557 tests
+- `tests/unit/`: 35 modules, 561 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 606 tests
+- Total: 43 test modules, 610 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -43,8 +43,8 @@ Notes:
 - `test_immunity_panel_edge_cases.py` (6)
 - `test_selection_preservation.py` (4)
 - `test_dps_panel_incremental.py` (13)
-- `test_immunity_panel_incremental.py` (5)
-- `test_target_stats_panel_incremental.py` (9)
+- `test_immunity_panel_incremental.py` (6)
+- `test_target_stats_panel_incremental.py` (10)
 - `test_ui_optimizations.py` (19)
 - `test_death_snippet_panel.py` (26)
 - `test_debug_console_panel.py` (6)
@@ -52,7 +52,7 @@ Notes:
 - `test_settings.py` (5)
 - `test_main_window_monitoring_switch.py` (5)
 - `test_main_window_debug_tab_unlock.py` (5)
-- `test_main_window_orchestration.py` (18)
+- `test_main_window_orchestration.py` (20)
 - `test_monitor_edge_cases.py` (4)
 - `test_queue_processor_resilience.py` (5)
 - `test_realtime_backpressure.py` (2)
@@ -94,6 +94,7 @@ Notes:
 - UI widget/main-window behavior and refresh optimizations:
   - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
   - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, and tree-sort scan bypass when callers already control order
+  - Includes main-window orchestration coverage for single-read target-list fanout and panel refresh coordination, plus regression coverage that full tree rebuilds do not reapply sort more than necessary
   - Includes import payload application coverage for batched mutation submission on the Tk thread while preserving death-snippet delivery, death-character auto-identification, and queue-drain lifecycle behavior
   - Includes Death Snippets coverage for guarded `wooparseme` auto-identification and one-click character-name clearing back to the hint state
   - Includes dedicated realtime backlog coverage for bounded queue saturation, post-read monitor backpressure pacing, pressure-banded Tk drain budgets, and coalesced refresh behavior under producer-faster-than-consumer load

@@ -75,6 +75,20 @@ class TestTargetStatsIncrementalRefresh:
         assert "Orc" in panel._item_ids
         assert panel._item_ids["Goblin"] != initial_item_id
 
+    def test_full_refresh_non_natural_sort_applies_sort_once(self, target_stats_panel) -> None:
+        panel, store, _ = target_stats_panel
+        apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
+        panel.refresh()
+        panel.tree.sort_column("Dmg Taken", reverse=True)
+
+        original_apply_current_sort = panel.tree.apply_current_sort
+        panel.tree.apply_current_sort = Mock(wraps=original_apply_current_sort)
+
+        apply(store, damage_row(target="Orc", damage_type="Cold", total_damage=25, attacker="Woo"))
+        panel.refresh()
+
+        panel.tree.apply_current_sort.assert_called_once_with()
+
     def test_incremental_refresh_reorders_natural_target_order_without_rebuild(self, target_stats_panel) -> None:
         panel, _store, _ = target_stats_panel
         initial_summary = [

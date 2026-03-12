@@ -63,6 +63,15 @@ def app_shell(shared_tk_root) -> WoosNwnParserApp:
     app.debug_panel.get_debug_enabled.return_value = False
     app.dps_panel = Mock()
     app.dps_panel.refresh = Mock()
+    app.dps_panel.update_target_filter_options = Mock()
+    app.immunity_panel = Mock()
+    app.immunity_panel.target_combo = Mock()
+    app.immunity_panel.target_combo.get.return_value = ""
+    app.immunity_panel.target_combo.current = Mock()
+    app.immunity_panel.update_target_list = Mock()
+    app.immunity_panel.refresh_target_details = Mock()
+    app.stats_panel = Mock()
+    app.stats_panel.refresh = Mock()
 
     app.queue_processor = Mock()
 
@@ -269,6 +278,31 @@ def test_process_queue_uses_normal_drain_budget_when_queue_is_normal(app_shell) 
     kwargs = app_shell.queue_processor.process_queue.call_args.kwargs
     assert kwargs["max_events"] == WoosNwnParserApp.QUEUE_DRAIN_MAX_EVENTS_NORMAL
     assert kwargs["max_time_ms"] == WoosNwnParserApp.QUEUE_DRAIN_MAX_TIME_MS_NORMAL
+
+
+def test_refresh_targets_reads_target_list_once_and_updates_all_dependents(app_shell) -> None:
+    app_shell.data_store.get_all_targets = Mock(return_value=["Goblin", "Orc"])
+
+    app_shell.refresh_targets = WoosNwnParserApp.refresh_targets.__get__(app_shell, WoosNwnParserApp)
+
+    app_shell.refresh_targets()
+
+    app_shell.data_store.get_all_targets.assert_called_once_with()
+    app_shell.immunity_panel.update_target_list.assert_called_once_with(["Goblin", "Orc"])
+    app_shell.dps_panel.update_target_filter_options.assert_called_once_with(["Goblin", "Orc"])
+    app_shell.stats_panel.refresh.assert_called_once_with()
+
+
+def test_refresh_targets_auto_selects_first_target_without_second_store_read(app_shell) -> None:
+    app_shell.data_store.get_all_targets = Mock(return_value=["Goblin", "Orc"])
+    app_shell.on_target_selected = Mock()
+    app_shell.refresh_targets = WoosNwnParserApp.refresh_targets.__get__(app_shell, WoosNwnParserApp)
+
+    app_shell.refresh_targets()
+
+    app_shell.data_store.get_all_targets.assert_called_once_with()
+    app_shell.immunity_panel.target_combo.current.assert_called_once_with(0)
+    app_shell.on_target_selected.assert_called_once_with(None)
 
 
 def test_process_queue_uses_saturated_drain_budget_when_queue_starts_saturated(app_shell) -> None:

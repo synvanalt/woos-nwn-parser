@@ -61,6 +61,17 @@ class TestImmunityPanelIncrementalRefresh:
         )
         panel.refresh_target_details("Goblin")
 
+    def test_refresh_noop_does_not_reapply_sort(self, immunity_panel) -> None:
+        panel, store, _ = immunity_panel
+        apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
+        panel.refresh_target_details("Goblin")
+        panel.tree.sort_column("Absorbed", reverse=True)
+        panel.tree.apply_current_sort = Mock()
+
+        panel.refresh_target_details("Goblin")
+
+        panel.tree.apply_current_sort.assert_not_called()
+
     def test_full_refresh_when_damage_type_set_changes(self, immunity_panel) -> None:
         panel, store, _ = immunity_panel
         apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))

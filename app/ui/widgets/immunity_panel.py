@@ -221,7 +221,11 @@ class ImmunityPanel(ttk.Frame):
             and order_token == self._cached_order_token
             and not changed_damage_types
         ):
-            if not natural_order and self.tree._last_sorted_col:
+            if (
+                current_version != self._last_refresh_version
+                and not natural_order
+                and self.tree._last_sorted_col
+            ):
                 self.tree.apply_current_sort()
             self._cached_row_tokens = new_row_tokens
             self._cached_order_token = order_token
@@ -230,8 +234,6 @@ class ImmunityPanel(ttk.Frame):
 
         if needs_full_refresh:
             self._full_refresh(target, new_rows)
-            if not natural_order and self.tree._last_sorted_col:
-                self.tree.apply_current_sort()
         else:
             self._incremental_refresh(
                 target,
@@ -354,7 +356,8 @@ class ImmunityPanel(ttk.Frame):
         Args:
             targets: List of target names
         """
-        self.target_combo["values"] = targets
+        if tuple(self.target_combo.cget("values")) != tuple(targets):
+            self.target_combo["values"] = targets
         if targets and not self.target_combo.get():
             self.target_combo.current(0)
             self.refresh_target_details(targets[0])
