@@ -253,6 +253,45 @@ def test_process_queue_reschedules_aggressively_under_pressure(app_shell) -> Non
     app_shell.root.after.assert_called_with(1, app_shell.process_queue)
 
 
+def test_process_queue_uses_normal_drain_budget_when_queue_is_normal(app_shell) -> None:
+    app_shell.queue_processor.process_queue.return_value = Mock(
+        dps_updated=False,
+        death_events=[],
+        character_identity_events=[],
+        targets_to_refresh=set(),
+        immunity_targets=set(),
+        damage_targets=set(),
+        pressure_state="normal",
+    )
+
+    app_shell.process_queue()
+
+    kwargs = app_shell.queue_processor.process_queue.call_args.kwargs
+    assert kwargs["max_events"] == WoosNwnParserApp.QUEUE_DRAIN_MAX_EVENTS_NORMAL
+    assert kwargs["max_time_ms"] == WoosNwnParserApp.QUEUE_DRAIN_MAX_TIME_MS_NORMAL
+
+
+def test_process_queue_uses_saturated_drain_budget_when_queue_starts_saturated(app_shell) -> None:
+    app_shell.data_queue = queue.Queue(maxsize=WoosNwnParserApp.DATA_QUEUE_MAXSIZE)
+    for _ in range(WoosNwnParserApp.DATA_QUEUE_SATURATED_THRESHOLD):
+        app_shell.data_queue.put(object())
+    app_shell.queue_processor.process_queue.return_value = Mock(
+        dps_updated=False,
+        death_events=[],
+        character_identity_events=[],
+        targets_to_refresh=set(),
+        immunity_targets=set(),
+        damage_targets=set(),
+        pressure_state="pressured",
+    )
+
+    app_shell.process_queue()
+
+    kwargs = app_shell.queue_processor.process_queue.call_args.kwargs
+    assert kwargs["max_events"] == WoosNwnParserApp.QUEUE_DRAIN_MAX_EVENTS_SATURATED
+    assert kwargs["max_time_ms"] == WoosNwnParserApp.QUEUE_DRAIN_MAX_TIME_MS_SATURATED
+
+
 def test_on_closing_terminates_active_import_process(app_shell) -> None:
     app_shell.is_importing = True
     app_shell.import_abort_event = threading.Event()

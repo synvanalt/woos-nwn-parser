@@ -227,3 +227,28 @@ def test_realtime_backpressure_stress_keeps_monitor_non_blocking(monkeypatch: py
     logged_messages = [call.args for call in app.log_debug.call_args_list]
     assert not any("I/O Error" in str(message) for message, *_ in logged_messages)
     assert not any("queue.Full" in str(message) for message, *_ in logged_messages)
+
+
+def test_monitor_loop_uses_post_read_pressure_for_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A read burst that saturates the queue should immediately use saturated sleep."""
+    app, _after_recorder = _build_app_shell()
+    now = datetime.now()
+    for _ in range(WoosNwnParserApp.DATA_QUEUE_PRESSURED_THRESHOLD - 500):
+        app.data_queue.put({"type": "seed"})
+    fake_monitor = _FakeRealtimeMonitor(
+        [_make_realtime_event(index, now) for index in range(WoosNwnParserApp.MONITOR_LINES_PER_POLL_NORMAL)]
+    )
+    app.directory_monitor = fake_monitor
+
+    recorded_sleep_durations: list[float] = []
+
+    def fake_sleep(duration: float) -> None:
+        recorded_sleep_durations.append(duration)
+        app.monitor_stop_event.set()
+
+    monkeypatch.setattr(main_window_module.time, "sleep", fake_sleep)
+
+    app._monitor_loop()
+
+    assert fake_monitor.max_lines_requests[0] == WoosNwnParserApp.MONITOR_LINES_PER_POLL_NORMAL
+    assert recorded_sleep_durations == [WoosNwnParserApp.MONITOR_SLEEP_ACTIVE_SATURATED]

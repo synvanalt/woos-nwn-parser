@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 12, 2026 (storage read-cache coverage refresh)
+**Last Updated:** March 12, 2026 (realtime monitor backpressure coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **603 tests collected**
+- Result: **606 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 554 tests
+- `tests/unit/`: 35 modules, 557 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 603 tests
+- Total: 43 test modules, 606 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -52,10 +52,10 @@ Notes:
 - `test_settings.py` (5)
 - `test_main_window_monitoring_switch.py` (5)
 - `test_main_window_debug_tab_unlock.py` (5)
-- `test_main_window_orchestration.py` (16)
+- `test_main_window_orchestration.py` (18)
 - `test_monitor_edge_cases.py` (4)
 - `test_queue_processor_resilience.py` (5)
-- `test_realtime_backpressure.py` (1)
+- `test_realtime_backpressure.py` (2)
 - `test_sorted_treeview_edge_cases.py` (7)
 - `test_storage_edge_branches.py` (8)
 - `test_utils_worker_pipeline.py` (10)
@@ -96,7 +96,7 @@ Notes:
   - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, and tree-sort scan bypass when callers already control order
   - Includes import payload application coverage for batched mutation submission on the Tk thread while preserving death-snippet delivery, death-character auto-identification, and queue-drain lifecycle behavior
   - Includes Death Snippets coverage for guarded `wooparseme` auto-identification and one-click character-name clearing back to the hint state
-  - Includes a dedicated realtime backlog stress test covering bounded queue saturation, monitor backpressure pacing, aggressive UI draining, and coalesced refresh behavior under producer-faster-than-consumer load
+  - Includes dedicated realtime backlog coverage for bounded queue saturation, post-read monitor backpressure pacing, pressure-banded Tk drain budgets, and coalesced refresh behavior under producer-faster-than-consumer load
 - App settings persistence:
   - `test_settings.py`
 - Import/worker pipeline behavior:

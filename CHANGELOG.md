@@ -7,6 +7,7 @@
 - DPS damage-type breakdown updates are more efficient during heavy combat and target filtering
 - Target AC and attack-bonus estimates now update more efficiently during heavy combat without changing displayed values
 - Live monitoring now avoids repeated log-file rediscovery during steady polling while still detecting rotation and truncation safely
+- Live monitoring and queue draining now recover more smoothly from sustained combat backlog to keep the app responsive under heavy realtime load
 - Death snippet lookup on large logs is more efficient during backward scans
 - Combat log timestamp handling is now more resilient when a log line contains a malformed date or time
 - `Load & Parse` feature:

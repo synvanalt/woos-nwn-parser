@@ -160,6 +160,11 @@ class LogDirectoryMonitor:
         try:
             active_file = self.get_active_log_file()
             queue_saturated = False
+            queue_maxsize = int(getattr(data_queue, "maxsize", 0) or 0)
+            queue_is_bounded = queue_maxsize > 0
+            queue_full = data_queue.full
+            queue_put_nowait = data_queue.put_nowait
+            parse_line = parser.parse_line
 
             # Handle rotation: if we switched to a new file, reset position and notify
             if active_file != self.current_log_file:
@@ -207,7 +212,7 @@ class LogDirectoryMonitor:
                 handle.seek(self.last_position)
                 if hasattr(handle, "readline"):
                     while parsed_lines < max_lines_per_poll:
-                        if getattr(data_queue, "maxsize", 0) > 0 and data_queue.full():
+                        if queue_is_bounded and queue_full():
                             queue_saturated = True
                             break
                         line = handle.readline()
@@ -218,10 +223,10 @@ class LogDirectoryMonitor:
                         if debug_enabled and on_log_message:
                             on_log_message(f"Raw line: {line.strip()}", 'info')
 
-                        parsed_data = parser.parse_line(line)
+                        parsed_data = parse_line(line)
                         if parsed_data:
                             try:
-                                data_queue.put_nowait(parsed_data)
+                                queue_put_nowait(parsed_data)
                             except queue.Full:
                                 queue_saturated = True
                                 break
@@ -229,16 +234,16 @@ class LogDirectoryMonitor:
                     # Compatibility path for mocked file handles in tests.
                     lines = list(handle.readlines())[:max_lines_per_poll]
                     for line in lines:
-                        if getattr(data_queue, "maxsize", 0) > 0 and data_queue.full():
+                        if queue_is_bounded and queue_full():
                             queue_saturated = True
                             break
                         parsed_lines += 1
                         if debug_enabled and on_log_message:
                             on_log_message(f"Raw line: {line.strip()}", 'info')
-                        parsed_data = parser.parse_line(line)
+                        parsed_data = parse_line(line)
                         if parsed_data:
                             try:
-                                data_queue.put_nowait(parsed_data)
+                                queue_put_nowait(parsed_data)
                             except queue.Full:
                                 queue_saturated = True
                                 break
