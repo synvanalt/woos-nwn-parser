@@ -14,7 +14,7 @@
 - `Load & Parse` feature:
   - Import now checks abort requests more frequently and reports progress in steady intervals
   - Now applies queued import updates in small batches per UI frame, which makes large imports feel smoother and finish UI updates faster
-  - Import now uses safer queue flow control between background worker and UI to prevent excessive memory growth during very large imports
+  - Import now uses safer queue flow control between background worker and UI to prevent excessive memory growth during very large imports - Large imports now stream bigger background batches and apply death snippets more efficiently, reducing UI overhead while keeping progress updates responsive
 
 ### Fixed
 - Fixed stale DataStore index retention that could cause avoidable long-session slowdowns

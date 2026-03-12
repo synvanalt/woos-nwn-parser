@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 12, 2026 (UI refresh scheduling coverage refresh)
+**Last Updated:** March 12, 2026 (import streaming/apply coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **610 tests collected**
+- Result: **611 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 561 tests
+- `tests/unit/`: 35 modules, 562 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 610 tests
+- Total: 43 test modules, 611 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -58,7 +58,7 @@ Notes:
 - `test_realtime_backpressure.py` (2)
 - `test_sorted_treeview_edge_cases.py` (7)
 - `test_storage_edge_branches.py` (8)
-- `test_utils_worker_pipeline.py` (10)
+- `test_utils_worker_pipeline.py` (11)
 
 ### Integration (`tests/integration`)
 - `test_parser_storage_integration.py` (13)
@@ -102,7 +102,7 @@ Notes:
   - `test_settings.py`
 - Import/worker pipeline behavior:
   - `test_utils.py`, `test_utils_worker_pipeline.py`
-  - Includes streaming chunk payload integrity, queue-full abort responsiveness coverage, import payload coverage after removing legacy parser-state snapshots, and preserved `wooparseme` identity events during manual import
+  - Includes streaming chunk payload integrity, direct parse-to-chunk worker coverage, queue-full abort responsiveness coverage, import payload coverage after removing legacy parser-state snapshots, and preserved `wooparseme` identity events during manual import
 - Full-session/e2e behavior:
   - `test_e2e_combat_session.py`
 
