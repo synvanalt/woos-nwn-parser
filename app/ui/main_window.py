@@ -50,8 +50,8 @@ class WoosNwnParserApp:
     MONITOR_SLEEP_IDLE_NORMAL = 0.5
     MONITOR_SLEEP_IDLE_PRESSURED = 0.35
     MONITOR_SLEEP_IDLE_SATURATED = 0.12
-    IMPORT_APPLY_FRAME_BUDGET_MS = 4.0
-    IMPORT_APPLY_MUTATION_BATCH_SIZE = 128
+    IMPORT_APPLY_FRAME_BUDGET_MS = 6.0
+    IMPORT_APPLY_MUTATION_BATCH_SIZE = 384
 
     def __init__(self, root: tk.Tk) -> None:
         """Initialize the application.
@@ -404,10 +404,13 @@ class WoosNwnParserApp:
                 with self._import_status_lock:
                     self._import_status['current_file'] = event.get('file_name', '')
             elif event_type == 'ops_chunk':
+                ops = event.get('ops', {})
                 self._pending_file_payloads.append({
-                    'ops': event.get('ops', {}),
+                    'mutations': ops.get('mutations', []),
+                    'death_snippets': ops.get('death_snippets', []),
+                    'death_character_identified': ops.get('death_character_identified', []),
                     'index': event.get('index', 0),
-                    'progress': {'stage': 'mutations', 'idx': 0},
+                    'mutation_idx': 0,
                 })
                 if not self._is_applying_payload:
                     self._is_applying_payload = True
@@ -416,14 +419,6 @@ class WoosNwnParserApp:
                 with self._import_status_lock:
                     # UX: advance file counter immediately when parsing of a file finishes.
                     self._import_status['files_completed'] = event.get('index', 0)
-                self._pending_file_payloads.append({
-                    'ops': {},
-                    'index': event.get('index', 0),
-                    'progress': {'stage': 'done', 'idx': 0},
-                })
-                if not self._is_applying_payload:
-                    self._is_applying_payload = True
-                    self.root.after(1, self._apply_pending_payloads_incremental)
             elif event_type == 'file_error':
                 with self._import_status_lock:
                     errors = self._import_status.setdefault('errors', [])
@@ -443,46 +438,26 @@ class WoosNwnParserApp:
         deadline = perf_counter() + (budget_ms / 1000.0)
         while perf_counter() < deadline and self._pending_file_payloads:
             item = self._pending_file_payloads[0]
-            ops = item['ops']
-            progress = item['progress']
-            stage = progress['stage']
-            idx = progress['idx']
-
-            if stage == 'mutations':
-                mutations = ops.get('mutations', [])
-                if idx < len(mutations):
-                    batch_end = min(idx + mutation_batch_size, len(mutations))
-                    self.data_store.apply_mutations(mutations[idx:batch_end])
-                    progress['idx'] = batch_end
-                    continue
-                progress['stage'] = 'death_snippet'
-                progress['idx'] = 0
+            mutation_idx = item['mutation_idx']
+            mutations = item['mutations']
+            if mutation_idx < len(mutations):
+                batch_end = min(mutation_idx + mutation_batch_size, len(mutations))
+                self.data_store.apply_mutations(mutations[mutation_idx:batch_end])
+                item['mutation_idx'] = batch_end
                 continue
 
-            if stage == 'death_snippet':
-                death_snippets = ops.get('death_snippets', [])
-                if idx < len(death_snippets):
-                    event = death_snippets[idx]
-                    self.death_snippet_panel.add_death_event(event)
-                    progress['idx'] += 1
-                    continue
-                progress['stage'] = 'death_character_identified'
-                progress['idx'] = 0
-                continue
+            death_snippets = item['death_snippets']
+            if death_snippets:
+                self.death_snippet_panel.add_death_events(death_snippets)
+                item['death_snippets'] = []
 
-            if stage == 'death_character_identified':
-                identity_events = ops.get('death_character_identified', [])
-                if idx < len(identity_events):
-                    self._on_death_character_identified(identity_events[idx])
-                    progress['idx'] += 1
-                    continue
-                progress['stage'] = 'done'
-                progress['idx'] = 0
-                continue
+            identity_events = item['death_character_identified']
+            if identity_events:
+                for identity_event in identity_events:
+                    self._on_death_character_identified(identity_event)
+                item['death_character_identified'] = []
 
-            if stage == 'done':
-                self._pending_file_payloads.popleft()
-                continue
+            self._pending_file_payloads.popleft()
 
         if self._pending_file_payloads:
             self.root.after(1, self._apply_pending_payloads_incremental)

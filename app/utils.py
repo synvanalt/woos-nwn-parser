@@ -7,7 +7,7 @@ that are independent of the UI.
 import math
 import queue
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 from .models import (
     AttackMutation,
@@ -25,6 +25,7 @@ IMPORT_RESULT_QUEUE_MAXSIZE = 512
 IMPORT_QUEUE_PUT_TIMEOUT_SEC = 0.05
 IMPORT_QUEUE_ABORT_PUT_GRACE_SEC = 0.20
 IMPORT_MUTATION_BATCH_SIZE = 2000
+IMPORT_STREAM_CHUNK_SIZE = 4000
 
 
 # Forward damage logic (AUTHORITATIVE)
@@ -374,166 +375,30 @@ def parse_file_to_ops(
 ) -> Dict:
     """Parse a log file and return operation payloads (no datastore mutation)."""
     try:
-        parser = LogParser(parse_immunity=parse_immunity)
-        parser.set_death_character_name(death_character_name)
-        parser.set_death_fallback_line(death_fallback_line)
-        lines_processed = 0
-        last_damage_dealt = {}
-
-        mutations: List[StoreMutation] = []
-        death_snippets = []
-        death_character_identified = []
-
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            if should_abort and should_abort():
-                return {
-                    'success': True,
-                    'aborted': True,
-                    'lines_processed': lines_processed,
-                    'error': None,
-                }
-
-            for line in f:
-                if (
-                    should_abort
-                    and lines_processed
-                    and (lines_processed & ABORT_CHECK_MASK) == 0
-                    and should_abort()
-                ):
-                    return {
-                        'success': True,
-                        'aborted': True,
-                        'lines_processed': lines_processed,
-                        'error': None,
-                    }
-
-                lines_processed += 1
-                parsed_data = parser.parse_line(line)
-                if not parsed_data:
-                    continue
-
-                if parsed_data['type'] == 'damage_dealt':
-                    target = parsed_data['target']
-                    attacker = parsed_data['attacker']
-                    timestamp = parsed_data['timestamp']
-                    total_damage = parsed_data['total_damage']
-                    damage_types = parsed_data.get('damage_types', {})
-
-                    mutations.append(
-                        DamageMutation(
-                            target=target,
-                            total_damage=int(total_damage or 0),
-                            attacker=attacker,
-                            timestamp=timestamp,
-                            count_for_dps=True,
-                            damage_types={k: int(v or 0) for k, v in damage_types.items()},
-                        )
-                    )
-                    for dt, amount in damage_types.items():
-                        mutations.append(
-                            DamageMutation(
-                                target=target,
-                                damage_type=dt,
-                                total_damage=int(amount or 0),
-                                attacker=attacker,
-                                timestamp=timestamp,
-                            )
-                        )
-
-                    last_damage_dealt[target] = {
-                        'damage_types': damage_types,
-                    }
-
-                elif parsed_data['type'] == 'immunity':
-                    target = parsed_data['target']
-                    damage_type = parsed_data['damage_type']
-                    immunity_points = parsed_data['immunity_points']
-                    if target in last_damage_dealt:
-                        damage_types = last_damage_dealt[target]['damage_types']
-                        if damage_type in damage_types:
-                            damage_amount = int(damage_types[damage_type] or 0)
-                            mutations.append(
-                                ImmunityMutation(
-                                    target=target,
-                                    damage_type=damage_type,
-                                    immunity_points=int(immunity_points or 0),
-                                    damage_dealt=damage_amount,
-                                )
-                            )
-
-                elif parsed_data['type'] == 'attack_hit':
-                    mutations.append(
-                        AttackMutation(
-                            attacker=parsed_data['attacker'],
-                            target=parsed_data['target'],
-                            outcome='hit',
-                            roll=parsed_data.get('roll'),
-                            bonus=parsed_data.get('bonus'),
-                            total=parsed_data.get('total'),
-                            was_nat20=bool(parsed_data.get('was_nat20', False)),
-                            is_concealment=bool(parsed_data.get('is_concealment', False)),
-                        )
-                    )
-                elif parsed_data['type'] == 'attack_hit_critical':
-                    mutations.append(
-                        AttackMutation(
-                            attacker=parsed_data['attacker'],
-                            target=parsed_data['target'],
-                            outcome='critical_hit',
-                            roll=parsed_data.get('roll'),
-                            bonus=parsed_data.get('bonus'),
-                            total=parsed_data.get('total'),
-                            was_nat20=bool(parsed_data.get('was_nat20', False)),
-                            is_concealment=bool(parsed_data.get('is_concealment', False)),
-                        )
-                    )
-                elif parsed_data['type'] == 'attack_miss':
-                    mutations.append(
-                        AttackMutation(
-                            attacker=parsed_data['attacker'],
-                            target=parsed_data['target'],
-                            outcome='miss',
-                            roll=parsed_data.get('roll'),
-                            bonus=parsed_data.get('bonus'),
-                            total=parsed_data.get('total'),
-                            was_nat1=bool(parsed_data.get('was_nat1', False)),
-                            is_concealment=bool(parsed_data.get('is_concealment', False)),
-                        )
-                    )
-                elif parsed_data['type'] == 'save':
-                    mutations.append(
-                        SaveMutation(
-                            target=parsed_data.get('target'),
-                            save_key=parsed_data.get('save_type'),
-                            bonus=int(parsed_data.get('bonus')),
-                        )
-                    )
-                elif parsed_data['type'] == 'epic_dodge':
-                    mutations.append(EpicDodgeMutation(target=parsed_data.get('target')))
-                elif parsed_data['type'] == 'death_snippet':
-                    death_snippets.append({
-                        'target': parsed_data.get('target', ''),
-                        'killer': parsed_data.get('killer', ''),
-                        'lines': parsed_data.get('lines', []),
-                        'timestamp': parsed_data.get('timestamp'),
-                        'type': 'death_snippet',
-                    })
-                elif parsed_data['type'] == 'death_character_identified':
-                    death_character_identified.append({
-                        'type': 'death_character_identified',
-                        'character_name': parsed_data.get('character_name', ''),
-                    })
+        parser = _build_import_parser(
+            parse_immunity=parse_immunity,
+            death_character_name=death_character_name,
+            death_fallback_line=death_fallback_line,
+        )
+        lines_processed, aborted, ops = _collect_file_ops(
+            file_path,
+            parser=parser,
+            should_abort=should_abort,
+        )
+        if aborted:
+            return {
+                'success': True,
+                'aborted': True,
+                'lines_processed': lines_processed,
+                'error': None,
+            }
 
         return {
             'success': True,
             'aborted': False,
             'lines_processed': lines_processed,
             'error': None,
-            'ops': {
-                'mutations': mutations,
-                'death_snippets': death_snippets,
-                'death_character_identified': death_character_identified,
-            },
+            'ops': ops,
         }
     except Exception as e:
         return {
@@ -542,6 +407,272 @@ def parse_file_to_ops(
             'lines_processed': 0,
             'error': str(e),
         }
+
+
+def _build_import_parser(
+    *,
+    parse_immunity: bool,
+    death_character_name: str,
+    death_fallback_line: str,
+) -> LogParser:
+    """Build and configure a parser for import workflows."""
+    parser = LogParser(parse_immunity=parse_immunity)
+    parser.set_death_character_name(death_character_name)
+    parser.set_death_fallback_line(death_fallback_line)
+    return parser
+
+
+def _append_import_ops(
+    parsed_data: Dict[str, Any],
+    *,
+    last_damage_dealt: Dict[str, Dict[str, Dict[str, int]]],
+    mutations: List[StoreMutation],
+    death_snippets: List[Dict[str, Any]],
+    death_character_identified: List[Dict[str, Any]],
+) -> None:
+    """Translate one parsed event into import payload operations."""
+    event_type = parsed_data['type']
+
+    if event_type == 'damage_dealt':
+        target = parsed_data['target']
+        attacker = parsed_data['attacker']
+        timestamp = parsed_data['timestamp']
+        total_damage = parsed_data['total_damage']
+        damage_types = parsed_data.get('damage_types', {})
+
+        mutations.append(
+            DamageMutation(
+                target=target,
+                total_damage=int(total_damage or 0),
+                attacker=attacker,
+                timestamp=timestamp,
+                count_for_dps=True,
+                damage_types={k: int(v or 0) for k, v in damage_types.items()},
+            )
+        )
+        for damage_type, amount in damage_types.items():
+            mutations.append(
+                DamageMutation(
+                    target=target,
+                    damage_type=damage_type,
+                    total_damage=int(amount or 0),
+                    attacker=attacker,
+                    timestamp=timestamp,
+                )
+            )
+
+        last_damage_dealt[target] = {'damage_types': damage_types}
+        return
+
+    if event_type == 'immunity':
+        target = parsed_data['target']
+        damage_type = parsed_data['damage_type']
+        immunity_points = parsed_data['immunity_points']
+        if target in last_damage_dealt:
+            damage_types = last_damage_dealt[target]['damage_types']
+            if damage_type in damage_types:
+                mutations.append(
+                    ImmunityMutation(
+                        target=target,
+                        damage_type=damage_type,
+                        immunity_points=int(immunity_points or 0),
+                        damage_dealt=int(damage_types[damage_type] or 0),
+                    )
+                )
+        return
+
+    if event_type == 'attack_hit':
+        mutations.append(
+            AttackMutation(
+                attacker=parsed_data['attacker'],
+                target=parsed_data['target'],
+                outcome='hit',
+                roll=parsed_data.get('roll'),
+                bonus=parsed_data.get('bonus'),
+                total=parsed_data.get('total'),
+                was_nat20=bool(parsed_data.get('was_nat20', False)),
+                is_concealment=bool(parsed_data.get('is_concealment', False)),
+            )
+        )
+        return
+
+    if event_type == 'attack_hit_critical':
+        mutations.append(
+            AttackMutation(
+                attacker=parsed_data['attacker'],
+                target=parsed_data['target'],
+                outcome='critical_hit',
+                roll=parsed_data.get('roll'),
+                bonus=parsed_data.get('bonus'),
+                total=parsed_data.get('total'),
+                was_nat20=bool(parsed_data.get('was_nat20', False)),
+                is_concealment=bool(parsed_data.get('is_concealment', False)),
+            )
+        )
+        return
+
+    if event_type == 'attack_miss':
+        mutations.append(
+            AttackMutation(
+                attacker=parsed_data['attacker'],
+                target=parsed_data['target'],
+                outcome='miss',
+                roll=parsed_data.get('roll'),
+                bonus=parsed_data.get('bonus'),
+                total=parsed_data.get('total'),
+                was_nat1=bool(parsed_data.get('was_nat1', False)),
+                is_concealment=bool(parsed_data.get('is_concealment', False)),
+            )
+        )
+        return
+
+    if event_type == 'save':
+        mutations.append(
+            SaveMutation(
+                target=parsed_data.get('target'),
+                save_key=parsed_data.get('save_type'),
+                bonus=int(parsed_data.get('bonus')),
+            )
+        )
+        return
+
+    if event_type == 'epic_dodge':
+        mutations.append(EpicDodgeMutation(target=parsed_data.get('target')))
+        return
+
+    if event_type == 'death_snippet':
+        death_snippets.append({
+            'target': parsed_data.get('target', ''),
+            'killer': parsed_data.get('killer', ''),
+            'lines': parsed_data.get('lines', []),
+            'timestamp': parsed_data.get('timestamp'),
+            'type': 'death_snippet',
+        })
+        return
+
+    if event_type == 'death_character_identified':
+        death_character_identified.append({
+            'type': 'death_character_identified',
+            'character_name': parsed_data.get('character_name', ''),
+        })
+
+
+def _collect_file_ops(
+    file_path: str,
+    *,
+    parser: LogParser,
+    should_abort: Optional[Callable[[], bool]] = None,
+) -> tuple[int, bool, Dict[str, List[Any]]]:
+    """Collect all import operations for a file."""
+    lines_processed = 0
+    last_damage_dealt: Dict[str, Dict[str, Dict[str, int]]] = {}
+    mutations: List[StoreMutation] = []
+    death_snippets: List[Dict[str, Any]] = []
+    death_character_identified: List[Dict[str, Any]] = []
+
+    with open(file_path, 'r', encoding='utf-8', errors='ignore') as handle:
+        if should_abort and should_abort():
+            return lines_processed, True, {}
+
+        for line in handle:
+            if (
+                should_abort
+                and lines_processed
+                and (lines_processed & ABORT_CHECK_MASK) == 0
+                and should_abort()
+            ):
+                return lines_processed, True, {}
+
+            lines_processed += 1
+            parsed_data = parser.parse_line(line)
+            if not parsed_data:
+                continue
+
+            _append_import_ops(
+                parsed_data,
+                last_damage_dealt=last_damage_dealt,
+                mutations=mutations,
+                death_snippets=death_snippets,
+                death_character_identified=death_character_identified,
+            )
+
+    return lines_processed, False, {
+        'mutations': mutations,
+        'death_snippets': death_snippets,
+        'death_character_identified': death_character_identified,
+    }
+
+
+def iter_file_ops_chunks(
+    file_path: str,
+    *,
+    parse_immunity: bool = False,
+    death_character_name: str = "",
+    death_fallback_line: str = LogParser.DEFAULT_DEATH_FALLBACK_LINE,
+    should_abort: Optional[Callable[[], bool]] = None,
+    chunk_size: int = IMPORT_STREAM_CHUNK_SIZE,
+) -> Iterator[Dict[str, List[Any]]]:
+    """Yield import operation chunks directly from file parsing."""
+    parser = _build_import_parser(
+        parse_immunity=parse_immunity,
+        death_character_name=death_character_name,
+        death_fallback_line=death_fallback_line,
+    )
+    chunk_size = max(1, int(chunk_size))
+    lines_processed = 0
+    last_damage_dealt: Dict[str, Dict[str, Dict[str, int]]] = {}
+    pending_mutations: List[StoreMutation] = []
+    pending_death_snippets: List[Dict[str, Any]] = []
+    pending_identity_events: List[Dict[str, Any]] = []
+
+    def flush_pending(force: bool = False) -> Iterator[Dict[str, List[Any]]]:
+        nonlocal pending_mutations, pending_death_snippets, pending_identity_events
+        while (
+            len(pending_mutations) >= chunk_size
+            or len(pending_death_snippets) >= chunk_size
+            or len(pending_identity_events) >= chunk_size
+            or (
+                force
+                and (pending_mutations or pending_death_snippets or pending_identity_events)
+            )
+        ):
+            yield {
+                'mutations': pending_mutations[:chunk_size],
+                'death_snippets': pending_death_snippets[:chunk_size],
+                'death_character_identified': pending_identity_events[:chunk_size],
+            }
+            pending_mutations = pending_mutations[chunk_size:]
+            pending_death_snippets = pending_death_snippets[chunk_size:]
+            pending_identity_events = pending_identity_events[chunk_size:]
+
+    with open(file_path, 'r', encoding='utf-8', errors='ignore') as handle:
+        if should_abort and should_abort():
+            return
+
+        for line in handle:
+            if (
+                should_abort
+                and lines_processed
+                and (lines_processed & ABORT_CHECK_MASK) == 0
+                and should_abort()
+            ):
+                return
+
+            lines_processed += 1
+            parsed_data = parser.parse_line(line)
+            if not parsed_data:
+                continue
+
+            _append_import_ops(
+                parsed_data,
+                last_damage_dealt=last_damage_dealt,
+                mutations=pending_mutations,
+                death_snippets=pending_death_snippets,
+                death_character_identified=pending_identity_events,
+            )
+            yield from flush_pending()
+
+    yield from flush_pending(force=True)
 
 
 def import_worker_process(
@@ -553,7 +684,7 @@ def import_worker_process(
     death_fallback_line: str = LogParser.DEFAULT_DEATH_FALLBACK_LINE,
 ) -> None:
     """Process target for multiprocessing import pipeline."""
-    chunk_size = 2000
+    chunk_size = IMPORT_STREAM_CHUNK_SIZE
 
     def _put_with_backpressure(
         event: Dict[str, Any],
@@ -574,9 +705,6 @@ def import_worker_process(
                 if force_on_abort and (time.monotonic() - started_at) >= IMPORT_QUEUE_ABORT_PUT_GRACE_SEC:
                     return False
 
-    def _slice_chunks(values: List, size: int) -> List[List]:
-        return [values[i:i + size] for i in range(0, len(values), size)]
-
     total_files = len(file_paths)
     for index, file_path in enumerate(file_paths, start=1):
         if abort_event.is_set():
@@ -593,58 +721,38 @@ def import_worker_process(
             _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
             return
 
-        result = parse_file_to_ops(
-            file_path,
-            parse_immunity=parse_immunity,
-            death_character_name=death_character_name,
-            death_fallback_line=death_fallback_line,
-            should_abort=abort_event.is_set,
-        )
-
-        if result.get('aborted'):
-            _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
-            return
-
-        if not result.get('success'):
+        try:
+            for ops_chunk in iter_file_ops_chunks(
+                file_path,
+                parse_immunity=parse_immunity,
+                death_character_name=death_character_name,
+                death_fallback_line=death_fallback_line,
+                should_abort=abort_event.is_set,
+                chunk_size=chunk_size,
+            ):
+                if not _put_with_backpressure({
+                    'event': 'ops_chunk',
+                    'index': index,
+                    'total_files': total_files,
+                    'file_name': file_name,
+                    'ops': ops_chunk,
+                }):
+                    _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
+                    return
+            if abort_event.is_set():
+                _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
+                return
+        except Exception as exc:
             if not _put_with_backpressure({
                 'event': 'file_error',
                 'index': index,
                 'total_files': total_files,
                 'file_name': file_name,
-                'error': result.get('error', 'Unknown error'),
+                'error': str(exc),
             }):
                 _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
                 return
             continue
-
-        ops = result.get('ops', {})
-        mutation_chunks = _slice_chunks(ops.get('mutations', []), chunk_size)
-        death_chunks = _slice_chunks(ops.get('death_snippets', []), chunk_size)
-        identity_chunks = _slice_chunks(ops.get('death_character_identified', []), chunk_size)
-
-        max_chunk_count = max(
-            len(mutation_chunks),
-            len(death_chunks),
-            len(identity_chunks),
-            0,
-        )
-
-        for chunk_idx in range(max_chunk_count):
-            if not _put_with_backpressure({
-                'event': 'ops_chunk',
-                'index': index,
-                'total_files': total_files,
-                'file_name': file_name,
-                'ops': {
-                    'mutations': mutation_chunks[chunk_idx] if chunk_idx < len(mutation_chunks) else [],
-                    'death_snippets': death_chunks[chunk_idx] if chunk_idx < len(death_chunks) else [],
-                    'death_character_identified': (
-                        identity_chunks[chunk_idx] if chunk_idx < len(identity_chunks) else []
-                    ),
-                },
-            }):
-                _put_with_backpressure({'event': 'aborted'}, force_on_abort=True)
-                return
 
         if not _put_with_backpressure({
             'event': 'file_completed',
