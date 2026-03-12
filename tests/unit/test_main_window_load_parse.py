@@ -123,7 +123,7 @@ class TestLoadAndParseWorkflow:
         app.dps_panel.refresh.assert_called_once()
         assert app.is_importing is False
 
-    def test_reset_data_clears_target_stats_cache(self) -> None:
+    def test_clear_data_clears_target_stats_cache(self) -> None:
         app = _make_app_shell()
         app.root = Mock()
         app.data_store = Mock()
@@ -142,7 +142,7 @@ class TestLoadAndParseWorkflow:
         app._targets_dirty = False
         app._immunity_dirty_targets = set()
 
-        app.reset_data()
+        app.clear_data()
 
         app.stats_panel.clear_cache.assert_called_once()
         app.refresh_targets.assert_called_once()

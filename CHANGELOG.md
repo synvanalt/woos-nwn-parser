@@ -12,6 +12,7 @@
 - Live monitoring and queue draining now recover more smoothly from sustained combat backlog to keep the app responsive under heavy realtime load
 - Death snippet lookup on large logs is more efficient during backward scans
 - Combat log timestamp handling is now more resilient when a log line contains a malformed date or time
+- `Reset Data` has been renamed to `Clear Data` for a more accurate label
 - `Load & Parse` feature:
   - Import now checks abort requests more frequently and reports progress in steady intervals
   - Now applies queued import updates in small batches per UI frame, which makes large imports feel smoother and finish UI updates faster
@@ -22,6 +23,7 @@
 - Fixed stale-immunity cleanup timing when processed-event batches jump across cleanup boundaries
 - Fixed DPS panel not refreshing after changing `First Timestamp` while monitoring is paused
 - Fixed malformed timestamp and concealment attack lines being handled less safely than necessary during parsing
+- Fixed `Clear Data` so `Target Stats` no longer keeps stale target rows after clearing a session
 - `Death Snippets` panel:
   - Fixed character auto-identification so a later nearby `wooparseme` whisper no longer overwrites an already assigned name
   - Added a quick `Clear Name` action for easy textbox clearing and re-identifying your character
