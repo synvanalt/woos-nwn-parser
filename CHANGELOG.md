@@ -6,6 +6,7 @@
 - Combat event history now auto-limits in long sessions to keep memory use and responsiveness stable (oldest raw entries are removed first while summaries and totals stay intact)
 - DPS damage-type breakdown updates are more efficient during heavy combat and target filtering
 - Target AC and attack-bonus estimates now update more efficiently during heavy combat without changing displayed values
+- Target lists and live table refreshes now do less redundant work, which helps combat updates stay smoother without changing displayed values or selection state
 - Live monitoring now avoids repeated log-file rediscovery during steady polling while still detecting rotation and truncation safely
 - Live monitoring and queue draining now recover more smoothly from sustained combat backlog to keep the app responsive under heavy realtime load
 - Death snippet lookup on large logs is more efficient during backward scans
