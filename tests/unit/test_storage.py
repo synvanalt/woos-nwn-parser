@@ -25,6 +25,31 @@ class TestDataStoreInitialization:
         assert len(data_store.immunity_data) == 0
         assert data_store.last_damage_timestamp is None
 
+    def test_initialization_uses_named_default_history_limits(self) -> None:
+        """Default raw-history retention should remain backward-compatible."""
+        store = DataStore()
+
+        assert store.max_events_history == DataStore.DEFAULT_MAX_EVENTS_HISTORY
+        assert store.max_attacks_history == DataStore.DEFAULT_MAX_ATTACKS_HISTORY
+        assert store.events.maxlen == DataStore.DEFAULT_MAX_EVENTS_HISTORY
+        assert store.attacks.maxlen == DataStore.DEFAULT_MAX_ATTACKS_HISTORY
+
+    def test_initialization_accepts_none_for_default_history_limits(self) -> None:
+        """Explicit None should resolve to the same safe defaults."""
+        store = DataStore(max_events_history=None, max_attacks_history=None)
+
+        assert store.max_events_history == DataStore.DEFAULT_MAX_EVENTS_HISTORY
+        assert store.max_attacks_history == DataStore.DEFAULT_MAX_ATTACKS_HISTORY
+
+    def test_initialization_clamps_invalid_history_limits(self) -> None:
+        """Configured raw-history limits should be normalized to at least one item."""
+        store = DataStore(max_events_history=0, max_attacks_history=-5)
+
+        assert store.max_events_history == 1
+        assert store.max_attacks_history == 1
+        assert store.events.maxlen == 1
+        assert store.attacks.maxlen == 1
+
 
 class TestApplyMutations:
     """Test suite for the public batch mutation API."""

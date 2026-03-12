@@ -5,6 +5,7 @@ by the combat log parser: enemies, saving throws, armor class, damage events,
 and normalized store mutations.
 """
 
+import heapq
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal, Optional, TypeAlias
@@ -47,15 +48,31 @@ class EnemyAC:
     name: str
     max_miss: Optional[int] = None
     has_epic_dodge: bool = False
-    _hits: list[int] = field(default_factory=list, repr=False)
+    _hit_counts: dict[int, int] = field(default_factory=dict, repr=False)
+    _hit_heap: list[int] = field(default_factory=list, repr=False)
     _min_hit: Optional[int] = field(default=None, init=False, repr=False)
 
     @property
     def min_hit(self) -> Optional[int]:
         """Return the minimum hit total, or None if no valid hits recorded."""
-        if self._min_hit is None and self._hits:
-            self._min_hit = min(self._hits)
+        if self._min_hit is None:
+            self._refresh_min_hit()
         return self._min_hit
+
+    def _refresh_min_hit(self) -> None:
+        """Advance cached minimum hit past invalid or exhausted entries."""
+        while self._hit_heap:
+            candidate = self._hit_heap[0]
+            if self.max_miss is not None and candidate <= self.max_miss:
+                heapq.heappop(self._hit_heap)
+                self._hit_counts.pop(candidate, None)
+                continue
+            if self._hit_counts.get(candidate, 0) <= 0:
+                heapq.heappop(self._hit_heap)
+                continue
+            self._min_hit = candidate
+            return
+        self._min_hit = None
 
     def record_hit(self, total: int, was_nat20: bool = False) -> None:
         """Record a successful attack roll total, excluding natural 20s.
@@ -68,7 +85,10 @@ class EnemyAC:
             # Only add if it's above max_miss (if we have one)
             # This prevents adding hits that are already invalidated
             if self.max_miss is None or total > self.max_miss:
-                self._hits.append(total)
+                existing_count = self._hit_counts.get(total, 0)
+                self._hit_counts[total] = existing_count + 1
+                if existing_count == 0:
+                    heapq.heappush(self._hit_heap, total)
                 if self._min_hit is None or total < self._min_hit:
                     self._min_hit = total
 
@@ -87,13 +107,10 @@ class EnemyAC:
             if self.max_miss is None or attack_total > self.max_miss:
                 self.max_miss = attack_total
 
-                # Only rebuild the list if the new max_miss overlaps
-                # the cached lowest valid hit.
+                # Only refresh when the cached minimum hit is invalidated.
                 if self._min_hit is not None and self.max_miss >= self._min_hit:
-                    # Remove all hits that are now invalidated by this miss
-                    # (hits <= max_miss shouldn't have hit if target had true AC)
-                    self._hits = [h for h in self._hits if h > self.max_miss]
-                    self._min_hit = min(self._hits) if self._hits else None
+                    self._min_hit = None
+                    self._refresh_min_hit()
 
     def mark_epic_dodge(self) -> None:
         """Mark this target as having Epic Dodge."""
