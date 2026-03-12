@@ -1,10 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [1.5.0] - 2026-03-12
 
 ### Changed
 - Combat event history now auto-limits in long sessions to keep memory use and responsiveness stable (oldest raw entries are removed first while summaries and totals stay intact)
-- Combat log parsing is now faster during heavy attack spam and large imports, especially on standard attack rolls and critical-threat lines
+- Combat log parsing is now faster during heavy combat and large imports, especially on standard attack rolls and critical-threat lines
 - DPS damage-type breakdown updates are more efficient during heavy combat and target filtering
 - Target AC and attack-bonus estimates now update more efficiently during heavy combat without changing displayed values
 - Target lists and live table refreshes now do less redundant work, which helps combat updates stay smoother without changing displayed values or selection state
@@ -13,10 +13,9 @@
 - Death snippet lookup on large logs is more efficient during backward scans
 - Combat log timestamp handling is now more resilient when a log line contains a malformed date or time
 - `Reset Data` has been renamed to `Clear Data` for a more accurate label
-- `Load & Parse` feature:
-  - Import now checks abort requests more frequently and reports progress in steady intervals
-  - Now applies queued import updates in small batches per UI frame, which makes large imports feel smoother and finish UI updates faster
-  - Import now uses safer queue flow control between background worker and UI to prevent excessive memory growth during very large imports - Large imports now stream bigger background batches and apply death snippets more efficiently, reducing UI overhead while keeping progress updates responsive
+- `Load & Parse` import now checks abort requests more frequently and reports progress in steady intervals
+- `Load & Parse` import now uses safer queue flow control between background worker and UI to prevent excessive memory growth during very large imports
+- `Load & Parse` now applies queued import updates in small batches per UI frame, which makes large imports feel smoother and finish UI updates faster
 
 ### Fixed
 - Fixed stale DataStore index retention that could cause avoidable long-session slowdowns
