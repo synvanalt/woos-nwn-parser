@@ -29,8 +29,8 @@ class ImmunityPanel(ttk.Frame):
     """
 
     DISCLAIMER_TEXT = (
-        "• Damage and immunity lines are separated in log and may be matched incorrectly\n"
-        "• Displayed immunity % can be overstated if target also has damage resistance/reduction"
+        "• Displayed immunity % can be overstated if target also has damage resistance/reduction\n"
+        "• Damage and immunity absorbed lines are separated in logs and may be matched incorrectly"
     )
 
     def __init__(
