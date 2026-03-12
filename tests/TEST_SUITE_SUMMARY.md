@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 11, 2026 (import regression coverage refresh)
+**Last Updated:** March 12, 2026 (storage read-cache coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **599 tests collected**
+- Result: **603 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 550 tests
+- `tests/unit/`: 35 modules, 554 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 599 tests
+- Total: 43 test modules, 603 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -29,7 +29,7 @@ Notes:
 - `test_parser.py` (70)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
-- `test_storage.py` (48)
+- `test_storage.py` (52)
 - `test_storage_indices.py` (21)
 - `test_utils.py` (37)
 - `test_monitor.py` (22)
@@ -80,6 +80,7 @@ Notes:
 - Storage and indexing performance behavior:
   - `test_storage.py`, `test_storage_indices.py`
   - Direct store setup now uses the real public batch API (`DataStore.apply_mutations(...)`) instead of legacy per-write helper methods
+  - Includes explicit coverage for version-scoped read-cache invalidation and defensive-copy behavior on cached summary getters
 - Queue processor logic and batching:
   - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`, `test_realtime_backpressure.py`
   - Queue/import tests validate the public-first mutation payload flow used by production ingestion
