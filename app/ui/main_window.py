@@ -870,18 +870,17 @@ class WoosNwnParserApp:
         self.refresh_targets()
 
     def refresh_targets(self) -> None:
-        """Refresh the list of targets in the combobox and select first if none selected."""
-        self.update_target_selector_list()
-        self.update_target_filter_list()
+        """Refresh target-driven widgets while minimizing duplicate store reads."""
+        targets = self.data_store.get_all_targets()
+        self.update_target_selector_list(targets)
+        self.update_target_filter_list(targets)
         self.stats_panel.refresh()
-        # Only auto-select if nothing is currently selected
-        if not self.immunity_panel.target_combo.get():
-            targets = self.data_store.get_all_targets()
-            if targets:
-                self.immunity_panel.target_combo.current(0)
-                self.on_target_selected(None)
+        # Only auto-select if nothing is currently selected.
+        if not self.immunity_panel.target_combo.get() and targets:
+            self.immunity_panel.target_combo.current(0)
+            self.on_target_selected(None)
 
-    def update_target_selector_list(self) -> None:
+    def update_target_selector_list(self, targets: list[str] | None = None) -> None:
         """Update the Select Target combobox with all available targets.
 
         This method preserves the current selection if possible, making it suitable
@@ -889,12 +888,14 @@ class WoosNwnParserApp:
         Automatically selects the first target if the list changes and no target
         is currently selected.
         """
-        targets = self.data_store.get_all_targets()
+        if targets is None:
+            targets = self.data_store.get_all_targets()
         self.immunity_panel.update_target_list(targets)
 
-    def update_target_filter_list(self) -> None:
+    def update_target_filter_list(self, targets: list[str] | None = None) -> None:
         """Update the target filter combobox with all available targets."""
-        targets = self.data_store.get_all_targets()
+        if targets is None:
+            targets = self.data_store.get_all_targets()
         self.dps_panel.update_target_filter_options(targets)
 
     def on_target_selected(self, event) -> None:
@@ -1115,18 +1116,19 @@ class WoosNwnParserApp:
     def _run_coalesced_refresh(self) -> None:
         """Execute one coalesced refresh pass for expensive widgets."""
         self._refresh_job = None
+        selected_target = ""
+        if hasattr(self, "immunity_panel") and hasattr(self.immunity_panel, "target_combo"):
+            selected_target = self.immunity_panel.target_combo.get()
 
         if self._targets_dirty:
             self.refresh_targets()
             self._targets_dirty = False
+            selected_target = self.immunity_panel.target_combo.get()
 
         if self._dps_dirty:
             self.dps_panel.refresh()
             self._dps_dirty = False
 
-        selected_target = ""
-        if hasattr(self, "immunity_panel") and hasattr(self.immunity_panel, "target_combo"):
-            selected_target = self.immunity_panel.target_combo.get()
         if (
             selected_target
             and selected_target in self._immunity_dirty_targets

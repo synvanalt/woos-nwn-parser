@@ -123,8 +123,6 @@ class TargetStatsPanel(ttk.Frame):
 
         if needs_full_refresh:
             self._full_refresh(summary_data)
-            if not natural_order and self.tree._last_sorted_col:
-                self.tree.apply_current_sort()
         else:
             self._incremental_refresh(summary_data, new_rows, changed_targets, natural_order)
 
