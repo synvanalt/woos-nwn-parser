@@ -267,6 +267,14 @@ class QueueProcessor:
 
         target = data["target"]
         line_number = self._get_event_line_number(data)
+        had_pending_immunity_types = {
+            damage_type
+            for damage_type in data["damage_types"]
+            if self.immunity_matcher.has_pending_immunity(
+                target=target,
+                damage_type=str(damage_type),
+            )
+        }
 
         try:
             for damage_type, amount in data["damage_types"].items():
@@ -291,6 +299,14 @@ class QueueProcessor:
             attacker=data.get("attacker", ""),
         )
         pending_mutations.extend(matched_mutations)
+        matched_types = {mutation.damage_type for mutation in matched_mutations}
+
+        if debug_enabled:
+            for damage_type in sorted(had_pending_immunity_types - matched_types):
+                on_log_message(
+                    f"Queue mismatched {target}/{damage_type}",
+                    "debug",
+                )
 
         result["damage_target"] = target
         if matched_mutations:

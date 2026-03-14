@@ -133,6 +133,10 @@ class ImmunityMatcher:
         self._cleanup_direction(self._pending_damage, cutoff, max_age)
         self._cleanup_direction(self._pending_immunity, cutoff, max_age)
 
+    def has_pending_immunity(self, *, target: str, damage_type: str) -> bool:
+        """Return whether unmatched immunity observations exist for target/type."""
+        return bool(self._pending_immunity.get(target, {}).get(damage_type))
+
     def _queue_damage_observation(self, observation: DamageObservation) -> list[ImmunityMutation]:
         queue = self._pending_immunity[observation.target][observation.damage_type]
         match_index = self._select_best_match_index(

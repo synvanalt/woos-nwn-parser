@@ -18,8 +18,6 @@ class TestLogParserInitialization:
         parser = LogParser()
         assert parser.player_name is None
         assert parser.parse_immunity is False
-        assert parser.current_target is None
-        assert len(parser.current_damage_types) == 0
         assert not hasattr(parser, "target_ac")
         assert not hasattr(parser, "target_saves")
         assert not hasattr(parser, "target_attack_bonus")

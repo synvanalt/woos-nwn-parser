@@ -109,12 +109,6 @@ class LogParser:
             ),
         }
 
-        self.current_target = None
-        self.current_damage_types = {}
-        self.pending_resists = {}
-        self.damage_type_queue = []  # Track order of damage types to process
-        self.current_processing_type = None  # Which damage type we're currently processing resists for
-
         # Death snippet extraction state (bounded ring buffer for low-memory, low-overhead scanning)
         self.death_lookup_killed_lookback_lines = 500
         self.death_snippet_max_lines = 100
@@ -630,7 +624,7 @@ class LogParser:
                 if death_event:
                     return death_event
 
-        # Check for damage dealt (this sets the context for subsequent resist lines)
+        # Check for damage dealt
         damage_match = patterns['damage_dealt'].search(raw_line)
 
         if damage_match:
@@ -638,22 +632,14 @@ class LogParser:
             target = damage_match.group(2).strip()
             total_damage = int(damage_match.group(3))
             breakdown_str = damage_match.group(4)
-
-            # Parse the flexible damage breakdown
-            self.current_target = target
-            self.current_damage_types = self.parse_damage_breakdown(breakdown_str)
-
-            # Create queue of damage types in order they appear
-            self.damage_type_queue = list(self.current_damage_types.keys())
-            self.current_processing_type = self.damage_type_queue[0] if self.damage_type_queue else None
-            self.pending_resists[target] = {}
+            damage_types = self.parse_damage_breakdown(breakdown_str)
 
             return {
                 'type': 'damage_dealt',
                 'attacker': attacker,
                 'target': target,
                 'total_damage': total_damage,
-                'damage_types': self.current_damage_types,
+                'damage_types': damage_types,
                 'timestamp': get_timestamp(),
                 'line_number': line_number,
                 'filtered_for_player': self.player_name and attacker != self.player_name
@@ -673,19 +659,6 @@ class LogParser:
             target = immunity_match.group(1).strip()
             immunity_points = int(immunity_match.group(2))
             damage_type = immunity_match.group(3).strip()
-
-            # Immunity explicitly states the damage type - use it to sync our queue position
-            if target == self.current_target and damage_type in self.damage_type_queue:
-                self.current_processing_type = damage_type
-
-            if target not in self.pending_resists:
-                self.pending_resists[target] = {}
-
-            if damage_type not in self.pending_resists[target]:
-                self.pending_resists[target][damage_type] = {'immunity': 0, 'resistance': 0, 'reduction': 0}
-
-            # Store immunity as raw points (consistent with earlier behavior / DB schema)
-            self.pending_resists[target][damage_type]['immunity'] = immunity_points
 
             # Return parsed immunity data (use raw points for immunity_points)
             return {
