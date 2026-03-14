@@ -213,7 +213,7 @@ def parse_and_import_file(
     try:
 
         lines_processed = 0
-        immunity_matcher = ImmunityMatcher()
+        immunity_matcher = ImmunityMatcher() if parser.parse_immunity else None
 
         last_progress_report = 0
         pending_mutations: List[StoreMutation] = []
@@ -286,26 +286,28 @@ def parse_and_import_file(
                                     timestamp=timestamp,
                                 )
                             )
-                        pending_mutations.extend(
-                            immunity_matcher.queue_damage_event(
-                                target=target,
-                                damage_types=damage_types,
-                                timestamp=timestamp,
-                                line_number=line_number,
-                                attacker=attacker,
+                        if immunity_matcher is not None:
+                            pending_mutations.extend(
+                                immunity_matcher.queue_damage_event(
+                                    target=target,
+                                    damage_types=damage_types,
+                                    timestamp=timestamp,
+                                    line_number=line_number,
+                                    attacker=attacker,
+                                )
                             )
-                        )
 
                     elif event_type == 'immunity':
-                        pending_mutations.extend(
-                            immunity_matcher.queue_immunity(
-                                target=parsed_data['target'],
-                                damage_type=parsed_data['damage_type'],
-                                immunity_points=int(parsed_data['immunity_points'] or 0),
-                                timestamp=parsed_data['timestamp'],
-                                line_number=_event_line_number(parsed_data, lines_processed),
+                        if immunity_matcher is not None:
+                            pending_mutations.extend(
+                                immunity_matcher.queue_immunity(
+                                    target=parsed_data['target'],
+                                    damage_type=parsed_data['damage_type'],
+                                    immunity_points=int(parsed_data['immunity_points'] or 0),
+                                    timestamp=parsed_data['timestamp'],
+                                    line_number=_event_line_number(parsed_data, lines_processed),
+                                )
                             )
-                        )
 
                     # Handle attack events
                     elif event_type == 'attack_hit':
@@ -448,7 +450,7 @@ def _build_import_parser(
 def _append_import_ops(
     parsed_data: Dict[str, Any],
     *,
-    immunity_matcher: ImmunityMatcher,
+    immunity_matcher: Optional[ImmunityMatcher],
     mutations: List[StoreMutation],
     death_snippets: List[Dict[str, Any]],
     death_character_identified: List[Dict[str, Any]],
@@ -485,27 +487,29 @@ def _append_import_ops(
                 )
             )
 
-        mutations.extend(
-            immunity_matcher.queue_damage_event(
-                target=target,
-                damage_types=damage_types,
-                timestamp=timestamp,
-                line_number=line_number,
-                attacker=attacker,
+        if immunity_matcher is not None:
+            mutations.extend(
+                immunity_matcher.queue_damage_event(
+                    target=target,
+                    damage_types=damage_types,
+                    timestamp=timestamp,
+                    line_number=line_number,
+                    attacker=attacker,
+                )
             )
-        )
         return
 
     if event_type == 'immunity':
-        mutations.extend(
-            immunity_matcher.queue_immunity(
-                target=parsed_data['target'],
-                damage_type=parsed_data['damage_type'],
-                immunity_points=int(parsed_data['immunity_points'] or 0),
-                timestamp=parsed_data['timestamp'],
-                line_number=_event_line_number(parsed_data, 0),
+        if immunity_matcher is not None:
+            mutations.extend(
+                immunity_matcher.queue_immunity(
+                    target=parsed_data['target'],
+                    damage_type=parsed_data['damage_type'],
+                    immunity_points=int(parsed_data['immunity_points'] or 0),
+                    timestamp=parsed_data['timestamp'],
+                    line_number=_event_line_number(parsed_data, 0),
+                )
             )
-        )
         return
 
     if event_type == 'attack_hit':
@@ -592,7 +596,7 @@ def _collect_file_ops(
 ) -> tuple[int, bool, Dict[str, List[Any]]]:
     """Collect all import operations for a file."""
     lines_processed = 0
-    immunity_matcher = ImmunityMatcher()
+    immunity_matcher = ImmunityMatcher() if parser.parse_immunity else None
     mutations: List[StoreMutation] = []
     death_snippets: List[Dict[str, Any]] = []
     death_character_identified: List[Dict[str, Any]] = []
@@ -647,7 +651,7 @@ def iter_file_ops_chunks(
     )
     chunk_size = max(1, int(chunk_size))
     lines_processed = 0
-    immunity_matcher = ImmunityMatcher()
+    immunity_matcher = ImmunityMatcher() if parser.parse_immunity else None
     pending_mutations: List[StoreMutation] = []
     pending_death_snippets: List[Dict[str, Any]] = []
     pending_identity_events: List[Dict[str, Any]] = []

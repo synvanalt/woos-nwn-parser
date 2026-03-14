@@ -176,6 +176,7 @@ class TestQueueProcessor(unittest.TestCase):
 
     def test_damage_buffer_state(self) -> None:
         """Test damage buffer maintains state correctly."""
+        self.parser.parse_immunity = True
         damage_event = {
             'type': 'damage_dealt',
             'attacker': 'TestCharacter',

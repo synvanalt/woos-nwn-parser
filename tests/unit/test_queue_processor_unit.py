@@ -272,6 +272,7 @@ class TestDamageBuffering:
 
     def test_damage_buffer_stores_damage_types(self, queue_processor: QueueProcessor) -> None:
         """Test that damage buffer stores damage type information."""
+        queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
 
         damage_event = {
@@ -299,6 +300,7 @@ class TestDamageBuffering:
 
     def test_damage_buffer_overwrites_previous_target(self, queue_processor: QueueProcessor) -> None:
         """Test that new damage overwrites previous buffer for same target."""
+        queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
 
         damage_event1 = {
@@ -332,6 +334,7 @@ class TestDamageBuffering:
 
     def test_damage_buffer_stores_multiple_targets(self, queue_processor: QueueProcessor) -> None:
         """Test that damage buffer can store multiple targets simultaneously."""
+        queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
 
         damage_event1 = {
@@ -685,6 +688,7 @@ class TestCleanupMethods:
 
     def test_cleanup_called_periodically(self, queue_processor: QueueProcessor) -> None:
         """Test that cleanup mechanism works correctly."""
+        queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
 
         old_time = datetime.now() - timedelta(seconds=10)
@@ -757,6 +761,7 @@ class TestCleanupMethods:
         self, queue_processor: QueueProcessor, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Cleanup should trigger when a batch crosses a boundary (e.g., 99 -> 101)."""
+        queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
         data_queue.put(self._make_damage_event('CrossingTarget1'))
         data_queue.put(self._make_damage_event('CrossingTarget2'))
@@ -777,6 +782,7 @@ class TestCleanupMethods:
         self, queue_processor: QueueProcessor, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Cleanup should run once per queue pass and advance checkpoint past large jumps."""
+        queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
         for idx in range(250):
             data_queue.put(self._make_damage_event(f'JumpTarget{idx}'))
@@ -797,6 +803,7 @@ class TestCleanupMethods:
         self, queue_processor: QueueProcessor, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Cleanup should still trigger when exactly landing on the boundary."""
+        queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
         for idx in range(100):
             data_queue.put(self._make_damage_event(f'ExactTarget{idx}'))
@@ -814,6 +821,7 @@ class TestCleanupMethods:
         self, queue_processor: QueueProcessor, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Cleanup should not run when no events were processed."""
+        queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
         queue_processor.parsed_event_count = 99
         queue_processor.next_immunity_cleanup_event_count = 100
@@ -1057,6 +1065,56 @@ class TestErrorHandling:
         assert on_log_message.called
         call_args = str(on_log_message.call_args_list)
         assert 'parsing disabled' in call_args.lower() or 'Skipping' in call_args
+
+    def test_damage_events_do_not_enter_matcher_when_disabled(
+        self, queue_processor: QueueProcessor
+    ) -> None:
+        """Disabled mode should not enqueue damage-side matcher observations."""
+        queue_processor.parser.parse_immunity = False
+        data_queue = queue.Queue()
+        data_queue.put(
+            {
+                'type': 'damage_dealt',
+                'attacker': 'Woo',
+                'target': 'Goblin',
+                'total_damage': 50,
+                'timestamp': datetime.now(),
+                'damage_types': {'Fire': 20, 'Physical': 30},
+            }
+        )
+
+        _process(queue_processor, data_queue, Mock(), Mock(), Mock(), Mock())
+
+        assert queue_processor.pending_immunity_queue == {}
+        assert queue_processor.immunity_matcher._pending_damage == {}
+        assert 'Goblin' in queue_processor.damage_buffer
+
+    def test_cleanup_not_triggered_when_disabled(
+        self, queue_processor: QueueProcessor, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Disabled mode should skip periodic immunity cleanup work."""
+        queue_processor.parser.parse_immunity = False
+        data_queue = queue.Queue()
+        for idx in range(100):
+            data_queue.put(
+                {
+                    'type': 'damage_dealt',
+                    'attacker': 'Woo',
+                    'target': f'DisabledTarget{idx}',
+                    'total_damage': 50,
+                    'timestamp': datetime.now(),
+                    'damage_types': {'Physical': 50},
+                }
+            )
+
+        cleanup_mock = Mock()
+        monkeypatch.setattr(queue_processor, 'cleanup_stale_immunities', cleanup_mock)
+
+        _process(queue_processor, data_queue, Mock(), Mock(), Mock(), Mock())
+
+        cleanup_mock.assert_not_called()
+        assert queue_processor.parsed_event_count == 100
+        assert queue_processor.next_immunity_cleanup_event_count == 200
 
     def test_empty_queue_processed_safely(self, queue_processor: QueueProcessor) -> None:
         """Test that processing empty queue doesn't cause errors."""

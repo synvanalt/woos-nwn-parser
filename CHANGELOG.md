@@ -11,6 +11,7 @@
 - `Target Immunities` now breaks ties between matched samples by absorbed value when the recorded max damage is the same
 - `Target Immunities` now shows the closest immunity percentage estimate when no exact reverse-calculation match exists, instead of leaving the percentage blank
 - The app now remembers your `Parse Immunities` setting between launches
+- Turning `Parse Immunities` off now skips more of the immunity-matching workload during live monitoring and file import, reducing overhead when you want the lighter mode
 
 
 ## [1.5.0] - 2026-03-12

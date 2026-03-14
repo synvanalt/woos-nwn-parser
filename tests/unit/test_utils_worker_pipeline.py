@@ -169,6 +169,28 @@ def test_parse_file_to_ops_disables_fallback_when_character_name_known(monkeypat
     assert result["ops"]["death_snippets"] == []
 
 
+def test_parse_file_to_ops_does_not_build_matcher_when_immunity_disabled(monkeypatch) -> None:
+    log_data = "\n".join([
+        "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 50 (30 Physical 20 Fire)",
+        "",
+    ])
+    monkeypatch.setattr("builtins.open", lambda *args, **kwargs: io.StringIO(log_data))
+
+    class _UnexpectedMatcher:
+        def __init__(self) -> None:
+            raise AssertionError("ImmunityMatcher should not be constructed when disabled")
+
+    monkeypatch.setattr(app.utils, "ImmunityMatcher", _UnexpectedMatcher)
+
+    result = parse_file_to_ops("ignored.txt", parse_immunity=False)
+
+    assert result["success"] is True
+    mutations = result["ops"]["mutations"]
+    assert sum(isinstance(item, DamageMutation) and item.count_for_dps for item in mutations) == 1
+    assert sum(isinstance(item, DamageMutation) and not item.count_for_dps for item in mutations) == 2
+    assert not any(isinstance(item, ImmunityMutation) for item in mutations)
+
+
 def test_parse_file_to_ops_can_abort_mid_file(monkeypatch) -> None:
     log_data = "".join(
         "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 50 (50 Physical)\n"

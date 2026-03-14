@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 14, 2026 (persisted parse-immunity setting coverage refresh)
+**Last Updated:** March 14, 2026 (parse-immunity disabled-mode matcher-bypass coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **641 tests collected**
+- Result: **644 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 592 tests
+- `tests/unit/`: 35 modules, 595 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 641 tests
+- Total: 43 test modules, 644 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -34,7 +34,7 @@ Notes:
 - `test_utils.py` (39)
 - `test_monitor.py` (22)
 - `test_monitor_debug_mode.py` (9)
-- `test_queue_processor_unit.py` (34)
+- `test_queue_processor_unit.py` (36)
 - `test_queue_processor_batched.py` (10)
 - `test_queue_processor.py` (10)
 - `test_dps_service.py` (14)
@@ -58,7 +58,7 @@ Notes:
 - `test_realtime_backpressure.py` (2)
 - `test_sorted_treeview_edge_cases.py` (7)
 - `test_storage_edge_branches.py` (8)
-- `test_utils_worker_pipeline.py` (13)
+- `test_utils_worker_pipeline.py` (14)
 
 ### Integration (`tests/integration`)
 - `test_parser_storage_integration.py` (15)
@@ -83,8 +83,8 @@ Notes:
   - Includes explicit coverage for version-scoped read-cache invalidation, clear-all reset invalidation of cached target summaries, defensive-copy behavior on cached summary getters, and raw-history retention default/normalization behavior
 - Queue processor logic and batching:
   - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`, `test_realtime_backpressure.py`
-  - Queue/import tests validate the public-first mutation payload flow used by production ingestion
-  - Includes shared-matcher resilience coverage for reverse-order immunity lines, nearest-match selection, mismatch debug logging, and cleanup behavior preserved during matcher-path optimization work
+- Queue/import tests validate the public-first mutation payload flow used by production ingestion
+  - Includes shared-matcher resilience coverage for reverse-order immunity lines, nearest-match selection, mismatch debug logging, and disabled-mode verification that damage events no longer enqueue matcher work or trigger periodic stale cleanup
 - Release/version automation:
   - `test_bump_version_script.py`
 - Monitor behavior (rotation/truncation/debug):
@@ -105,7 +105,7 @@ Notes:
   - Includes persisted `Parse Immunities` coverage, including missing-key fallback behavior for older settings files
 - Import/worker pipeline behavior:
   - `test_utils.py`, `test_utils_worker_pipeline.py`
-  - Includes streaming chunk payload integrity, direct parse-to-chunk worker coverage, queue-full abort responsiveness coverage, import payload coverage after removing legacy parser-state snapshots, preserved `wooparseme` identity events during manual import, and shared immunity-matcher parity for both damage-before-immunity and immunity-before-damage logs
+  - Includes streaming chunk payload integrity, direct parse-to-chunk worker coverage, queue-full abort responsiveness coverage, import payload coverage after removing legacy parser-state snapshots, preserved `wooparseme` identity events during manual import, shared immunity-matcher parity for both damage-before-immunity and immunity-before-damage logs, and explicit disabled-mode coverage that import parsing does not construct the matcher when `Parse Immunities` is off
 - Full-session/e2e behavior:
   - `test_e2e_combat_session.py`
 

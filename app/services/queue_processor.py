@@ -129,10 +129,14 @@ class QueueProcessor:
 
         self.parsed_event_count += result.events_processed
         if (
-            result.events_processed > 0
+            self.parser.parse_immunity
+            and result.events_processed > 0
             and self.parsed_event_count >= self.next_immunity_cleanup_event_count
         ):
             self.cleanup_stale_immunities(max_age_seconds=5.0)
+            while self.next_immunity_cleanup_event_count <= self.parsed_event_count:
+                self.next_immunity_cleanup_event_count += 100
+        elif not self.parser.parse_immunity and self.parsed_event_count >= self.next_immunity_cleanup_event_count:
             while self.next_immunity_cleanup_event_count <= self.parsed_event_count:
                 self.next_immunity_cleanup_event_count += 100
 
@@ -265,6 +269,12 @@ class QueueProcessor:
             on_log_message(f"DPS tracking error: {exc}", "error")
 
         line_number = self._get_event_line_number(data)
+        self.immunity_matcher.latest_damage_by_target[target] = {
+            "damage_types": damage_types,
+            "timestamp": timestamp,
+            "attacker": attacker,
+            "line_number": line_number,
+        }
         had_pending_immunity_types = set()
         if debug_enabled:
             had_pending_immunity_types = {
@@ -291,14 +301,16 @@ class QueueProcessor:
         except Exception as exc:
             on_log_message(f"Data store error on damage_dealt: {exc}", "error")
 
-        matched_mutations = self.immunity_matcher.queue_damage_event(
-            target=target,
-            damage_types=damage_types,
-            timestamp=timestamp,
-            line_number=line_number,
-            attacker=attacker,
-        )
-        pending_mutations.extend(matched_mutations)
+        matched_mutations = []
+        if self.parser.parse_immunity:
+            matched_mutations = self.immunity_matcher.queue_damage_event(
+                target=target,
+                damage_types=damage_types,
+                timestamp=timestamp,
+                line_number=line_number,
+                attacker=attacker,
+            )
+            pending_mutations.extend(matched_mutations)
 
         if debug_enabled:
             matched_types = {mutation.damage_type for mutation in matched_mutations}
