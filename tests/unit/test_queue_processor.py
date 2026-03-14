@@ -134,15 +134,20 @@ class TestQueueProcessor(unittest.TestCase):
         now = datetime.now()
         old_time = now - timedelta(seconds=10)
 
-        # Add old immunity entry
-        self.processor.pending_immunity_queue['OldTarget'] = {
-            'Fire': [{'immunity': 10, 'timestamp': old_time}]
-        }
-
-        # Add recent immunity entry
-        self.processor.pending_immunity_queue['NewTarget'] = {
-            'Ice': [{'immunity': 15, 'timestamp': now}]
-        }
+        self.processor.immunity_matcher.queue_immunity(
+            target='OldTarget',
+            damage_type='Fire',
+            immunity_points=10,
+            timestamp=old_time,
+            line_number=1,
+        )
+        self.processor.immunity_matcher.queue_immunity(
+            target='NewTarget',
+            damage_type='Ice',
+            immunity_points=15,
+            timestamp=now,
+            line_number=2,
+        )
 
         # Clean up entries older than 5 seconds
         self.processor.cleanup_stale_immunities(max_age_seconds=5.0)

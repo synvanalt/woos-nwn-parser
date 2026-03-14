@@ -434,6 +434,54 @@ class TestImmunityQueuing:
         assert immunity_info['max_immunity'] == 10
         assert immunity_info['max_damage'] == 50
 
+    def test_same_second_unique_nearest_candidate_is_matched(
+        self, queue_processor: QueueProcessor
+    ) -> None:
+        """Same-second immunity should pair with the unique nearest candidate."""
+        queue_processor.parser.parse_immunity = True
+        data_queue = queue.Queue()
+        now = datetime.now()
+
+        data_queue.put(
+            {
+                'type': 'damage_dealt',
+                'attacker': 'Woo',
+                'target': 'Goblin',
+                'total_damage': 20,
+                'timestamp': now,
+                'line_number': 1,
+                'damage_types': {'Fire': 20},
+            }
+        )
+        data_queue.put(
+            {
+                'type': 'immunity',
+                'target': 'Goblin',
+                'damage_type': 'Fire',
+                'immunity_points': 10,
+                'timestamp': now,
+                'line_number': 2,
+            }
+        )
+        data_queue.put(
+            {
+                'type': 'damage_dealt',
+                'attacker': 'Woo',
+                'target': 'Goblin',
+                'total_damage': 50,
+                'timestamp': now,
+                'line_number': 3,
+                'damage_types': {'Fire': 50},
+            }
+        )
+
+        _process(queue_processor, data_queue, Mock(), Mock(), Mock(), Mock())
+
+        immunity_info = queue_processor.data_store.get_immunity_for_target_and_type('Goblin', 'Fire')
+        assert immunity_info['sample_count'] == 1
+        assert immunity_info['max_immunity'] == 10
+        assert immunity_info['max_damage'] == 20
+
     def test_immunity_not_matched_with_wrong_damage_type(self, queue_processor: QueueProcessor) -> None:
         """Test immunity is queued when damage type doesn't match."""
         queue_processor.parser.parse_immunity = True
@@ -557,6 +605,24 @@ class TestCleanupMethods:
     """Test suite for cleanup methods."""
 
     @staticmethod
+    def _queue_pending_immunity(
+        queue_processor: QueueProcessor,
+        *,
+        target: str,
+        damage_type: str,
+        immunity_points: int,
+        timestamp: datetime,
+        line_number: int,
+    ) -> None:
+        queue_processor.immunity_matcher.queue_immunity(
+            target=target,
+            damage_type=damage_type,
+            immunity_points=immunity_points,
+            timestamp=timestamp,
+            line_number=line_number,
+        )
+
+    @staticmethod
     def _make_damage_event(target: str) -> dict:
         return {
             'type': 'damage_dealt',
@@ -569,17 +635,25 @@ class TestCleanupMethods:
 
     def test_cleanup_stale_immunities(self, queue_processor: QueueProcessor) -> None:
         """Test that old immunity entries are cleaned up."""
-        # Add old immunity entries
         old_time = datetime.now() - timedelta(seconds=10)
-        queue_processor.pending_immunity_queue['Goblin'] = {
-            'Fire': [{'immunity': 10, 'timestamp': old_time}]
-        }
+        self._queue_pending_immunity(
+            queue_processor,
+            target='Goblin',
+            damage_type='Fire',
+            immunity_points=10,
+            timestamp=old_time,
+            line_number=1,
+        )
 
-        # Add recent immunity entries
         recent_time = datetime.now()
-        queue_processor.pending_immunity_queue['Orc'] = {
-            'Cold': [{'immunity': 5, 'timestamp': recent_time}]
-        }
+        self._queue_pending_immunity(
+            queue_processor,
+            target='Orc',
+            damage_type='Cold',
+            immunity_points=5,
+            timestamp=recent_time,
+            line_number=2,
+        )
 
         # Cleanup with 5 second threshold
         queue_processor.cleanup_stale_immunities(max_age_seconds=5.0)
@@ -595,9 +669,14 @@ class TestCleanupMethods:
     def test_cleanup_empty_targets_removed(self, queue_processor: QueueProcessor) -> None:
         """Test that targets with no damage types are removed."""
         old_time = datetime.now() - timedelta(seconds=10)
-        queue_processor.pending_immunity_queue['Goblin'] = {
-            'Fire': [{'immunity': 10, 'timestamp': old_time}]
-        }
+        self._queue_pending_immunity(
+            queue_processor,
+            target='Goblin',
+            damage_type='Fire',
+            immunity_points=10,
+            timestamp=old_time,
+            line_number=1,
+        )
 
         queue_processor.cleanup_stale_immunities(max_age_seconds=5.0)
 
@@ -606,14 +685,17 @@ class TestCleanupMethods:
 
     def test_cleanup_called_periodically(self, queue_processor: QueueProcessor) -> None:
         """Test that cleanup mechanism works correctly."""
-        # Test that cleanup removes old entries
         data_queue = queue.Queue()
 
-        # Add old immunity to test cleanup
         old_time = datetime.now() - timedelta(seconds=10)
-        queue_processor.pending_immunity_queue['OldTarget'] = {
-            'Fire': [{'immunity': 10, 'timestamp': old_time}]
-        }
+        self._queue_pending_immunity(
+            queue_processor,
+            target='OldTarget',
+            damage_type='Fire',
+            immunity_points=10,
+            timestamp=old_time,
+            line_number=1,
+        )
 
         # Directly call cleanup (this is what process_queue calls periodically)
         queue_processor.cleanup_stale_immunities(max_age_seconds=5.0)
@@ -646,12 +728,22 @@ class TestCleanupMethods:
         old_time = datetime.now() - timedelta(seconds=10)
         recent_time = datetime.now()
 
-        queue_processor.pending_immunity_queue['Dragon'] = {
-            'Fire': [
-                {'immunity': 10, 'timestamp': old_time},
-                {'immunity': 20, 'timestamp': recent_time}
-            ]
-        }
+        self._queue_pending_immunity(
+            queue_processor,
+            target='Dragon',
+            damage_type='Fire',
+            immunity_points=10,
+            timestamp=old_time,
+            line_number=1,
+        )
+        self._queue_pending_immunity(
+            queue_processor,
+            target='Dragon',
+            damage_type='Fire',
+            immunity_points=20,
+            timestamp=recent_time,
+            line_number=2,
+        )
 
         queue_processor.cleanup_stale_immunities(max_age_seconds=5.0)
 

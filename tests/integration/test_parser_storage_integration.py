@@ -52,6 +52,44 @@ class TestParserStorageIntegration:
         assert immunity_info['max_immunity'] == 10
         assert immunity_info['sample_count'] == 1
 
+    def test_parse_and_store_immunity_events_before_damage(self, temp_log_dir: Path) -> None:
+        """Test parsing reverse-order immunity events with matching damage."""
+        log_file = temp_log_dir / "test.txt"
+        content = """[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Goblin : Damage Immunity absorbs 10 point(s) of Fire
+[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 50 (30 Physical 20 Fire)
+"""
+        log_file.write_text(content)
+
+        parser = LogParser(parse_immunity=True)
+        database = DataStore()
+
+        result = parse_and_import_file(str(log_file), parser, database)
+
+        assert result['success'] is True
+        immunity_info = database.get_immunity_for_target_and_type("Goblin", "Fire")
+        assert immunity_info['max_immunity'] == 10
+        assert immunity_info['max_damage'] == 20
+        assert immunity_info['sample_count'] == 1
+
+    def test_parse_and_store_same_second_nearest_immunity_match(self, temp_log_dir: Path) -> None:
+        """Test same-second immunity matches the unique nearest candidate."""
+        log_file = temp_log_dir / "test.txt"
+        content = """[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 20 (20 Fire)
+[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Goblin : Damage Immunity absorbs 10 point(s) of Fire
+[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 50 (50 Fire)
+"""
+        log_file.write_text(content)
+
+        parser = LogParser(parse_immunity=True)
+        database = DataStore()
+
+        result = parse_and_import_file(str(log_file), parser, database)
+
+        assert result['success'] is True
+        immunity_info = database.get_immunity_for_target_and_type("Goblin", "Fire")
+        assert immunity_info['sample_count'] == 1
+        assert immunity_info['max_damage'] == 20
+
     def test_parse_and_store_attack_events(self, temp_log_dir: Path) -> None:
         """Test parsing attack events and AC tracking."""
         log_file = temp_log_dir / "test.txt"

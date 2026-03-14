@@ -39,6 +39,7 @@ class LogParser:
         # to reduce runtime work. Default is False (OFF) as requested.
         self.parse_immunity = bool(parse_immunity)
         self._current_year = datetime.now().year
+        self._line_number = 0
 
         # Pre-compile timestamp pattern for better performance
         self.timestamp_pattern = re.compile(r'\[CHAT WINDOW TEXT] \[([^]]+)]')
@@ -576,6 +577,8 @@ class LogParser:
             return None
 
         raw_line = line.rstrip('\r\n')
+        self._line_number += 1
+        line_number = self._line_number
         self.recent_log_lines.append(raw_line)
         timestamp: Optional[datetime] = None
         patterns = self.patterns
@@ -602,6 +605,7 @@ class LogParser:
                             'type': 'death_character_identified',
                             'character_name': speaker,
                             'timestamp': get_timestamp(),
+                            'line_number': line_number,
                         }
 
         if self._killed_marker in raw_line and self._death_character_name_normalized:
@@ -651,6 +655,7 @@ class LogParser:
                 'total_damage': total_damage,
                 'damage_types': self.current_damage_types,
                 'timestamp': get_timestamp(),
+                'line_number': line_number,
                 'filtered_for_player': self.player_name and attacker != self.player_name
             }
 
@@ -689,7 +694,8 @@ class LogParser:
                 'damage_type': damage_type,
                 'immunity_points': immunity_points,
                 'dmg_reduced': immunity_points,
-                'timestamp': get_timestamp()
+                'timestamp': get_timestamp(),
+                'line_number': line_number,
             }
 
         # Strip [CHAT WINDOW TEXT] prefix for attack and save patterns.
@@ -716,6 +722,7 @@ class LogParser:
                     'type': 'epic_dodge',
                     'target': target,
                     'timestamp': get_timestamp(),
+                    'line_number': line_number,
                 }
 
         # Check for attack rolls to estimate AC. Most lines are plain hit/miss entries,
@@ -784,7 +791,8 @@ class LogParser:
                         'total': total,
                         'was_nat20': was_nat20,
                         'is_concealment': is_concealment,
-                        'timestamp': get_timestamp()
+                        'timestamp': get_timestamp(),
+                        'line_number': line_number,
                     }
                 elif is_miss:
                     return {
@@ -796,7 +804,8 @@ class LogParser:
                         'total': total,
                         'was_nat1': was_nat1,
                         'is_concealment': is_concealment,
-                        'timestamp': get_timestamp()
+                        'timestamp': get_timestamp(),
+                        'line_number': line_number,
                     }
 
         # Check for save rolls to estimate saves
@@ -824,7 +833,8 @@ class LogParser:
                     'target': target,
                     'save_type': save_key,
                     'bonus': bonus,
-                    'timestamp': get_timestamp()
+                    'timestamp': get_timestamp(),
+                    'line_number': line_number,
                 }
 
         return None

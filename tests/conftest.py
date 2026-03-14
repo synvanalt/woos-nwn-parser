@@ -71,7 +71,7 @@ def shared_tk_root():
         yield None
 
 
-class LogMessageCapture:
+class   LogMessageCapture:
     """Helper class to capture log messages from monitor callbacks.
 
     Provides compatibility with tests that expect messages in dict format.
