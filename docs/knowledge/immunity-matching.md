@@ -93,7 +93,9 @@ Matched immunity samples are stored separately from raw damage events in `DataSt
 Important semantics:
 - `sample_count` counts matched immunity samples only
 - `max_damage` and `max_immunity` are kept coupled from the same matched sample
-- the store updates the "max" record only when a later matched sample has higher `damage_dealt`
+- the store updates the "max" record when a later matched sample has higher `damage_dealt`
+- if `damage_dealt` ties, the store keeps the higher `immunity_points` value for that same damage tier
+- zero-damage matched samples are valid; if all matched samples for a target/type have `damage_dealt == 0`, the stored pair can still be `(0, absorbed)`
 
 This coupling matters because the immunity percentage display assumes the absorbed value and damage value came from the same hit.
 
@@ -104,6 +106,7 @@ Important consequences:
 - displayed immunity percentages are derived from matched samples only
 - unmatched immunity observations do not contribute to `sample_count`
 - `max_event_damage` can still exist even when there is no matched immunity sample for that type
+- when immunity parsing is enabled and a matched sample exists with `max_damage == 0`, the panel shows `Max Damage = 0`, the stored absorbed value, and `Immunity % = 100%`
 - displayed immunity percentages can still be overstated if the target also has damage resistance or damage reduction
 
 ## Known Limitations
