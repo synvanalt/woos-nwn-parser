@@ -11,6 +11,7 @@ from app.utils import (
     compute_dmg_reduced,
     compute_dmg_after,
     reverse_immunity,
+    pick_closest_immunity,
     pick_immunity,
     calculate_immunity_percentage,
     parse_and_import_file,
@@ -123,6 +124,15 @@ class TestPickImmunity:
         assert result == 25
 
 
+class TestPickClosestImmunity:
+    """Test suite for fallback immunity picking."""
+
+    def test_pick_closest_immunity_prefers_lower_percent_on_tie(self) -> None:
+        """Equal-distance ties should choose the lower immunity value."""
+        result = pick_closest_immunity(dmg_after_immunity=146, dmg_reduced=33)
+        assert result == 18
+
+
 class TestCalculateImmunityPercentage:
     """Test suite for calculate_immunity_percentage function."""
 
@@ -148,6 +158,11 @@ class TestCalculateImmunityPercentage:
         """Test calculation with negative damage."""
         result = calculate_immunity_percentage(max_damage=-10, max_absorbed=5)
         assert result is None
+
+    def test_calculate_falls_back_to_closest_match_when_no_exact_solution(self) -> None:
+        """Non-exact pairs should return the closest simulated immunity percent."""
+        result = calculate_immunity_percentage(max_damage=146, max_absorbed=33)
+        assert result == 18
 
 
 class TestParseAndImportFile:

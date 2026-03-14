@@ -128,6 +128,26 @@ def pick_immunity(matches: List[float]) -> Optional[float]:
     return int(min(matches) * 100)
 
 
+def pick_closest_immunity(dmg_after_immunity: int, dmg_reduced: int) -> int:
+    """
+    Picks the closest simulated immunity percentage when no exact reverse match exists.
+
+    Ties resolve to the lower immunity percentage.
+    """
+    dmg_before_immunity = dmg_after_immunity + dmg_reduced
+    best_pct = 0
+    best_distance: int | None = None
+
+    for pct in range(101):
+        simulated_reduced = compute_dmg_reduced(dmg_before_immunity, pct / 100)
+        distance = abs(simulated_reduced - dmg_reduced)
+        if best_distance is None or distance < best_distance or (distance == best_distance and pct < best_pct):
+            best_pct = pct
+            best_distance = distance
+
+    return best_pct
+
+
 # Main calculation function
 def calculate_immunity_percentage(max_damage: int, max_absorbed: int) -> Optional[int]:
     """
@@ -149,7 +169,10 @@ def calculate_immunity_percentage(max_damage: int, max_absorbed: int) -> Optiona
         return 0  # No immunity observed
 
     matches = reverse_immunity(max_damage, max_absorbed)
-    return pick_immunity(matches)
+    exact_immunity = pick_immunity(matches)
+    if exact_immunity is not None:
+        return exact_immunity
+    return pick_closest_immunity(max_damage, max_absorbed)
 
 
 def parse_and_import_file(

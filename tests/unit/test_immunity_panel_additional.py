@@ -87,6 +87,22 @@ def test_cached_immunity_percentage_none_displays_dash(panel_ctx, monkeypatch) -
     assert values[3] == "-"
 
 
+def test_refresh_uses_best_effort_immunity_percentage_when_exact_match_missing(panel_ctx) -> None:
+    panel, store, parser = panel_ctx
+    parser.parse_immunity = True
+    apply(
+        store,
+        damage_row(target="Goblin", damage_type="Physical", total_damage=146, attacker="Woo"),
+        immunity(target="Goblin", damage_type="Physical", immunity_points=33, damage_dealt=146),
+    )
+
+    panel.refresh_target_details("Goblin")
+
+    item_id = panel._item_ids["Physical"]
+    values = panel.tree.item(item_id, "values")
+    assert values[3] == "18%"
+
+
 def test_update_target_list_does_not_override_existing_selection(panel_ctx) -> None:
     panel, _store, _parser = panel_ctx
     panel.target_combo.set("Existing")

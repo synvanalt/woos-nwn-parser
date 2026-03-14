@@ -107,6 +107,8 @@ Important consequences:
 - unmatched immunity observations do not contribute to `sample_count`
 - `max_event_damage` can still exist even when there is no matched immunity sample for that type
 - when immunity parsing is enabled and a matched sample exists with `max_damage == 0`, the panel shows `Max Damage = 0`, the stored absorbed value, and `Immunity % = 100%`
+- when exact reverse-immunity inference fails for a positive-damage matched sample, the app shows the closest simulated immunity percentage instead of `-`
+- closest-match ties resolve to the lower immunity percentage
 - displayed immunity percentages can still be overstated if the target also has damage resistance or damage reduction
 
 ## Known Limitations
