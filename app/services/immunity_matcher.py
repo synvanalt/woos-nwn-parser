@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Deque, Dict, Iterable, List, Optional
+from typing import Deque, Dict, Iterable, Optional
 
 from ..models import ImmunityMutation
 
@@ -85,9 +85,9 @@ class ImmunityMatcher:
         observation = ImmunityObservation(
             target=target,
             damage_type=damage_type,
-            immunity_points=int(immunity_points or 0),
+            immunity_points=immunity_points,
             timestamp=timestamp,
-            line_number=int(line_number),
+            line_number=line_number,
         )
         return self._queue_immunity_observation(observation)
 
@@ -101,22 +101,21 @@ class ImmunityMatcher:
         attacker: str = "",
     ) -> list[ImmunityMutation]:
         """Register one damage event and return any completed immunity matches."""
-        normalized_damage_types = {damage_type: int(amount or 0) for damage_type, amount in damage_types.items()}
         self.latest_damage_by_target[target] = {
-            "damage_types": normalized_damage_types.copy(),
+            "damage_types": damage_types,
             "timestamp": timestamp,
             "attacker": attacker,
-            "line_number": int(line_number),
+            "line_number": line_number,
         }
 
         matches: list[ImmunityMutation] = []
-        for damage_type, damage_amount in normalized_damage_types.items():
+        for damage_type, damage_amount in damage_types.items():
             observation = DamageObservation(
                 target=target,
                 damage_type=damage_type,
                 damage_amount=damage_amount,
                 timestamp=timestamp,
-                line_number=int(line_number),
+                line_number=line_number,
             )
             matches.extend(self._queue_damage_observation(observation))
         return matches
@@ -139,6 +138,7 @@ class ImmunityMatcher:
 
     def _queue_damage_observation(self, observation: DamageObservation) -> list[ImmunityMutation]:
         queue = self._pending_immunity[observation.target][observation.damage_type]
+        self._prune_stale_candidates(queue=queue, observation=observation)
         match_index = self._select_best_match_index(
             observation=observation,
             candidates=queue,
@@ -160,13 +160,16 @@ class ImmunityMatcher:
                 )
             ]
 
-        self._pending_damage[observation.target][observation.damage_type].append(observation)
+        pending_queue = self._pending_damage[observation.target][observation.damage_type]
+        self._prune_stale_candidates(queue=pending_queue, observation=observation)
+        pending_queue.append(observation)
         return []
 
     def _queue_immunity_observation(
         self, observation: ImmunityObservation
     ) -> list[ImmunityMutation]:
         queue = self._pending_damage[observation.target][observation.damage_type]
+        self._prune_stale_candidates(queue=queue, observation=observation)
         match_index = self._select_best_match_index(
             observation=observation,
             candidates=queue,
@@ -188,7 +191,9 @@ class ImmunityMatcher:
                 )
             ]
 
-        self._pending_immunity[observation.target][observation.damage_type].append(observation)
+        pending_queue = self._pending_immunity[observation.target][observation.damage_type]
+        self._prune_stale_candidates(queue=pending_queue, observation=observation)
+        pending_queue.append(observation)
         return []
 
     def _select_best_match_index(
@@ -197,21 +202,23 @@ class ImmunityMatcher:
         observation: DamageObservation | ImmunityObservation,
         candidates: Iterable[DamageObservation] | Iterable[ImmunityObservation],
     ) -> Optional[int]:
-        ranked: list[tuple[tuple[int, int, float, int], int]] = []
+        best_index: Optional[int] = None
+        best_rank: Optional[tuple[int, int, float, int]] = None
+        best_is_ambiguous = False
         for index, candidate in enumerate(candidates):
             if not self._is_eligible(observation, candidate):
                 continue
-            ranked.append((self._rank(observation, candidate), index))
+            rank = self._rank(observation, candidate)
+            if best_rank is None or rank < best_rank:
+                best_rank = rank
+                best_index = index
+                best_is_ambiguous = False
+            elif rank == best_rank:
+                best_is_ambiguous = True
 
-        if not ranked:
+        if best_index is None or best_is_ambiguous:
             return None
-
-        ranked.sort(key=lambda item: item[0])
-        best_rank = ranked[0][0]
-        best_indexes = [index for rank, index in ranked if rank == best_rank]
-        if len(best_indexes) != 1:
-            return None
-        return best_indexes[0]
+        return best_index
 
     def _is_eligible(
         self,
@@ -237,6 +244,26 @@ class ImmunityMatcher:
         line_gap = abs(observation.line_number - candidate.line_number)
         time_diff = abs((observation.timestamp - candidate.timestamp).total_seconds())
         return (same_second_rank, line_gap, time_diff, candidate.line_number)
+
+    def _prune_stale_candidates(
+        self,
+        *,
+        queue: Deque[DamageObservation] | Deque[ImmunityObservation],
+        observation: DamageObservation | ImmunityObservation,
+    ) -> None:
+        while queue:
+            oldest = queue[0]
+            if (observation.line_number - oldest.line_number) > self.max_line_gap:
+                queue.popleft()
+                continue
+            if (
+                observation.timestamp >= oldest.timestamp
+                and (observation.timestamp - oldest.timestamp).total_seconds()
+                > self.max_time_diff_seconds
+            ):
+                queue.popleft()
+                continue
+            break
 
     @staticmethod
     def _prune_empty_bucket(

@@ -1,6 +1,6 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 14, 2026 (immunity matching and display regression coverage refresh)
+**Last Updated:** March 14, 2026 (immunity matching regression coverage and performance-pass validation refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
@@ -84,7 +84,7 @@ Notes:
 - Queue processor logic and batching:
   - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`, `test_realtime_backpressure.py`
   - Queue/import tests validate the public-first mutation payload flow used by production ingestion
-  - Includes shared-matcher resilience coverage for reverse-order immunity lines, nearest-match selection, and mismatch debug logging
+  - Includes shared-matcher resilience coverage for reverse-order immunity lines, nearest-match selection, mismatch debug logging, and cleanup behavior preserved during matcher-path optimization work
 - Release/version automation:
   - `test_bump_version_script.py`
 - Monitor behavior (rotation/truncation/debug):

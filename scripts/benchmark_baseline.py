@@ -3,20 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import statistics
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import Callable, Iterable
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from app.parser import LogParser
-from app.storage import DataStore
-from app.utils import parse_and_import_file
+from typing import Any, Callable, Iterable
 
 
 DEFAULT_FIXTURES = (
@@ -47,6 +40,40 @@ class RunResult:
     immunity_targets: int
 
 
+@dataclass(frozen=True)
+class RuntimeBindings:
+    """Lazy-loaded app symbols for one repo root."""
+
+    parser_cls: type
+    data_store_cls: type
+    parse_and_import_file: Callable[[str, Any, Any], dict[str, Any]]
+
+
+def clear_app_modules() -> None:
+    """Unload app modules so alternate repo roots can be imported cleanly."""
+    for name in list(sys.modules):
+        if name == "app" or name.startswith("app."):
+            sys.modules.pop(name, None)
+
+
+def load_runtime(repo_root: Path) -> RuntimeBindings:
+    """Import benchmark bindings from the requested repo root."""
+    clear_app_modules()
+    repo_root_str = str(repo_root)
+    if repo_root_str in sys.path:
+        sys.path.remove(repo_root_str)
+    sys.path.insert(0, repo_root_str)
+
+    parser_mod = importlib.import_module("app.parser")
+    storage_mod = importlib.import_module("app.storage")
+    utils_mod = importlib.import_module("app.utils")
+    return RuntimeBindings(
+        parser_cls=getattr(parser_mod, "LogParser"),
+        data_store_cls=getattr(storage_mod, "DataStore"),
+        parse_and_import_file=getattr(utils_mod, "parse_and_import_file"),
+    )
+
+
 def count_lines(path: Path) -> int:
     """Count file lines without loading the whole file into memory."""
     with path.open("r", encoding="utf-8", errors="ignore") as handle:
@@ -62,9 +89,9 @@ def build_fixture_info(path: Path) -> FixtureInfo:
     )
 
 
-def benchmark_parser_only(path: Path, parse_immunity: bool) -> RunResult:
+def benchmark_parser_only(runtime: RuntimeBindings, path: Path, parse_immunity: bool) -> RunResult:
     """Time raw line parsing without store mutations."""
-    parser = LogParser(parse_immunity=parse_immunity)
+    parser = runtime.parser_cls(parse_immunity=parse_immunity)
     parsed_events = 0
 
     started = perf_counter()
@@ -84,13 +111,13 @@ def benchmark_parser_only(path: Path, parse_immunity: bool) -> RunResult:
     )
 
 
-def benchmark_full_import(path: Path, parse_immunity: bool) -> RunResult:
+def benchmark_full_import(runtime: RuntimeBindings, path: Path, parse_immunity: bool) -> RunResult:
     """Time the current import pipeline, including store mutation costs."""
-    parser = LogParser(parse_immunity=parse_immunity)
-    store = DataStore()
+    parser = runtime.parser_cls(parse_immunity=parse_immunity)
+    store = runtime.data_store_cls()
 
     started = perf_counter()
-    result = parse_and_import_file(str(path), parser, store)
+    result = runtime.parse_and_import_file(str(path), parser, store)
     elapsed = perf_counter() - started
 
     if not result.get("success"):
@@ -124,18 +151,19 @@ def format_throughput(units: float, seconds: float) -> float:
 
 
 def run_case(
+    runtime: RuntimeBindings,
     fixture: FixtureInfo,
     label: str,
-    runner: Callable[[Path, bool], RunResult],
+    runner: Callable[[RuntimeBindings, Path, bool], RunResult],
     parse_immunity: bool,
     iterations: int,
     warmups: int,
 ) -> dict[str, object]:
     """Run one benchmark scenario and summarize repeated timings."""
     for _ in range(warmups):
-        runner(fixture.path, parse_immunity)
+        runner(runtime, fixture.path, parse_immunity)
 
-    results = [runner(fixture.path, parse_immunity) for _ in range(iterations)]
+    results = [runner(runtime, fixture.path, parse_immunity) for _ in range(iterations)]
     times = [result.seconds for result in results]
     median_seconds = median(times)
 
@@ -167,6 +195,12 @@ def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Benchmark parser-only and full-import performance on fixture logs."
+    )
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path("."),
+        help="Repo root to benchmark.",
     )
     parser.add_argument(
         "--iterations",
@@ -204,7 +238,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Execute the benchmark suite and print a compact report."""
     args = parse_args()
-    fixture_infos = [build_fixture_info(Path(path)) for path in args.fixtures]
+    repo_root = args.repo_root.resolve()
+    if not repo_root.is_dir():
+        raise RuntimeError(f"repo root not found: {repo_root}")
+    runtime = load_runtime(repo_root)
+    fixture_infos = [build_fixture_info((repo_root / Path(path)).resolve()) for path in args.fixtures]
 
     rows: list[dict[str, object]] = []
     for fixture in fixture_infos:
@@ -217,6 +255,7 @@ def main() -> None:
         for parse_immunity in (False, True):
             rows.append(
                 run_case(
+                    runtime,
                     fixture,
                     "parser_only",
                     benchmark_parser_only,
@@ -227,6 +266,7 @@ def main() -> None:
             )
             rows.append(
                 run_case(
+                    runtime,
                     fixture,
                     "full_import",
                     benchmark_full_import,
@@ -276,6 +316,7 @@ def main() -> None:
             widths[header] = max(widths[header], len(value))
 
     print("Benchmark baseline")
+    print(f"Repo: {repo_root}")
     print(
         "Iterations: "
         f"{args.iterations} measured, {args.warmups} warmup"

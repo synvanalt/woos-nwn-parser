@@ -236,24 +236,23 @@ class QueueProcessor:
         debug_enabled: bool,
     ) -> Dict[str, Any]:
         result = {"dps_updated": False, "damage_target": None}
+        target = data["target"]
+        attacker = data.get("attacker", "")
+        timestamp = data.get("timestamp", datetime.now())
+        total_damage = int(data.get("total_damage", 0) or 0)
+        damage_types = data.get("damage_types", {})
 
         try:
-            attacker = data.get("attacker")
             if attacker:
-                target = data.get("target")
-                total_damage = data.get("total_damage", 0)
-                timestamp = data.get("timestamp", datetime.now())
-                damage_types = data.get("damage_types", {})
-
                 pending_mutations.append(
                     DamageMutation(
                         target=target,
                         damage_type="",
-                        total_damage=int(total_damage or 0),
+                        total_damage=total_damage,
                         attacker=attacker,
                         timestamp=timestamp,
                         count_for_dps=True,
-                        damage_types={k: int(v or 0) for k, v in damage_types.items()},
+                        damage_types=damage_types,
                     )
                 )
                 if debug_enabled:
@@ -265,27 +264,28 @@ class QueueProcessor:
         except Exception as exc:
             on_log_message(f"DPS tracking error: {exc}", "error")
 
-        target = data["target"]
         line_number = self._get_event_line_number(data)
-        had_pending_immunity_types = {
-            damage_type
-            for damage_type in data["damage_types"]
-            if self.immunity_matcher.has_pending_immunity(
-                target=target,
-                damage_type=str(damage_type),
-            )
-        }
+        had_pending_immunity_types = set()
+        if debug_enabled:
+            had_pending_immunity_types = {
+                damage_type
+                for damage_type in damage_types
+                if self.immunity_matcher.has_pending_immunity(
+                    target=target,
+                    damage_type=str(damage_type),
+                )
+            }
 
         try:
-            for damage_type, amount in data["damage_types"].items():
+            for damage_type, amount in damage_types.items():
                 pending_mutations.append(
                     DamageMutation(
                         target=target,
                         damage_type=damage_type,
                         immunity_absorbed=0,
-                        total_damage=int(amount or 0),
-                        attacker=data.get("attacker", ""),
-                        timestamp=data["timestamp"],
+                        total_damage=amount,
+                        attacker=attacker,
+                        timestamp=timestamp,
                     )
                 )
         except Exception as exc:
@@ -293,15 +293,15 @@ class QueueProcessor:
 
         matched_mutations = self.immunity_matcher.queue_damage_event(
             target=target,
-            damage_types={k: int(v or 0) for k, v in data["damage_types"].items()},
-            timestamp=data["timestamp"],
+            damage_types=damage_types,
+            timestamp=timestamp,
             line_number=line_number,
-            attacker=data.get("attacker", ""),
+            attacker=attacker,
         )
         pending_mutations.extend(matched_mutations)
-        matched_types = {mutation.damage_type for mutation in matched_mutations}
 
         if debug_enabled:
+            matched_types = {mutation.damage_type for mutation in matched_mutations}
             for damage_type in sorted(had_pending_immunity_types - matched_types):
                 on_log_message(
                     f"Queue mismatched {target}/{damage_type}",

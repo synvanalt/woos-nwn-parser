@@ -28,6 +28,13 @@ IMPORT_MUTATION_BATCH_SIZE = 2000
 IMPORT_STREAM_CHUNK_SIZE = 4000
 
 
+def _event_line_number(parsed_data: Dict[str, Any], fallback: int) -> int:
+    line_number = parsed_data.get("line_number")
+    if line_number is None:
+        return fallback
+    return int(line_number)
+
+
 # Forward damage logic (AUTHORITATIVE)
 def compute_dmg_reduced(dmg_before_immunity: int, immunity: float) -> int:
     """
@@ -246,34 +253,35 @@ def parse_and_import_file(
                 lines_processed += 1
                 parsed_data = parser.parse_line(line)
                 if parsed_data:
-                    if parsed_data['type'] == 'damage_dealt':
+                    event_type = parsed_data['type']
+                    if event_type == 'damage_dealt':
                         target = parsed_data['target']
                         attacker = parsed_data['attacker']
                         timestamp = parsed_data['timestamp']
-                        total_damage = parsed_data['total_damage']
+                        total_damage = int(parsed_data['total_damage'] or 0)
+                        line_number = _event_line_number(parsed_data, lines_processed)
 
                         # Always track DPS data for all characters
                         damage_types = parsed_data.get('damage_types', {})
                         pending_mutations.append(
                             DamageMutation(
                                 target=target,
-                                total_damage=int(total_damage or 0),
+                                total_damage=total_damage,
                                 attacker=attacker,
                                 timestamp=timestamp,
                                 count_for_dps=True,
-                                damage_types={k: int(v or 0) for k, v in damage_types.items()},
+                                damage_types=damage_types,
                             )
                         )
 
                         # Always store target damage events for complete data tracking (consistent with monitoring behavior)
                         # Store all damage types from this damage_dealt event
-                        for dt, amount in parsed_data['damage_types'].items():
-                            amount_int = int(amount or 0)
+                        for dt, amount in damage_types.items():
                             pending_mutations.append(
                                 DamageMutation(
                                     target=target,
                                     damage_type=dt,
-                                    total_damage=amount_int,
+                                    total_damage=amount,
                                     attacker=attacker,
                                     timestamp=timestamp,
                                 )
@@ -281,26 +289,26 @@ def parse_and_import_file(
                         pending_mutations.extend(
                             immunity_matcher.queue_damage_event(
                                 target=target,
-                                damage_types={k: int(v or 0) for k, v in parsed_data['damage_types'].items()},
+                                damage_types=damage_types,
                                 timestamp=timestamp,
-                                line_number=int(parsed_data.get('line_number', lines_processed)),
+                                line_number=line_number,
                                 attacker=attacker,
                             )
                         )
 
-                    elif parsed_data['type'] == 'immunity':
+                    elif event_type == 'immunity':
                         pending_mutations.extend(
                             immunity_matcher.queue_immunity(
                                 target=parsed_data['target'],
                                 damage_type=parsed_data['damage_type'],
                                 immunity_points=int(parsed_data['immunity_points'] or 0),
                                 timestamp=parsed_data['timestamp'],
-                                line_number=int(parsed_data.get('line_number', lines_processed)),
+                                line_number=_event_line_number(parsed_data, lines_processed),
                             )
                         )
 
                     # Handle attack events
-                    elif parsed_data['type'] == 'attack_hit':
+                    elif event_type == 'attack_hit':
                         pending_mutations.append(
                             AttackMutation(
                                 attacker=parsed_data['attacker'],
@@ -314,7 +322,7 @@ def parse_and_import_file(
                                 is_concealment=bool(parsed_data.get('is_concealment', False)),
                             )
                         )
-                    elif parsed_data['type'] == 'attack_hit_critical':
+                    elif event_type == 'attack_hit_critical':
                         pending_mutations.append(
                             AttackMutation(
                                 attacker=parsed_data['attacker'],
@@ -328,7 +336,7 @@ def parse_and_import_file(
                                 is_concealment=bool(parsed_data.get('is_concealment', False)),
                             )
                         )
-                    elif parsed_data['type'] == 'attack_miss':
+                    elif event_type == 'attack_miss':
                         pending_mutations.append(
                             AttackMutation(
                                 attacker=parsed_data['attacker'],
@@ -342,7 +350,7 @@ def parse_and_import_file(
                                 is_concealment=bool(parsed_data.get('is_concealment', False)),
                             )
                         )
-                    elif parsed_data['type'] == 'save':
+                    elif event_type == 'save':
                         pending_mutations.append(
                             SaveMutation(
                                 target=parsed_data['target'],
@@ -350,7 +358,7 @@ def parse_and_import_file(
                                 bonus=int(parsed_data['bonus']),
                             )
                         )
-                    elif parsed_data['type'] == 'epic_dodge':
+                    elif event_type == 'epic_dodge':
                         pending_mutations.append(EpicDodgeMutation(target=parsed_data['target']))
 
                     if len(pending_mutations) >= IMPORT_MUTATION_BATCH_SIZE:
@@ -452,17 +460,18 @@ def _append_import_ops(
         target = parsed_data['target']
         attacker = parsed_data['attacker']
         timestamp = parsed_data['timestamp']
-        total_damage = parsed_data['total_damage']
+        total_damage = int(parsed_data['total_damage'] or 0)
         damage_types = parsed_data.get('damage_types', {})
+        line_number = _event_line_number(parsed_data, 0)
 
         mutations.append(
             DamageMutation(
                 target=target,
-                total_damage=int(total_damage or 0),
+                total_damage=total_damage,
                 attacker=attacker,
                 timestamp=timestamp,
                 count_for_dps=True,
-                damage_types={k: int(v or 0) for k, v in damage_types.items()},
+                damage_types=damage_types,
             )
         )
         for damage_type, amount in damage_types.items():
@@ -470,7 +479,7 @@ def _append_import_ops(
                 DamageMutation(
                     target=target,
                     damage_type=damage_type,
-                    total_damage=int(amount or 0),
+                    total_damage=amount,
                     attacker=attacker,
                     timestamp=timestamp,
                 )
@@ -479,9 +488,9 @@ def _append_import_ops(
         mutations.extend(
             immunity_matcher.queue_damage_event(
                 target=target,
-                damage_types={k: int(v or 0) for k, v in damage_types.items()},
+                damage_types=damage_types,
                 timestamp=timestamp,
-                line_number=int(parsed_data.get('line_number', 0)),
+                line_number=line_number,
                 attacker=attacker,
             )
         )
@@ -494,7 +503,7 @@ def _append_import_ops(
                 damage_type=parsed_data['damage_type'],
                 immunity_points=int(parsed_data['immunity_points'] or 0),
                 timestamp=parsed_data['timestamp'],
-                line_number=int(parsed_data.get('line_number', 0)),
+                line_number=_event_line_number(parsed_data, 0),
             )
         )
         return
