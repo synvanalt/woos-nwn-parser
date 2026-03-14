@@ -17,7 +17,7 @@ class TestLogParserInitialization:
         """Test parser initializes with default values."""
         parser = LogParser()
         assert parser.player_name is None
-        assert parser.parse_immunity is False
+        assert parser.parse_immunity is True
         assert not hasattr(parser, "target_ac")
         assert not hasattr(parser, "target_saves")
         assert not hasattr(parser, "target_attack_bonus")

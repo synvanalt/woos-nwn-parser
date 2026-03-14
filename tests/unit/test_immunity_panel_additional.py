@@ -53,6 +53,29 @@ def test_parse_immunity_toggle_updates_parser_and_refresh(panel_ctx) -> None:
     assert called["count"] == 2
 
 
+def test_parse_immunity_var_initializes_from_parser(shared_tk_root) -> None:
+    if shared_tk_root is None:
+        pytest.skip("Tkinter not available")
+
+    notebook = ttk.Notebook(shared_tk_root)
+    store = DataStore()
+    parser = LogParser(parse_immunity=True)
+    panel = ImmunityPanel(notebook, store, parser)
+
+    assert panel.parse_immunity_var.get() is True
+
+
+def test_parse_immunity_toggle_notifies_callback(panel_ctx) -> None:
+    panel, _store, _parser = panel_ctx
+    observed: list[bool] = []
+    panel.on_parse_immunity_changed = observed.append
+    check_btn = _find_parse_checkbutton(panel)
+
+    check_btn.invoke()
+
+    assert observed == [True]
+
+
 def test_combo_selection_event_triggers_target_refresh(panel_ctx) -> None:
     panel, store, _parser = panel_ctx
     apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))

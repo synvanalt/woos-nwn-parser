@@ -64,8 +64,11 @@ class WoosNwnParserApp:
         self.root.geometry("730x550")
 
         # Core services
-        # By default, we do not parse immunity values (lightweight mode)
-        self.parser = LogParser(parse_immunity=False)
+        self._settings = load_app_settings()
+        parse_immunity_enabled = self._settings.parse_immunity
+        if parse_immunity_enabled is None:
+            parse_immunity_enabled = True
+        self.parser = LogParser(parse_immunity=parse_immunity_enabled)
         self.data_store = DataStore()
         self.queue_processor = QueueProcessor(self.data_store, self.parser)
         self.dps_service = DPSCalculationService(self.data_store)
@@ -74,7 +77,6 @@ class WoosNwnParserApp:
         self.data_queue = queue.Queue(maxsize=self.DATA_QUEUE_MAXSIZE)
         self.directory_monitor: Optional[LogDirectoryMonitor] = None
         self.is_monitoring = False
-        self._settings = load_app_settings()
         self._settings_save_job = None
         self._settings_save_delay_ms = 400
         configured_log_directory = (self._settings.log_directory or "").strip()
@@ -211,7 +213,12 @@ class WoosNwnParserApp:
         self.notebook.add(self.stats_panel, text="Target Stats")
 
         # Tab 3: Immunity Panel (using ImmunityPanel widget)
-        self.immunity_panel = ImmunityPanel(self.notebook, self.data_store, self.parser)
+        self.immunity_panel = ImmunityPanel(
+            self.notebook,
+            self.data_store,
+            self.parser,
+            on_parse_immunity_changed=self._on_parse_immunity_changed,
+        )
         self.notebook.add(self.immunity_panel, text="Target Immunities")
         self.immunity_panel.target_combo.bind("<<ComboboxSelected>>", self.on_target_selected)
 
@@ -1163,6 +1170,11 @@ class WoosNwnParserApp:
         self.parser.set_death_fallback_line(line)
         self._schedule_session_settings_save()
 
+    def _on_parse_immunity_changed(self, enabled: bool) -> None:
+        """Persist immunity parsing toggle changes from the UI."""
+        self.parser.parse_immunity = bool(enabled)
+        self._schedule_session_settings_save()
+
     def on_closing(self) -> None:
         """Handle application closing."""
         self._flush_pending_session_settings_save()
@@ -1192,6 +1204,7 @@ class WoosNwnParserApp:
         return AppSettings(
             log_directory=log_directory,
             death_fallback_line=(death_fallback_line or "").strip() or None,
+            parse_immunity=bool(getattr(getattr(self, "parser", None), "parse_immunity", True)),
         )
 
     def _persist_session_settings(self) -> None:

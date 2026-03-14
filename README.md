@@ -78,7 +78,7 @@ The parser works out-of-the-box with default NWN installations. If needed:
 
 - **Log Directory**: Defaults to `%USERPROFILE%\Documents\Neverwinter Nights\logs`
 - **Target Filter**: Optional - filter to show damage dealt to a specific target only
-- **Immunity Parsing**: Toggle parsing of immunity events (disabled by default for leaner parsing)
+- **Immunity Parsing**: Toggle parsing of immunity events (enabled by default, and remembered between launches)
 - **DPS First Timestamp Mode**: Choose between `Per Character` (default) or `Global` first timestamp tracking
 
 ## User Guide
@@ -209,7 +209,7 @@ woos-nwn-parser/
 
 **Settings Persistence** (`settings.py`)
 - Loads and saves user preferences used across app restarts
-- Currently persists selected log directory and Death Snippets fallback log line
+- Persists selected log directory, Death Snippets fallback log line, and the `Parse Immunities` toggle
 - Settings are saved at `%LOCALAPPDATA%\WoosNwnParser\settings.json`
 
 **QueueProcessor** (`services/queue_processor.py`)

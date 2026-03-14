@@ -357,6 +357,7 @@ def test_init_uses_persisted_settings_over_defaults(monkeypatch) -> None:
     monkeypatch.setattr(main_window_module, "load_app_settings", lambda: AppSettings(
         log_directory=r"C:\persisted_logs",
         death_fallback_line="Persisted fallback",
+        parse_immunity=False,
     ))
     monkeypatch.setattr(main_window_module, "get_default_log_directory", lambda: r"C:\default_logs")
     monkeypatch.setattr(main_window_module.font, "nametofont", lambda _name: Mock())
@@ -368,6 +369,25 @@ def test_init_uses_persisted_settings_over_defaults(monkeypatch) -> None:
 
     assert app.log_directory == r"C:\persisted_logs"
     assert app._initial_death_fallback_line == "Persisted fallback"
+    assert app.parser.parse_immunity is False
+
+
+def test_init_defaults_parse_immunity_on_when_setting_missing(monkeypatch) -> None:
+    root = Mock()
+    root.after = Mock()
+    root.title = Mock()
+    root.geometry = Mock()
+
+    monkeypatch.setattr(main_window_module, "load_app_settings", lambda: AppSettings())
+    monkeypatch.setattr(main_window_module, "get_default_log_directory", lambda: r"C:\default_logs")
+    monkeypatch.setattr(main_window_module.font, "nametofont", lambda _name: Mock())
+    monkeypatch.setattr(WoosNwnParserApp, "setup_ui", lambda self: None)
+    monkeypatch.setattr(WoosNwnParserApp, "process_queue", lambda self: None)
+    monkeypatch.setattr(WoosNwnParserApp, "_set_monitoring_switch_ui", lambda self, _value: None)
+
+    app = WoosNwnParserApp(root)
+
+    assert app.parser.parse_immunity is True
 
 
 def test_time_tracking_mode_change_refreshes_when_not_monitoring(app_shell) -> None:

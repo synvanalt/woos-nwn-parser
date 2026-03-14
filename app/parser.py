@@ -24,7 +24,7 @@ class LogParser:
     def __init__(
         self,
         player_name: Optional[str] = None,
-        parse_immunity: bool = False,
+        parse_immunity: bool = True,
         max_recent_log_lines: int = 20000,
     ) -> None:
         """Initialize the parser.
@@ -36,7 +36,7 @@ class LogParser:
         """
         self.player_name = player_name
         # Whether to attempt to parse damage immunity lines. Can be toggled at runtime
-        # to reduce runtime work. Default is False (OFF) as requested.
+        # to reduce runtime work.
         self.parse_immunity = bool(parse_immunity)
         self._current_year = datetime.now().year
         self._line_number = 0
