@@ -1,16 +1,16 @@
 # Changelog
 
-## [Unreleased]
+## [1.6.0] - 2026-03-14
 
 ### Changed
 - `Parse Immunities` now starts ON by default
+- The app now remembers your `Parse Immunities` setting between launches
 
 ### Fixed
 - `Target Immunities` now matches immunity lines correctly whether they appear before or after the related damage line during live monitoring and file import
 - `Target Immunities` now preserves matched zero-damage samples, showing `0` max damage, the absorbed value, and `100%` immunity when a hit is fully negated
 - `Target Immunities` now breaks ties between matched samples by absorbed value when the recorded max damage is the same
 - `Target Immunities` now shows the closest immunity percentage estimate when no exact reverse-calculation match exists, instead of leaving the percentage blank
-- The app now remembers your `Parse Immunities` setting between launches
 - Turning `Parse Immunities` off now skips more of the immunity-matching workload during live monitoring and file import, reducing overhead when you want the lighter mode
 
 
