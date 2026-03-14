@@ -101,9 +101,13 @@ def test_queued_immunity_mismatch_emits_debug_log() -> None:
     damage_type = "Fire"
     old = datetime.now() - timedelta(seconds=10)
     now = datetime.now()
-    processor.pending_immunity_queue[target] = {
-        damage_type: [{"immunity": 10, "timestamp": old}],
-    }
+    processor.immunity_matcher.queue_immunity(
+        target=target,
+        damage_type=damage_type,
+        immunity_points=10,
+        timestamp=old,
+        line_number=1,
+    )
 
     q = queue.Queue()
     q.put(

@@ -7,7 +7,7 @@ tracking and percentage calculations for each target and damage type.
 import re
 import tkinter as tk
 from tkinter import ttk
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from ...storage import DataStore
 from ...parser import LogParser
@@ -28,9 +28,13 @@ class ImmunityPanel(ttk.Frame):
     This is a reusable widget that can be placed in any notebook or frame.
     """
 
+    # DISCLAIMER_TEXT = (
+    #     "• Displayed immunity % can be overstated if target also has damage resistance/reduction\n"
+    #     "• Damage and immunity absorbed lines are separated in logs and may be matched incorrectly"
+    # )
+
     DISCLAIMER_TEXT = (
-        "• Displayed immunity % can be overstated if target also has damage resistance/reduction\n"
-        "• Damage and immunity absorbed lines are separated in logs and may be matched incorrectly"
+        "*Displayed immunity % may be overstated if target also has damage resistance or reduction"
     )
 
     def __init__(
@@ -38,6 +42,7 @@ class ImmunityPanel(ttk.Frame):
         parent: ttk.Notebook,
         data_store: DataStore,
         parser: LogParser,
+        on_parse_immunity_changed: Optional[Callable[[bool], None]] = None,
     ) -> None:
         """Initialize the immunity panel.
 
@@ -49,6 +54,7 @@ class ImmunityPanel(ttk.Frame):
         super().__init__(parent, padding="10")
         self.data_store = data_store
         self.parser = parser
+        self.on_parse_immunity_changed = on_parse_immunity_changed
         self.immunity_pct_cache: Dict[str, Dict[str, Optional[int]]] = {}
         self._cached_target: str = ""
         self._cached_rows: Dict[str, tuple] = {}
@@ -66,11 +72,13 @@ class ImmunityPanel(ttk.Frame):
         selector_frame.pack(fill="x", padx=(10, 10), pady=(0, 10))
 
         # Switcher to toggle parsing of immunity numbers
-        self.parse_immunity_var = tk.BooleanVar(value=False)
+        self.parse_immunity_var = tk.BooleanVar(value=bool(self.parser.parse_immunity))
 
         def _on_toggle_immunity() -> None:
             val = bool(self.parse_immunity_var.get())
             self.parser.parse_immunity = val
+            if self.on_parse_immunity_changed is not None:
+                self.on_parse_immunity_changed(val)
             self.refresh_display()
 
         ttk.Checkbutton(
@@ -99,7 +107,7 @@ class ImmunityPanel(ttk.Frame):
         scrollbar.pack(side="right", fill="y")
 
         # Treeview for displaying damage type breakdown
-        columns = ("Damage Type", "Max Damage", "Absorbed", "Immunity %", "Samples")
+        columns = ("Damage Type", "Max Damage", "Absorbed", "Immunity %*", "Matched Samples")
         self.tree = SortedTreeview(
             tree_frame, columns=columns, show="headings", yscrollcommand=scrollbar.set
         )
@@ -108,13 +116,13 @@ class ImmunityPanel(ttk.Frame):
             if col == "Damage Type":
                 self.tree.column(col, width=140)
             elif col == "Max Damage":
-                self.tree.column(col, width=120)
+                self.tree.column(col, width=110)
             elif col == "Absorbed":
-                self.tree.column(col, width=120)
-            elif col == "Immunity %":
-                self.tree.column(col, width=120)
-            elif col == "Samples":
-                self.tree.column(col, width=80)
+                self.tree.column(col, width=110)
+            elif col == "Immunity %*":
+                self.tree.column(col, width=110)
+            elif col == "Matched Samples":
+                self.tree.column(col, width=110)
 
         self.tree.pack(fill="both", expand=True)
         scrollbar.config(command=self.tree.yview)
@@ -169,13 +177,17 @@ class ImmunityPanel(ttk.Frame):
             immunity_absorbed = int(summary["immunity_absorbed"])
             sample_count = int(summary["sample_count"])
 
-            if self.parser.parse_immunity and max_damage_from_immunity > 0:
+            if self.parser.parse_immunity and sample_count > 0:
                 max_damage = max_damage_from_immunity
             else:
                 max_damage = int(summary["max_event_damage"])
 
-            max_damage_display = str(max_damage) if max_damage > 0 else "-"
-            absorbed_display = str(immunity_absorbed) if immunity_absorbed > 0 else "-"
+            if self.parser.parse_immunity and sample_count > 0:
+                max_damage_display = str(max_damage)
+                absorbed_display = str(immunity_absorbed)
+            else:
+                max_damage_display = str(max_damage) if max_damage > 0 else "-"
+                absorbed_display = str(immunity_absorbed) if immunity_absorbed > 0 else "-"
             samples_display = str(sample_count) if sample_count > 0 else "-"
 
             immunity_pct_display = "-"
@@ -184,7 +196,10 @@ class ImmunityPanel(ttk.Frame):
                 if cached_pct is not None:
                     immunity_pct_display = f"{cached_pct}%"
 
-            if self.parser.parse_immunity and max_damage > 0 and immunity_absorbed > 0:
+            if self.parser.parse_immunity and sample_count > 0 and max_damage == 0:
+                immunity_pct_display = "100%"
+                self.immunity_pct_cache[target][damage_type] = 100
+            elif self.parser.parse_immunity and max_damage > 0 and immunity_absorbed > 0:
                 immunity_pct = calculate_immunity_percentage(max_damage, immunity_absorbed)
                 if immunity_pct is not None:
                     immunity_pct_display = f"{immunity_pct}%"

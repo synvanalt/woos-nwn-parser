@@ -47,6 +47,7 @@ def test_load_app_settings_reads_expected_values() -> None:
                 {
                     "log_directory": "  C:\\logs  ",
                     "death_fallback_line": "  Your God refuses to hear your prayers!  ",
+                    "parse_immunity": False,
                 }
             ),
             encoding="utf-8",
@@ -56,6 +57,7 @@ def test_load_app_settings_reads_expected_values() -> None:
 
         assert settings.log_directory == r"C:\logs"
         assert settings.death_fallback_line == "Your God refuses to hear your prayers!"
+        assert settings.parse_immunity is False
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)
 
@@ -80,11 +82,53 @@ def test_save_app_settings_round_trip() -> None:
         expected = AppSettings(
             log_directory=r"C:\new_logs",
             death_fallback_line="Custom fallback line",
+            parse_immunity=True,
         )
 
         save_app_settings(expected, path)
         actual = load_app_settings(path)
 
         assert actual == expected
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+def test_load_app_settings_missing_parse_immunity_key_returns_none_for_app_defaulting() -> None:
+    tmp_path = _make_test_dir()
+    try:
+        path = tmp_path / "settings.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "log_directory": r"C:\logs",
+                    "death_fallback_line": "Custom fallback line",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        settings = load_app_settings(path)
+
+        assert settings.parse_immunity is None
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+def test_load_app_settings_invalid_parse_immunity_returns_none() -> None:
+    tmp_path = _make_test_dir()
+    try:
+        path = tmp_path / "settings.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "parse_immunity": "yes",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        settings = load_app_settings(path)
+
+        assert settings.parse_immunity is None
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)

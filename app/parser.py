@@ -24,7 +24,7 @@ class LogParser:
     def __init__(
         self,
         player_name: Optional[str] = None,
-        parse_immunity: bool = False,
+        parse_immunity: bool = True,
         max_recent_log_lines: int = 20000,
     ) -> None:
         """Initialize the parser.
@@ -36,9 +36,10 @@ class LogParser:
         """
         self.player_name = player_name
         # Whether to attempt to parse damage immunity lines. Can be toggled at runtime
-        # to reduce runtime work. Default is False (OFF) as requested.
+        # to reduce runtime work.
         self.parse_immunity = bool(parse_immunity)
         self._current_year = datetime.now().year
+        self._line_number = 0
 
         # Pre-compile timestamp pattern for better performance
         self.timestamp_pattern = re.compile(r'\[CHAT WINDOW TEXT] \[([^]]+)]')
@@ -107,12 +108,6 @@ class LogParser:
                 r'\[CHAT WINDOW TEXT]\s*\[.*?]\s*(?P<speaker>.+?)\s*:\s*\[Whisper]\s*(?P<message>.*?)\s*$'
             ),
         }
-
-        self.current_target = None
-        self.current_damage_types = {}
-        self.pending_resists = {}
-        self.damage_type_queue = []  # Track order of damage types to process
-        self.current_processing_type = None  # Which damage type we're currently processing resists for
 
         # Death snippet extraction state (bounded ring buffer for low-memory, low-overhead scanning)
         self.death_lookup_killed_lookback_lines = 500
@@ -576,6 +571,8 @@ class LogParser:
             return None
 
         raw_line = line.rstrip('\r\n')
+        self._line_number += 1
+        line_number = self._line_number
         self.recent_log_lines.append(raw_line)
         timestamp: Optional[datetime] = None
         patterns = self.patterns
@@ -602,6 +599,7 @@ class LogParser:
                             'type': 'death_character_identified',
                             'character_name': speaker,
                             'timestamp': get_timestamp(),
+                            'line_number': line_number,
                         }
 
         if self._killed_marker in raw_line and self._death_character_name_normalized:
@@ -626,7 +624,7 @@ class LogParser:
                 if death_event:
                     return death_event
 
-        # Check for damage dealt (this sets the context for subsequent resist lines)
+        # Check for damage dealt
         damage_match = patterns['damage_dealt'].search(raw_line)
 
         if damage_match:
@@ -634,23 +632,16 @@ class LogParser:
             target = damage_match.group(2).strip()
             total_damage = int(damage_match.group(3))
             breakdown_str = damage_match.group(4)
-
-            # Parse the flexible damage breakdown
-            self.current_target = target
-            self.current_damage_types = self.parse_damage_breakdown(breakdown_str)
-
-            # Create queue of damage types in order they appear
-            self.damage_type_queue = list(self.current_damage_types.keys())
-            self.current_processing_type = self.damage_type_queue[0] if self.damage_type_queue else None
-            self.pending_resists[target] = {}
+            damage_types = self.parse_damage_breakdown(breakdown_str)
 
             return {
                 'type': 'damage_dealt',
                 'attacker': attacker,
                 'target': target,
                 'total_damage': total_damage,
-                'damage_types': self.current_damage_types,
+                'damage_types': damage_types,
                 'timestamp': get_timestamp(),
+                'line_number': line_number,
                 'filtered_for_player': self.player_name and attacker != self.player_name
             }
 
@@ -669,19 +660,6 @@ class LogParser:
             immunity_points = int(immunity_match.group(2))
             damage_type = immunity_match.group(3).strip()
 
-            # Immunity explicitly states the damage type - use it to sync our queue position
-            if target == self.current_target and damage_type in self.damage_type_queue:
-                self.current_processing_type = damage_type
-
-            if target not in self.pending_resists:
-                self.pending_resists[target] = {}
-
-            if damage_type not in self.pending_resists[target]:
-                self.pending_resists[target][damage_type] = {'immunity': 0, 'resistance': 0, 'reduction': 0}
-
-            # Store immunity as raw points (consistent with earlier behavior / DB schema)
-            self.pending_resists[target][damage_type]['immunity'] = immunity_points
-
             # Return parsed immunity data (use raw points for immunity_points)
             return {
                 'type': 'immunity',
@@ -689,7 +667,8 @@ class LogParser:
                 'damage_type': damage_type,
                 'immunity_points': immunity_points,
                 'dmg_reduced': immunity_points,
-                'timestamp': get_timestamp()
+                'timestamp': get_timestamp(),
+                'line_number': line_number,
             }
 
         # Strip [CHAT WINDOW TEXT] prefix for attack and save patterns.
@@ -716,6 +695,7 @@ class LogParser:
                     'type': 'epic_dodge',
                     'target': target,
                     'timestamp': get_timestamp(),
+                    'line_number': line_number,
                 }
 
         # Check for attack rolls to estimate AC. Most lines are plain hit/miss entries,
@@ -784,7 +764,8 @@ class LogParser:
                         'total': total,
                         'was_nat20': was_nat20,
                         'is_concealment': is_concealment,
-                        'timestamp': get_timestamp()
+                        'timestamp': get_timestamp(),
+                        'line_number': line_number,
                     }
                 elif is_miss:
                     return {
@@ -796,7 +777,8 @@ class LogParser:
                         'total': total,
                         'was_nat1': was_nat1,
                         'is_concealment': is_concealment,
-                        'timestamp': get_timestamp()
+                        'timestamp': get_timestamp(),
+                        'line_number': line_number,
                     }
 
         # Check for save rolls to estimate saves
@@ -824,7 +806,8 @@ class LogParser:
                     'target': target,
                     'save_type': save_key,
                     'bonus': bonus,
-                    'timestamp': get_timestamp()
+                    'timestamp': get_timestamp(),
+                    'line_number': line_number,
                 }
 
         return None

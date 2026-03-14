@@ -12,6 +12,9 @@
 - `app/ui/`: Tk orchestration and panel refresh logic.
 - `app/utils.py`: historic log import and worker-side parsing helpers.
 
+## Knowledge Docs
+- `docs/knowledge/immunity-matching.md`: read before changing immunity parsing, matcher heuristics, live/import parity, or `Target Immunities` panel calculation semantics.
+
 ## Performance Rules
 - Benchmark before and after meaningful performance changes with `python scripts/benchmark_baseline.py`.
 - Use the default real fixture logs in benchmark scripts:

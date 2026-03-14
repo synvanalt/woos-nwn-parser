@@ -330,7 +330,13 @@ class DataStore:
             }
         record = self.immunity_data[mutation.target][mutation.damage_type]
         record['sample_count'] += 1
-        if mutation.damage_dealt > record['max_damage']:
+        if (
+            mutation.damage_dealt > record['max_damage']
+            or (
+                mutation.damage_dealt == record['max_damage']
+                and mutation.immunity_points > record['max_immunity']
+            )
+        ):
             record['max_damage'] = mutation.damage_dealt
             record['max_immunity'] = mutation.immunity_points
 

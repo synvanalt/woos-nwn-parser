@@ -641,6 +641,35 @@ class TestImmunityTracking:
         assert immunity_info["max_immunity"] == 12  # Updated to 12 (from same hit)
         assert immunity_info["sample_count"] == 3
 
+    def test_record_immunity_zero_damage_uses_highest_absorbed_tiebreak(self, data_store: DataStore) -> None:
+        """Zero-damage matched samples should keep the highest absorbed value."""
+        apply(
+            data_store,
+            immunity(target="Goblin", damage_type="Acid", immunity_points=50, damage_dealt=0),
+            immunity(target="Goblin", damage_type="Acid", immunity_points=55, damage_dealt=0),
+        )
+
+        immunity_info = data_store.get_immunity_for_target_and_type("Goblin", "Acid")
+
+        assert immunity_info["max_damage"] == 0
+        assert immunity_info["max_immunity"] == 55
+        assert immunity_info["sample_count"] == 2
+
+    def test_record_immunity_prefers_higher_damage_before_absorbed_tiebreak(self, data_store: DataStore) -> None:
+        """Higher damage remains the primary sort key for the stored pair."""
+        apply(
+            data_store,
+            immunity(target="Goblin", damage_type="Acid", immunity_points=55, damage_dealt=0),
+            immunity(target="Goblin", damage_type="Acid", immunity_points=3, damage_dealt=10),
+            immunity(target="Goblin", damage_type="Acid", immunity_points=8, damage_dealt=10),
+        )
+
+        immunity_info = data_store.get_immunity_for_target_and_type("Goblin", "Acid")
+
+        assert immunity_info["max_damage"] == 10
+        assert immunity_info["max_immunity"] == 8
+        assert immunity_info["sample_count"] == 3
+
     def test_get_target_resists(self, data_store: DataStore) -> None:
         """Test getting all resist data for a target."""
         apply(

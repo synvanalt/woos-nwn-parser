@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 12, 2026 (reset cache invalidation regression coverage refresh)
+**Last Updated:** March 14, 2026 (parse-immunity disabled-mode matcher-bypass coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **622 tests collected**
+- Result: **644 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 573 tests
+- `tests/unit/`: 35 modules, 595 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 622 tests
+- Total: 43 test modules, 644 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -29,18 +29,18 @@ Notes:
 - `test_parser.py` (73)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
-- `test_storage.py` (57)
+- `test_storage.py` (59)
 - `test_storage_indices.py` (21)
-- `test_utils.py` (37)
+- `test_utils.py` (39)
 - `test_monitor.py` (22)
 - `test_monitor_debug_mode.py` (9)
-- `test_queue_processor_unit.py` (33)
+- `test_queue_processor_unit.py` (36)
 - `test_queue_processor_batched.py` (10)
 - `test_queue_processor.py` (10)
 - `test_dps_service.py` (14)
 - `test_formatters.py` (22)
-- `test_immunity_panel_additional.py` (7)
-- `test_immunity_panel_edge_cases.py` (6)
+- `test_immunity_panel_additional.py` (10)
+- `test_immunity_panel_edge_cases.py` (8)
 - `test_selection_preservation.py` (4)
 - `test_dps_panel_incremental.py` (13)
 - `test_immunity_panel_incremental.py` (6)
@@ -48,20 +48,20 @@ Notes:
 - `test_ui_optimizations.py` (19)
 - `test_death_snippet_panel.py` (26)
 - `test_debug_console_panel.py` (6)
-- `test_main_window_load_parse.py` (20)
-- `test_settings.py` (5)
+- `test_main_window_load_parse.py` (22)
+- `test_settings.py` (7)
 - `test_main_window_monitoring_switch.py` (5)
 - `test_main_window_debug_tab_unlock.py` (5)
-- `test_main_window_orchestration.py` (20)
+- `test_main_window_orchestration.py` (21)
 - `test_monitor_edge_cases.py` (4)
 - `test_queue_processor_resilience.py` (5)
 - `test_realtime_backpressure.py` (2)
 - `test_sorted_treeview_edge_cases.py` (7)
 - `test_storage_edge_branches.py` (8)
-- `test_utils_worker_pipeline.py` (11)
+- `test_utils_worker_pipeline.py` (14)
 
 ### Integration (`tests/integration`)
-- `test_parser_storage_integration.py` (13)
+- `test_parser_storage_integration.py` (15)
 - `test_monitor_parser_integration.py` (10)
 - `test_dps_pipeline_integration.py` (10)
 - `test_file_truncation.py` (2)
@@ -83,7 +83,8 @@ Notes:
   - Includes explicit coverage for version-scoped read-cache invalidation, clear-all reset invalidation of cached target summaries, defensive-copy behavior on cached summary getters, and raw-history retention default/normalization behavior
 - Queue processor logic and batching:
   - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`, `test_realtime_backpressure.py`
-  - Queue/import tests validate the public-first mutation payload flow used by production ingestion
+- Queue/import tests validate the public-first mutation payload flow used by production ingestion
+  - Includes shared-matcher resilience coverage for reverse-order immunity lines, nearest-match selection, mismatch debug logging, and disabled-mode verification that damage events no longer enqueue matcher work or trigger periodic stale cleanup
 - Release/version automation:
   - `test_bump_version_script.py`
 - Monitor behavior (rotation/truncation/debug):
@@ -98,11 +99,13 @@ Notes:
   - Includes import payload application coverage for batched mutation submission on the Tk thread while preserving death-snippet delivery, death-character auto-identification, and queue-drain lifecycle behavior
   - Includes Death Snippets coverage for guarded `wooparseme` auto-identification and one-click character-name clearing back to the hint state
   - Includes dedicated realtime backlog coverage for bounded queue saturation, post-read monitor backpressure pacing, pressure-banded Tk drain budgets, and coalesced refresh behavior under producer-faster-than-consumer load
+  - Includes Target Immunities coverage for zero-damage matched samples, absorbed-value tie-breaking, best-effort immunity % display when exact reverse inference fails, and persisted/default-on Parse Immunities toggle behavior
 - App settings persistence:
   - `test_settings.py`
+  - Includes persisted `Parse Immunities` coverage, including missing-key fallback behavior for older settings files
 - Import/worker pipeline behavior:
   - `test_utils.py`, `test_utils_worker_pipeline.py`
-  - Includes streaming chunk payload integrity, direct parse-to-chunk worker coverage, queue-full abort responsiveness coverage, import payload coverage after removing legacy parser-state snapshots, and preserved `wooparseme` identity events during manual import
+  - Includes streaming chunk payload integrity, direct parse-to-chunk worker coverage, queue-full abort responsiveness coverage, import payload coverage after removing legacy parser-state snapshots, preserved `wooparseme` identity events during manual import, shared immunity-matcher parity for both damage-before-immunity and immunity-before-damage logs, and explicit disabled-mode coverage that import parsing does not construct the matcher when `Parse Immunities` is off
 - Full-session/e2e behavior:
   - `test_e2e_combat_session.py`
 

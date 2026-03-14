@@ -419,6 +419,29 @@ class TestLoadAndParseWorkflow:
         app.parser.set_death_fallback_line.assert_called_once_with("Your God refuses to hear your prayers!")
         app._schedule_session_settings_save.assert_called_once()
 
+    def test_parse_immunity_callback_updates_parser_and_schedules_save(self) -> None:
+        app = _make_app_shell()
+        app.parser = Mock()
+        app._schedule_session_settings_save = Mock()
+
+        app._on_parse_immunity_changed(False)
+
+        assert app.parser.parse_immunity is False
+        app._schedule_session_settings_save.assert_called_once()
+
+    def test_build_session_settings_includes_parse_immunity(self) -> None:
+        app = _make_app_shell()
+        app.log_directory = r"C:\logs"
+        app.death_snippet_panel = Mock()
+        app.death_snippet_panel.get_fallback_death_line.return_value = "Custom fallback"
+        app.parser.parse_immunity = False
+
+        settings = app._build_session_settings()
+
+        assert settings.log_directory == r"C:\logs"
+        assert settings.death_fallback_line == "Custom fallback"
+        assert settings.parse_immunity is False
+
     def test_schedule_session_settings_save_debounces_jobs(self) -> None:
         app = _make_app_shell()
         app.root = Mock()

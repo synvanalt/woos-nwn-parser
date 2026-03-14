@@ -39,7 +39,7 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 
 ### Technical Features
 - **Automatic Truncation Detection** - Handles game restarts and log file resets
-- **Immunity Queuing** - Intelligent matching of damage and immunity events
+- **Immunity Queuing** - Conservative matching of damage and immunity events
 - **Responsive Monitoring Pipeline** - Log reading/parsing runs in the background to keep UI smooth during heavy combat
 - **Bounded Session Histories** - Raw event/attack history is capped to keep long sessions responsive while keeping lifetime aggregate totals
 - **Thread-Safe In-Memory Storage** - Concurrent data access without conflicts
@@ -78,7 +78,7 @@ The parser works out-of-the-box with default NWN installations. If needed:
 
 - **Log Directory**: Defaults to `%USERPROFILE%\Documents\Neverwinter Nights\logs`
 - **Target Filter**: Optional - filter to show damage dealt to a specific target only
-- **Immunity Parsing**: Toggle parsing of immunity events (disabled by default for leaner parsing)
+- **Immunity Parsing**: Toggle parsing of immunity events (enabled by default, and remembered between launches)
 - **DPS First Timestamp Mode**: Choose between `Per Character` (default) or `Global` first timestamp tracking
 
 ## User Guide
@@ -131,7 +131,8 @@ Both modes use the same last timestamp (the most recent damage dealt by any char
 **Immunity Percentage**
 - Automatically calculated from damage and absorption
 - Shows as `Fire: 50%`, `Cold: 75%`, etc.
-- Uses reverse calculation of NWN damage reduction formula
+- Uses reverse calculation of NWN damage reduction formula, with a closest-match fallback when no exact reverse solution exists
+- Fully negated matched hits now display as `0` damage with `100%` immunity instead of leaving the row ambiguous
 - Limitation: Target with additional damage resistance may show inaccurate immunity percentage since resistance is unaccounted for
 
 **Max Values**
@@ -208,7 +209,7 @@ woos-nwn-parser/
 
 **Settings Persistence** (`settings.py`)
 - Loads and saves user preferences used across app restarts
-- Currently persists selected log directory and Death Snippets fallback log line
+- Persists selected log directory, Death Snippets fallback log line, and the `Parse Immunities` toggle
 - Settings are saved at `%LOCALAPPDATA%\WoosNwnParser\settings.json`
 
 **QueueProcessor** (`services/queue_processor.py`)

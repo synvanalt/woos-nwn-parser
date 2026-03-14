@@ -15,6 +15,7 @@ class AppSettings:
 
     log_directory: str | None = None
     death_fallback_line: str | None = None
+    parse_immunity: bool | None = None
 
 
 def get_settings_path() -> Path:
@@ -35,6 +36,13 @@ def _normalize_optional_text(value: Any) -> str | None:
     return normalized or None
 
 
+def _normalize_optional_bool(value: Any) -> bool | None:
+    """Normalize optional boolean values loaded from JSON."""
+    if isinstance(value, bool):
+        return value
+    return None
+
+
 def load_app_settings(path: Path | None = None) -> AppSettings:
     """Load persisted app settings from disk."""
     settings_path = path or get_settings_path()
@@ -50,6 +58,7 @@ def load_app_settings(path: Path | None = None) -> AppSettings:
     return AppSettings(
         log_directory=_normalize_optional_text(payload.get("log_directory")),
         death_fallback_line=_normalize_optional_text(payload.get("death_fallback_line")),
+        parse_immunity=_normalize_optional_bool(payload.get("parse_immunity")),
     )
 
 
@@ -60,5 +69,10 @@ def save_app_settings(settings: AppSettings, path: Path | None = None) -> None:
     payload = {
         "log_directory": _normalize_optional_text(settings.log_directory),
         "death_fallback_line": _normalize_optional_text(settings.death_fallback_line),
+        "parse_immunity": (
+            _normalize_optional_bool(settings.parse_immunity)
+            if settings.parse_immunity is not None
+            else None
+        ),
     }
     settings_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

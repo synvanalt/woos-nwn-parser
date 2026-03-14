@@ -53,6 +53,29 @@ def test_parse_immunity_toggle_updates_parser_and_refresh(panel_ctx) -> None:
     assert called["count"] == 2
 
 
+def test_parse_immunity_var_initializes_from_parser(shared_tk_root) -> None:
+    if shared_tk_root is None:
+        pytest.skip("Tkinter not available")
+
+    notebook = ttk.Notebook(shared_tk_root)
+    store = DataStore()
+    parser = LogParser(parse_immunity=True)
+    panel = ImmunityPanel(notebook, store, parser)
+
+    assert panel.parse_immunity_var.get() is True
+
+
+def test_parse_immunity_toggle_notifies_callback(panel_ctx) -> None:
+    panel, _store, _parser = panel_ctx
+    observed: list[bool] = []
+    panel.on_parse_immunity_changed = observed.append
+    check_btn = _find_parse_checkbutton(panel)
+
+    check_btn.invoke()
+
+    assert observed == [True]
+
+
 def test_combo_selection_event_triggers_target_refresh(panel_ctx) -> None:
     panel, store, _parser = panel_ctx
     apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
@@ -85,6 +108,22 @@ def test_cached_immunity_percentage_none_displays_dash(panel_ctx, monkeypatch) -
     item_id = panel._item_ids["Fire"]
     values = panel.tree.item(item_id, "values")
     assert values[3] == "-"
+
+
+def test_refresh_uses_best_effort_immunity_percentage_when_exact_match_missing(panel_ctx) -> None:
+    panel, store, parser = panel_ctx
+    parser.parse_immunity = True
+    apply(
+        store,
+        damage_row(target="Goblin", damage_type="Physical", total_damage=146, attacker="Woo"),
+        immunity(target="Goblin", damage_type="Physical", immunity_points=33, damage_dealt=146),
+    )
+
+    panel.refresh_target_details("Goblin")
+
+    item_id = panel._item_ids["Physical"]
+    values = panel.tree.item(item_id, "values")
+    assert values[3] == "18%"
 
 
 def test_update_target_list_does_not_override_existing_selection(panel_ctx) -> None:

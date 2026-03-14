@@ -8,7 +8,7 @@ from tkinter import ttk
 from app.parser import LogParser
 from app.storage import DataStore
 from app.ui.widgets.immunity_panel import ImmunityPanel
-from tests.helpers.store_mutations import apply, damage_row
+from tests.helpers.store_mutations import apply, damage_row, immunity
 
 
 @pytest.fixture
@@ -90,6 +90,37 @@ def test_incremental_refresh_applies_sort_when_damage_type_descending(immunity_p
     panel.refresh_target_details("Goblin")
 
     panel.tree.apply_current_sort.assert_called_once()
+
+
+def test_refresh_shows_zero_damage_immunity_match(immunity_panel_ctx) -> None:
+    panel, store, parser = immunity_panel_ctx
+    parser.parse_immunity = True
+    apply(
+        store,
+        damage_row(target="DRAMMAGAR", damage_type="Acid", total_damage=0, attacker="Woo"),
+        immunity(target="DRAMMAGAR", damage_type="Acid", immunity_points=50, damage_dealt=0),
+    )
+
+    panel.refresh_target_details("DRAMMAGAR")
+
+    row = panel.tree.item(panel._item_ids["Acid"], "values")
+    assert row == ("Acid", "0", "50", "100%", "1")
+
+
+def test_refresh_shows_highest_absorbed_for_zero_damage_tie(immunity_panel_ctx) -> None:
+    panel, store, parser = immunity_panel_ctx
+    parser.parse_immunity = True
+    apply(
+        store,
+        damage_row(target="DRAMMAGAR", damage_type="Acid", total_damage=0, attacker="Woo"),
+        immunity(target="DRAMMAGAR", damage_type="Acid", immunity_points=50, damage_dealt=0),
+        immunity(target="DRAMMAGAR", damage_type="Acid", immunity_points=55, damage_dealt=0),
+    )
+
+    panel.refresh_target_details("DRAMMAGAR")
+
+    row = panel.tree.item(panel._item_ids["Acid"], "values")
+    assert row == ("Acid", "0", "55", "100%", "2")
 
 
 def test_full_refresh_restores_selection_for_surviving_damage_type(immunity_panel_ctx) -> None:
