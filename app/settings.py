@@ -16,6 +16,7 @@ class AppSettings:
     log_directory: str | None = None
     death_fallback_line: str | None = None
     parse_immunity: bool | None = None
+    first_timestamp_mode: str | None = None
 
 
 def get_settings_path() -> Path:
@@ -43,6 +44,16 @@ def _normalize_optional_bool(value: Any) -> bool | None:
     return None
 
 
+def _normalize_optional_first_timestamp_mode(value: Any) -> str | None:
+    """Normalize persisted first timestamp mode values loaded from JSON."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"per_character", "global"}:
+        return normalized
+    return None
+
+
 def load_app_settings(path: Path | None = None) -> AppSettings:
     """Load persisted app settings from disk."""
     settings_path = path or get_settings_path()
@@ -59,6 +70,9 @@ def load_app_settings(path: Path | None = None) -> AppSettings:
         log_directory=_normalize_optional_text(payload.get("log_directory")),
         death_fallback_line=_normalize_optional_text(payload.get("death_fallback_line")),
         parse_immunity=_normalize_optional_bool(payload.get("parse_immunity")),
+        first_timestamp_mode=_normalize_optional_first_timestamp_mode(
+            payload.get("first_timestamp_mode")
+        ),
     )
 
 
@@ -73,6 +87,9 @@ def save_app_settings(settings: AppSettings, path: Path | None = None) -> None:
             _normalize_optional_bool(settings.parse_immunity)
             if settings.parse_immunity is not None
             else None
+        ),
+        "first_timestamp_mode": _normalize_optional_first_timestamp_mode(
+            settings.first_timestamp_mode
         ),
     }
     settings_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
