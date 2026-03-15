@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 15, 2026 (temporary full-immunity summary suppression coverage refresh)
+**Last Updated:** March 15, 2026 (first-timestamp settings persistence coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **647 tests collected**
+- Result: **650 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 598 tests
+- `tests/unit/`: 35 modules, 601 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 647 tests
+- Total: 43 test modules, 650 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -49,10 +49,10 @@ Notes:
 - `test_death_snippet_panel.py` (26)
 - `test_debug_console_panel.py` (6)
 - `test_main_window_load_parse.py` (22)
-- `test_settings.py` (7)
+- `test_settings.py` (9)
 - `test_main_window_monitoring_switch.py` (5)
 - `test_main_window_debug_tab_unlock.py` (5)
-- `test_main_window_orchestration.py` (21)
+- `test_main_window_orchestration.py` (22)
 - `test_monitor_edge_cases.py` (4)
 - `test_queue_processor_resilience.py` (5)
 - `test_realtime_backpressure.py` (2)
@@ -102,7 +102,10 @@ Notes:
   - Includes Target Immunities coverage for zero-damage matched samples, absorbed-value tie-breaking, suppression of invalidated temporary full-immunity rows back to real max-damage display, best-effort immunity % display when exact reverse inference fails, and persisted/default-on Parse Immunities toggle behavior
 - App settings persistence:
   - `test_settings.py`
-  - Includes persisted `Parse Immunities` coverage, including missing-key fallback behavior for older settings files
+  - Includes persisted `Parse Immunities` and `First Timestamp` coverage, including missing-key and invalid-value fallback behavior for older settings files
+- Main-window persistence orchestration:
+  - `test_main_window_load_parse.py`, `test_main_window_orchestration.py`
+  - Includes startup restoration of persisted `First Timestamp` mode into the DPS service/UI, save scheduling on combobox changes, and session-settings serialization of the active timing mode
 - Import/worker pipeline behavior:
   - `test_utils.py`, `test_utils_worker_pipeline.py`
   - Includes streaming chunk payload integrity, direct parse-to-chunk worker coverage, queue-full abort responsiveness coverage, import payload coverage after removing legacy parser-state snapshots, preserved `wooparseme` identity events during manual import, shared immunity-matcher parity for both damage-before-immunity and immunity-before-damage logs, and explicit disabled-mode coverage that import parsing does not construct the matcher when `Parse Immunities` is off
