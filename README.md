@@ -33,7 +33,7 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 ### Advanced Features
 - **Multi-Character Support** - Track all party members simultaneously
 - **Damage Type Breakdown** - Detailed analysis by damage type (Physical, Fire, Cold, etc.)
-- **Hit Rate Analysis** - Track attack success rates per character
+- **Hit Rate Analysis** - Track attack hit rates per character
 - **First Timestamp Modes** - Track globally from first character action or isolate by character
 - **Target Filtering** - Focus analysis on specific enemies
 
@@ -41,7 +41,6 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 - **Automatic Truncation Detection** - Handles game restarts and log file resets
 - **Immunity Queuing** - Conservative matching of damage and immunity events
 - **Responsive Monitoring Pipeline** - Log reading/parsing runs in the background to keep UI smooth during heavy combat
-- **Bounded Session Histories** - Raw event/attack history is capped to keep long sessions responsive while keeping lifetime aggregate totals
 - **Thread-Safe In-Memory Storage** - Concurrent data access without conflicts
 
 ## Quick Start
@@ -76,6 +75,7 @@ python -m app
 
 The parser works out-of-the-box with default NWN installations. If needed:
 
+- **Enable NWN Log Output**: `Game Options` → `Game` → `Game Log Chat All` → Enable
 - **Log Directory**: Defaults to `%USERPROFILE%\Documents\Neverwinter Nights\logs`
 - **Target Filter**: Optional - filter to show damage dealt to a specific target only
 - **Immunity Parsing**: Toggle parsing of immunity events (enabled by default, and remembered between launches)
@@ -85,7 +85,7 @@ The parser works out-of-the-box with default NWN installations. If needed:
 
 ### Understanding DPS Tracking
 
-**Per Character Mode** (Default)
+**Per Character Mode**
 - Each character's DPS is calculated from their first damage event to the last damage event by any character
 - Best for compensating for variance in start time across party members
 - Shows different "character time" for each member
@@ -95,7 +95,7 @@ The parser works out-of-the-box with default NWN installations. If needed:
 - Best for comparing party members across the same time period
 - Shows unified timeline for all characters
 
-Both modes use the same last timestamp (the most recent damage dealt by any character). The only difference is the start time used for calculations.
+Both modes use the same last timestamp (the most recent damage dealt by any character) – the only difference is the start time used for calculations.
 
 ### Death Snippets Panel
 
@@ -105,9 +105,6 @@ Both modes use the same last timestamp (the most recent damage dealt by any char
 - **Fallback matching**
   - If character name is unknown, `Fallback Log Line` is used as a trigger (editable in the panel)
   - If you edit `Fallback Log Line`, the app remembers it on next startup
-- **Selection and readability**
-  - `Killed by:` selector shows `[HH:MM:SS] Killer`
-  - Placeholder text is muted when no deaths are recorded
 
 ### Reading Target Statistics
 
@@ -132,13 +129,11 @@ Both modes use the same last timestamp (the most recent damage dealt by any char
 - Automatically calculated from damage and absorption
 - Shows as `Fire: 50%`, `Cold: 75%`, etc.
 - Uses reverse calculation of NWN damage reduction formula, with a closest-match fallback when no exact reverse solution exists
-- Fully negated matched hits now display as `0` damage with `100%` immunity instead of leaving the row ambiguous
 - Limitation: Target with additional damage resistance may show inaccurate immunity percentage since resistance is unaccounted for
 
 **Max Values**
-- `Max Dmg`: Highest damage of this type dealt to target
-- `Max Imm`: Highest immunity points absorbed
-- `%`: Calculated immunity percentage
+- `Max Damage`: Highest damage of this type dealt to target
+- `Absorbed`: Highest immunity points absorbed
 
 ## Architecture
 
@@ -217,6 +212,11 @@ woos-nwn-parser/
 - Buffers damage for immunity matching
 - Manages cleanup of stale immunity queue entries
 - Carries death snippet and character-identification events in the drain result
+
+**ImmunityMatcher** (`services/immunity_matcher.py`)
+- Shares immunity matching logic between live monitoring and file import paths
+- Conservatively pairs immunity lines with nearby damage observations by target, damage type, timestamp, and line number
+- Keeps unmatched damage/immunity observations in bounded queues and prunes stale entries
 
 **DPSCalculationService** (`services/dps_service.py`)
 - Calculates DPS with configurable time tracking modes

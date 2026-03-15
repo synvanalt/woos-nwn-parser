@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- `Target Immunities` no longer keeps showing a stale temporary `100%` immunity after later hits prove that damage type is being dealt again; those rows now fall back to the real max damage and show `-` for absorbed amount and immunity percentage
+
+
 ## [1.6.0] - 2026-03-14
 
 ### Changed

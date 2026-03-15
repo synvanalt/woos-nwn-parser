@@ -96,6 +96,7 @@ Important semantics:
 - the store updates the "max" record when a later matched sample has higher `damage_dealt`
 - if `damage_dealt` ties, the store keeps the higher `immunity_points` value for that same damage tier
 - zero-damage matched samples are valid; if all matched samples for a target/type have `damage_dealt == 0`, the stored pair can still be `(0, absorbed)`
+- matched temporary full-absorb samples remain stored and counted even if later positive same-type damage proves the target is not stably `100%` immune
 
 This coupling matters because the immunity percentage display assumes the absorbed value and damage value came from the same hit.
 
@@ -107,9 +108,12 @@ Important consequences:
 - unmatched immunity observations do not contribute to `sample_count`
 - `max_event_damage` can still exist even when there is no matched immunity sample for that type
 - when immunity parsing is enabled and a matched sample exists with `max_damage == 0`, the panel shows `Max Damage = 0`, the stored absorbed value, and `Immunity % = 100%`
+- exception: if `sample_count > 0`, `max_immunity_damage == 0`, and `max_event_damage > 0`, the store summary suppresses that temporary full-immunity evidence for display and the panel shows `Max Damage = max_event_damage`, `Absorbed = -`, and `Immunity % = -`
 - when exact reverse-immunity inference fails for a positive-damage matched sample, the app shows the closest simulated immunity percentage instead of `-`
 - closest-match ties resolve to the lower immunity percentage
 - displayed immunity percentages can still be overstated if the target also has damage resistance or damage reduction
+
+This suppression rule is a store-summary interpretation rule, not matcher behavior. Live monitoring and historic import still store the same matched immunity samples; only the panel-facing summary changes.
 
 ## Known Limitations
 - Dense same-second combat still relies on heuristic nearest-match behavior; the log format does not provide a perfect hit identifier.

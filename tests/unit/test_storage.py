@@ -418,11 +418,52 @@ class TestTargetFiltering:
         assert fire["max_immunity_damage"] == 50
         assert fire["immunity_absorbed"] == 10
         assert fire["sample_count"] == 1
+        assert fire["suppress_temporary_full_immunity"] is False
 
         assert cold["max_event_damage"] == 15
         assert cold["max_immunity_damage"] == 0
         assert cold["immunity_absorbed"] == 0
         assert cold["sample_count"] == 0
+        assert cold["suppress_temporary_full_immunity"] is False
+
+    def test_get_target_damage_type_summary_flags_temporary_full_immunity_invalidated(
+        self,
+        data_store: DataStore,
+    ) -> None:
+        """Later positive same-type damage should suppress zero-damage-only immunity display."""
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Acid", total_damage=45, attacker="Woo"),
+            immunity(target="Goblin", damage_type="Acid", immunity_points=50, damage_dealt=0),
+        )
+
+        summary = data_store.get_target_damage_type_summary("Goblin")
+        acid = next(item for item in summary if item["damage_type"] == "Acid")
+
+        assert acid["max_event_damage"] == 45
+        assert acid["max_immunity_damage"] == 0
+        assert acid["immunity_absorbed"] == 50
+        assert acid["sample_count"] == 1
+        assert acid["suppress_temporary_full_immunity"] is True
+
+    def test_get_target_damage_type_summary_keeps_zero_damage_only_full_immunity_visible(
+        self,
+        data_store: DataStore,
+    ) -> None:
+        """Zero-damage-only matched immunity should remain displayable as 100%."""
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Acid", total_damage=0, attacker="Woo"),
+            immunity(target="Goblin", damage_type="Acid", immunity_points=50, damage_dealt=0),
+        )
+
+        summary = data_store.get_target_damage_type_summary("Goblin")
+        acid = next(item for item in summary if item["damage_type"] == "Acid")
+
+        assert acid["max_event_damage"] == 0
+        assert acid["max_immunity_damage"] == 0
+        assert acid["sample_count"] == 1
+        assert acid["suppress_temporary_full_immunity"] is False
 
     def test_get_target_damage_type_summary_returns_defensive_copies(self, data_store: DataStore) -> None:
         """Mutating a returned summary row should not taint the cache."""
@@ -434,9 +475,11 @@ class TestTargetFiltering:
 
         first = data_store.get_target_damage_type_summary("Goblin")
         first[0]["max_event_damage"] = 999
+        first[0]["suppress_temporary_full_immunity"] = True
 
         second = data_store.get_target_damage_type_summary("Goblin")
         assert second[0]["max_event_damage"] == 20
+        assert second[0]["suppress_temporary_full_immunity"] is False
 
     def test_get_dps_data_for_target(self, data_store: DataStore) -> None:
         """Test getting DPS data filtered by target."""
