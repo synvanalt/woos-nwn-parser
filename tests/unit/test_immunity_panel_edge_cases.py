@@ -123,6 +123,23 @@ def test_refresh_shows_highest_absorbed_for_zero_damage_tie(immunity_panel_ctx) 
     assert row == ("Acid", "0", "55", "100%", "2")
 
 
+def test_refresh_suppresses_temporary_full_immunity_after_later_positive_damage(
+    immunity_panel_ctx,
+) -> None:
+    panel, store, parser = immunity_panel_ctx
+    parser.parse_immunity = True
+    apply(
+        store,
+        damage_row(target="DRAMMAGAR", damage_type="Acid", total_damage=45, attacker="Woo"),
+        immunity(target="DRAMMAGAR", damage_type="Acid", immunity_points=50, damage_dealt=0),
+    )
+
+    panel.refresh_target_details("DRAMMAGAR")
+
+    row = panel.tree.item(panel._item_ids["Acid"], "values")
+    assert row == ("Acid", "45", "-", "-", "1")
+
+
 def test_full_refresh_restores_selection_for_surviving_damage_type(immunity_panel_ctx) -> None:
     panel, store, _parser = immunity_panel_ctx
     target = "Goblin"

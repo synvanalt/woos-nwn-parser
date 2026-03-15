@@ -103,7 +103,7 @@ class DataStore:
         self._all_targets_summary_cache: Optional[tuple[Dict[str, str], ...]] = None
         self._target_damage_type_summary_cache: Dict[
             str,
-            tuple[Dict[str, int | str], ...],
+            tuple[Dict[str, int | str | bool], ...],
         ] = {}
 
     @staticmethod
@@ -1152,7 +1152,7 @@ class DataStore:
                 return 0
             return damage_summary['max_damage']
 
-    def get_target_damage_type_summary(self, target: str) -> List[Dict[str, int | str]]:
+    def get_target_damage_type_summary(self, target: str) -> List[Dict[str, int | str | bool]]:
         """Get one summary row per damage type seen for a target."""
         with self.lock:
             self._ensure_read_caches_current_locked()
@@ -1166,16 +1166,24 @@ class DataStore:
             if not damage_summary and not immunity_summary:
                 return []
 
-            result: List[Dict[str, int | str]] = []
+            result: List[Dict[str, int | str | bool]] = []
             for damage_type in sorted(set(damage_summary) | set(immunity_summary)):
                 damage_info = damage_summary.get(damage_type, {})
                 immunity_info = immunity_summary.get(damage_type, {})
+                max_event_damage = int(damage_info.get('max_damage', 0))
+                max_immunity_damage = int(immunity_info.get('max_damage', 0))
+                sample_count = int(immunity_info.get('sample_count', 0))
                 result.append({
                     'damage_type': damage_type,
-                    'max_event_damage': int(damage_info.get('max_damage', 0)),
-                    'max_immunity_damage': int(immunity_info.get('max_damage', 0)),
+                    'max_event_damage': max_event_damage,
+                    'max_immunity_damage': max_immunity_damage,
                     'immunity_absorbed': int(immunity_info.get('max_immunity', 0)),
-                    'sample_count': int(immunity_info.get('sample_count', 0)),
+                    'sample_count': sample_count,
+                    'suppress_temporary_full_immunity': (
+                        sample_count > 0
+                        and max_immunity_damage == 0
+                        and max_event_damage > 0
+                    ),
                 })
 
             cached_summary = tuple(row.copy() for row in result)
