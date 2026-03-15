@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 14, 2026 (parse-immunity disabled-mode matcher-bypass coverage refresh)
+**Last Updated:** March 15, 2026 (temporary full-immunity summary suppression coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **644 tests collected**
+- Result: **647 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 595 tests
+- `tests/unit/`: 35 modules, 598 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 644 tests
+- Total: 43 test modules, 647 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -29,7 +29,7 @@ Notes:
 - `test_parser.py` (73)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
-- `test_storage.py` (59)
+- `test_storage.py` (61)
 - `test_storage_indices.py` (21)
 - `test_utils.py` (39)
 - `test_monitor.py` (22)
@@ -40,7 +40,7 @@ Notes:
 - `test_dps_service.py` (14)
 - `test_formatters.py` (22)
 - `test_immunity_panel_additional.py` (10)
-- `test_immunity_panel_edge_cases.py` (8)
+- `test_immunity_panel_edge_cases.py` (9)
 - `test_selection_preservation.py` (4)
 - `test_dps_panel_incremental.py` (13)
 - `test_immunity_panel_incremental.py` (6)
@@ -80,7 +80,7 @@ Notes:
 - Storage and indexing performance behavior:
   - `test_storage.py`, `test_storage_indices.py`
   - Direct store setup now uses the real public batch API (`DataStore.apply_mutations(...)`) instead of legacy per-write helper methods
-  - Includes explicit coverage for version-scoped read-cache invalidation, clear-all reset invalidation of cached target summaries, defensive-copy behavior on cached summary getters, and raw-history retention default/normalization behavior
+  - Includes explicit coverage for version-scoped read-cache invalidation, clear-all reset invalidation of cached target summaries, defensive-copy behavior on cached summary getters, raw-history retention default/normalization behavior, and store-summary suppression of temporary zero-damage-only full-immunity samples after later positive same-type damage
 - Queue processor logic and batching:
   - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`, `test_realtime_backpressure.py`
 - Queue/import tests validate the public-first mutation payload flow used by production ingestion
@@ -99,7 +99,7 @@ Notes:
   - Includes import payload application coverage for batched mutation submission on the Tk thread while preserving death-snippet delivery, death-character auto-identification, and queue-drain lifecycle behavior
   - Includes Death Snippets coverage for guarded `wooparseme` auto-identification and one-click character-name clearing back to the hint state
   - Includes dedicated realtime backlog coverage for bounded queue saturation, post-read monitor backpressure pacing, pressure-banded Tk drain budgets, and coalesced refresh behavior under producer-faster-than-consumer load
-  - Includes Target Immunities coverage for zero-damage matched samples, absorbed-value tie-breaking, best-effort immunity % display when exact reverse inference fails, and persisted/default-on Parse Immunities toggle behavior
+  - Includes Target Immunities coverage for zero-damage matched samples, absorbed-value tie-breaking, suppression of invalidated temporary full-immunity rows back to real max-damage display, best-effort immunity % display when exact reverse inference fails, and persisted/default-on Parse Immunities toggle behavior
 - App settings persistence:
   - `test_settings.py`
   - Includes persisted `Parse Immunities` coverage, including missing-key fallback behavior for older settings files
