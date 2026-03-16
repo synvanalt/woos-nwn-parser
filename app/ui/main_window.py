@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, font
+from tkinter import ttk, filedialog, font
 
 from ..parser import LogParser
 from ..storage import DataStore
@@ -23,6 +23,7 @@ from ..settings import AppSettings, load_app_settings, save_app_settings
 from ..utils import IMPORT_RESULT_QUEUE_MAXSIZE, import_worker_process
 from ..services import QueueProcessor, DPSCalculationService
 from .formatters import get_default_log_directory
+from .message_dialogs import show_warning_dialog
 from .window_style import apply_dark_title_bar
 from .widgets import DPSPanel, TargetStatsPanel, ImmunityPanel, DeathSnippetPanel, DebugConsolePanel
 
@@ -251,10 +252,12 @@ class WoosNwnParserApp:
         if directory:
             had_log_files = self._select_log_directory(directory)
             if not had_log_files:
-                messagebox.showwarning(
+                show_warning_dialog(
+                    self.root,
                     "No Log Files",
                     "No nwclientLog*.txt files found in this directory.\n"
-                    "Monitoring will wait for log files to appear."
+                    "Monitoring will wait for log files to appear.",
+                    icon_path=getattr(self, "window_icon_path", None),
                 )
 
     def _select_log_directory(self, directory: str) -> bool:
@@ -572,9 +575,11 @@ class WoosNwnParserApp:
                 msg_type='warning'
             )
         elif status.get('errors'):
-            messagebox.showwarning(
+            show_warning_dialog(
+                self.root,
                 "Load & Parse Completed with Errors",
-                "\n".join(status['errors'])
+                "\n".join(status['errors']),
+                icon_path=getattr(self, "window_icon_path", None),
             )
             self.log_debug("Load & Parse completed with file errors.", msg_type='warning')
         else:
@@ -620,7 +625,12 @@ class WoosNwnParserApp:
         if self.is_monitoring:
             return
         if not self.log_directory:
-            messagebox.showwarning("No Directory", "Please select a log directory first.")
+            show_warning_dialog(
+                self.root,
+                "No Directory",
+                "Please select a log directory first.",
+                icon_path=getattr(self, "window_icon_path", None),
+            )
             self._set_monitoring_switch_ui(False)
             return
 

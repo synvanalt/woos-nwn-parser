@@ -73,6 +73,7 @@ def app_shell(shared_tk_root):
     app.debug_panel = Mock()
     app.debug_panel.get_debug_enabled.return_value = False
     app.log_debug = Mock()
+    app.window_icon_path = None
 
     return app
 
@@ -161,11 +162,16 @@ class TestMonitoringSwitch:
         app_shell.monitoring_var.set(True)
         app_shell.monitoring_text.set("Monitoring")
         showwarning_mock = Mock()
-        monkeypatch.setattr(main_window_module.messagebox, "showwarning", showwarning_mock)
+        monkeypatch.setattr(main_window_module, "show_warning_dialog", showwarning_mock)
 
         app_shell.start_monitoring()
 
-        showwarning_mock.assert_called_once()
+        showwarning_mock.assert_called_once_with(
+            app_shell.root,
+            "No Directory",
+            "Please select a log directory first.",
+            icon_path=None,
+        )
         assert app_shell.is_monitoring is False
         assert app_shell.monitoring_var.get() is False
         assert app_shell.monitoring_text.get() == "Paused"

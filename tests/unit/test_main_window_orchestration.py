@@ -91,6 +91,7 @@ def app_shell(shared_tk_root) -> WoosNwnParserApp:
     app.import_abort_event = threading.Event()
     app.import_abort_button = None
     app.import_modal = None
+    app.window_icon_path = None
 
     app.pause_monitoring = Mock()
 
@@ -100,7 +101,7 @@ def app_shell(shared_tk_root) -> WoosNwnParserApp:
 def test_browse_directory_warns_when_no_log_files(app_shell, monkeypatch) -> None:
     monkeypatch.setattr(main_window_module.filedialog, "askdirectory", lambda **kwargs: r"C:\new_logs")
     warning_mock = Mock()
-    monkeypatch.setattr(main_window_module.messagebox, "showwarning", warning_mock)
+    monkeypatch.setattr(main_window_module, "show_warning_dialog", warning_mock)
     active_file_mock = Mock(return_value=None)
     monkeypatch.setattr(main_window_module.LogDirectoryMonitor, "find_active_log_file", active_file_mock)
     app_shell._persist_session_settings = Mock()
@@ -109,7 +110,12 @@ def test_browse_directory_warns_when_no_log_files(app_shell, monkeypatch) -> Non
 
     assert app_shell.log_directory == r"C:\new_logs"
     assert app_shell.dir_text.get() == r"C:\new_logs"
-    warning_mock.assert_called_once()
+    warning_mock.assert_called_once_with(
+        app_shell.root,
+        "No Log Files",
+        "No nwclientLog*.txt files found in this directory.\nMonitoring will wait for log files to appear.",
+        icon_path=None,
+    )
     assert app_shell._monitor_active_file_name == "N/A"
     app_shell.update_active_file_label.assert_called_once()
     app_shell._set_monitoring_switch_ui.assert_called_once_with(False)
@@ -120,7 +126,7 @@ def test_browse_directory_warns_when_no_log_files(app_shell, monkeypatch) -> Non
 def test_browse_directory_logs_found_files(app_shell, monkeypatch) -> None:
     monkeypatch.setattr(main_window_module.filedialog, "askdirectory", lambda **kwargs: r"C:\new_logs")
     warning_mock = Mock()
-    monkeypatch.setattr(main_window_module.messagebox, "showwarning", warning_mock)
+    monkeypatch.setattr(main_window_module, "show_warning_dialog", warning_mock)
     active_file = main_window_module.Path(r"C:\new_logs\nwclientLog2.txt")
     monkeypatch.setattr(main_window_module.LogDirectoryMonitor, "find_active_log_file", Mock(return_value=active_file))
 
@@ -244,7 +250,7 @@ def test_poll_import_progress_finalizes_when_done_and_no_pending_payloads(app_sh
 
 def test_finalize_import_error_path_shows_warning(app_shell, monkeypatch) -> None:
     warning_mock = Mock()
-    monkeypatch.setattr(main_window_module.messagebox, "showwarning", warning_mock)
+    monkeypatch.setattr(main_window_module, "show_warning_dialog", warning_mock)
 
     app_shell.is_importing = True
     app_shell._set_import_ui_busy = Mock()
@@ -259,7 +265,12 @@ def test_finalize_import_error_path_shows_warning(app_shell, monkeypatch) -> Non
 
     app_shell._finalize_import()
 
-    warning_mock.assert_called_once()
+    warning_mock.assert_called_once_with(
+        app_shell.root,
+        "Load & Parse Completed with Errors",
+        "bad file",
+        icon_path=None,
+    )
     app_shell.log_debug.assert_called_once_with(
         "Load & Parse completed with file errors.",
         msg_type="warning",
