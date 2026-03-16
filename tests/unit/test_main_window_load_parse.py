@@ -168,6 +168,7 @@ class TestLoadAndParseWorkflow:
         app.abort_load_parse = Mock()
         app._center_window_on_parent = Mock()
         app._apply_modal_icon = Mock()
+        app._show_import_modal = WoosNwnParserApp._show_import_modal.__get__(app, WoosNwnParserApp)
 
         class FakeFrame(_FakeWidget):
             instances = []
