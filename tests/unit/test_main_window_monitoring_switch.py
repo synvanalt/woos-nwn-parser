@@ -157,6 +157,17 @@ class TestMonitoringSwitch:
         app_shell.root.after_cancel.assert_any_call("poll-job-id")
         app_shell.root.after_cancel.assert_any_call("dps-job-id")
 
+    def test_stop_monitor_thread_preserves_last_known_active_filename(self, app_shell):
+        app_shell._stop_monitor_thread = WoosNwnParserApp._stop_monitor_thread.__get__(app_shell, WoosNwnParserApp)
+        app_shell.update_active_file_label = WoosNwnParserApp.update_active_file_label.__get__(app_shell, WoosNwnParserApp)
+        app_shell._monitor_active_file_name = "nwclientLog2.txt"
+        app_shell.monitor_thread = None
+
+        app_shell._stop_monitor_thread()
+
+        assert app_shell._monitor_active_file_name == "nwclientLog2.txt"
+        assert app_shell.active_file_text.get() == "nwclientLog2.txt"
+
     def test_start_monitoring_without_directory_reverts_switch_off(self, app_shell, monkeypatch):
         app_shell.log_directory = None
         app_shell.monitoring_var.set(True)

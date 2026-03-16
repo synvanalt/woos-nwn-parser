@@ -765,7 +765,6 @@ class WoosNwnParserApp:
             self.log_debug("Monitor thread is still shutting down; restart deferred", "warning")
         else:
             self.monitor_thread = None
-        self._monitor_active_file_name = "N/A"
         self.update_active_file_label()
 
     def _schedule_monitor_restart(self) -> None:
