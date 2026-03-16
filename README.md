@@ -5,11 +5,11 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 ## Screenshots
 
 <!-- TODO: Add screenshots -->
-**Main Window - DPS Tracking:**
+**DPS Tracking:**
 
 <img src="docs/screenshots/main-window.png" alt="Main Window" width="540">
 
-**Target Statistics Panel:**
+**Target Statistics:**
 
 <img src="docs/screenshots/target-stats.png" alt="Target Stats" width="540">
 
@@ -56,13 +56,12 @@ A real-time combat log parser and DPS analyzer for Neverwinter Nights. Track you
 #### Option 2: Run from Source
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/woos-nwn-parser.git
+git clone https://github.com/synvanalt/woos-nwn-parser.git
 cd woos-nwn-parser
 
 # Create virtual environment
 python -m venv venv
 venv\Scripts\activate  # On Windows
-# source venv/bin/activate  # On Linux/Mac
 
 # Install dependencies
 pip install -r requirements.txt

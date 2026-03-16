@@ -72,6 +72,9 @@ class WoosNwnParserApp:
         self.data_store = DataStore()
         self.queue_processor = QueueProcessor(self.data_store, self.parser)
         self.dps_service = DPSCalculationService(self.data_store)
+        persisted_first_timestamp_mode = self._settings.first_timestamp_mode
+        if persisted_first_timestamp_mode is not None:
+            self.dps_service.set_time_tracking_mode(persisted_first_timestamp_mode)
 
         # Queue and monitoring
         self.data_queue = queue.Queue(maxsize=self.DATA_QUEUE_MAXSIZE)
@@ -164,7 +167,7 @@ class WoosNwnParserApp:
 
         ttk.Label(file_frame, text="File:").pack(side="left", padx=(10, 0))
         self.active_file_text = tk.StringVar(value="-")
-        self.active_file_label = ttk.Entry(file_frame, state="readonly", textvariable=self.active_file_text, foreground="gray", width=15)
+        self.active_file_label = ttk.Entry(file_frame, state="readonly", textvariable=self.active_file_text, foreground="gray", width=13)
         self.active_file_label.pack(side="left", padx=5)
 
         self.browse_button = ttk.Button(file_frame, text="Browse...", command=self.browse_directory)
@@ -204,6 +207,7 @@ class WoosNwnParserApp:
 
         # Tab 1: DPS Panel (using DPSPanel widget)
         self.dps_panel = DPSPanel(self.notebook, self.data_store, self.dps_service)
+        self._restore_persisted_dps_panel_state()
         self.notebook.add(self.dps_panel, text=self._dps_tab_text)
         self.dps_panel.time_tracking_combo.bind("<<ComboboxSelected>>", self._on_time_tracking_mode_changed)
         self.dps_panel.target_filter_combo.bind("<<ComboboxSelected>>", self._on_target_filter_changed)
@@ -907,6 +911,7 @@ class WoosNwnParserApp:
 
         # Update the service mode
         self.dps_service.set_time_tracking_mode(new_mode)
+        self._schedule_session_settings_save()
 
         self.log_debug(f"First timestamp mode changed to: {new_mode_display}")
 
@@ -1205,7 +1210,40 @@ class WoosNwnParserApp:
             log_directory=log_directory,
             death_fallback_line=(death_fallback_line or "").strip() or None,
             parse_immunity=bool(getattr(getattr(self, "parser", None), "parse_immunity", True)),
+            first_timestamp_mode=self._get_current_first_timestamp_mode(),
         )
+
+    def _restore_persisted_dps_panel_state(self) -> None:
+        """Apply persisted DPS panel state to UI controls after widget creation."""
+        dps_panel = getattr(self, "dps_panel", None)
+        if dps_panel is None:
+            return
+        time_tracking_var = getattr(dps_panel, "time_tracking_var", None)
+        if time_tracking_var is None:
+            return
+
+        mode_display_by_value = {
+            "per_character": "Per Character",
+            "global": "Global",
+        }
+        current_mode = self.dps_service.time_tracking_mode
+        time_tracking_var.set(mode_display_by_value.get(current_mode, "Per Character"))
+
+    def _get_current_first_timestamp_mode(self) -> str | None:
+        """Return the active first timestamp mode for settings persistence."""
+        dps_panel = getattr(self, "dps_panel", None)
+        if dps_panel is not None:
+            get_mode = getattr(dps_panel, "get_time_tracking_mode", None)
+            if callable(get_mode):
+                mode = get_mode()
+                if mode in {"per_character", "global"}:
+                    return mode
+
+        dps_service = getattr(self, "dps_service", None)
+        mode = getattr(dps_service, "time_tracking_mode", None)
+        if mode in {"per_character", "global"}:
+            return mode
+        return None
 
     def _persist_session_settings(self) -> None:
         """Persist current session settings."""

@@ -434,6 +434,8 @@ class TestLoadAndParseWorkflow:
         app.log_directory = r"C:\logs"
         app.death_snippet_panel = Mock()
         app.death_snippet_panel.get_fallback_death_line.return_value = "Custom fallback"
+        app.dps_panel = Mock()
+        app.dps_panel.get_time_tracking_mode.return_value = "global"
         app.parser.parse_immunity = False
 
         settings = app._build_session_settings()
@@ -441,6 +443,7 @@ class TestLoadAndParseWorkflow:
         assert settings.log_directory == r"C:\logs"
         assert settings.death_fallback_line == "Custom fallback"
         assert settings.parse_immunity is False
+        assert settings.first_timestamp_mode == "global"
 
     def test_schedule_session_settings_save_debounces_jobs(self) -> None:
         app = _make_app_shell()
