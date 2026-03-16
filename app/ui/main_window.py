@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, font
+from tkinter import ttk, filedialog, font
 
 from ..parser import LogParser
 from ..storage import DataStore
@@ -23,6 +23,7 @@ from ..settings import AppSettings, load_app_settings, save_app_settings
 from ..utils import IMPORT_RESULT_QUEUE_MAXSIZE, import_worker_process
 from ..services import QueueProcessor, DPSCalculationService
 from .formatters import get_default_log_directory
+from .message_dialogs import show_warning_dialog
 from .window_style import apply_dark_title_bar
 from .widgets import DPSPanel, TargetStatsPanel, ImmunityPanel, DeathSnippetPanel, DebugConsolePanel
 
@@ -89,7 +90,7 @@ class WoosNwnParserApp:
         self.monitor_thread: Optional[threading.Thread] = None
         self.monitor_stop_event = threading.Event()
         self._monitor_restart_job = None
-        self._monitor_active_file_name = "-"
+        self._monitor_active_file_name = "N/A"
         self._monitor_log_queue: queue.SimpleQueue[tuple[str, str]] = queue.SimpleQueue()
         self._debug_monitor_enabled = False
 
@@ -166,7 +167,7 @@ class WoosNwnParserApp:
         self.dir_label.pack(side="left", fill="x", expand=True, padx=(2, 2))
 
         ttk.Label(file_frame, text="File:").pack(side="left", padx=(10, 0))
-        self.active_file_text = tk.StringVar(value="-")
+        self.active_file_text = tk.StringVar(value="N/A")
         self.active_file_label = ttk.Entry(file_frame, state="readonly", textvariable=self.active_file_text, foreground="gray", width=13)
         self.active_file_label.pack(side="left", padx=5)
 
@@ -249,25 +250,40 @@ class WoosNwnParserApp:
             parent=self.root,
         )
         if directory:
-            self.log_directory = directory
-            # Show directory path (truncated to fit)
-            dir_display = directory.replace("/", "\\")  # Use backslashes on Windows
-            self.dir_text.set(value=dir_display)
-
-            # Check for log files and show warning if none found
-            log_files = list(Path(directory).glob('nwclientLog[1-4].txt'))
-            if not log_files:
-                messagebox.showwarning(
+            had_log_files = self._select_log_directory(directory)
+            if not had_log_files:
+                show_warning_dialog(
+                    self.root,
                     "No Log Files",
                     "No nwclientLog*.txt files found in this directory.\n"
-                    "Monitoring will wait for log files to appear."
+                    "Monitoring will wait for log files to appear.",
+                    icon_path=getattr(self, "window_icon_path", None),
                 )
-            else:
-                self.log_debug(f"Found {len(log_files)} log file(s) in directory")
 
-            # Keep switch text/state synchronized with actual monitoring status
-            self._set_monitoring_switch_ui(self.is_monitoring)
-            self._persist_session_settings()
+    def _select_log_directory(self, directory: str) -> bool:
+        """Apply a selected log directory and refresh monitor/file state."""
+        self.log_directory = directory
+        dir_display = directory.replace("/", "\\")
+        self.dir_text.set(value=dir_display)
+
+        temp_monitor = LogDirectoryMonitor(directory)
+        active_file = temp_monitor.find_active_log_file()
+        self._monitor_active_file_name = active_file.name if active_file is not None else "N/A"
+        self.update_active_file_label()
+
+        if active_file is None:
+            self.log_debug("No matching log files found; monitoring will wait for one to appear.")
+        else:
+            self.log_debug(f"Selected active log file: {active_file.name}")
+
+        if self.is_monitoring:
+            self.pause_monitoring()
+            self.start_monitoring()
+        else:
+            self._set_monitoring_switch_ui(False)
+
+        self._persist_session_settings()
+        return active_file is not None
 
     def load_and_parse_selected_files(self) -> None:
         """Open file picker and parse selected .txt logs in a background worker."""
@@ -349,8 +365,11 @@ class WoosNwnParserApp:
         progress.start(8)
         self.import_modal._progressbar = progress
 
-        self.import_abort_button = ttk.Button(container, text="Abort", command=self.abort_load_parse)
-        self.import_abort_button.pack(anchor="se", pady=(14, 0))
+        actions = ttk.Frame(container)
+        actions.pack(side="bottom", fill="x")
+
+        self.import_abort_button = ttk.Button(actions, text="Abort", command=self.abort_load_parse)
+        self.import_abort_button.pack(anchor="e")
 
         self.import_modal.protocol("WM_DELETE_WINDOW", self.abort_load_parse)
 
@@ -559,9 +578,11 @@ class WoosNwnParserApp:
                 msg_type='warning'
             )
         elif status.get('errors'):
-            messagebox.showwarning(
+            show_warning_dialog(
+                self.root,
                 "Load & Parse Completed with Errors",
-                "\n".join(status['errors'])
+                "\n".join(status['errors']),
+                icon_path=getattr(self, "window_icon_path", None),
             )
             self.log_debug("Load & Parse completed with file errors.", msg_type='warning')
         else:
@@ -607,7 +628,12 @@ class WoosNwnParserApp:
         if self.is_monitoring:
             return
         if not self.log_directory:
-            messagebox.showwarning("No Directory", "Please select a log directory first.")
+            show_warning_dialog(
+                self.root,
+                "No Directory",
+                "Please select a log directory first.",
+                icon_path=getattr(self, "window_icon_path", None),
+            )
             self._set_monitoring_switch_ui(False)
             return
 
@@ -624,8 +650,9 @@ class WoosNwnParserApp:
         self._monitor_active_file_name = (
             current_log_file.name
             if current_log_file is not None
-            else "-"
+            else "N/A"
         )
+        self.update_active_file_label()
         self._debug_monitor_enabled = bool(self.debug_panel.get_debug_enabled())
         started = self._start_monitor_thread()
         if not started:
@@ -738,7 +765,7 @@ class WoosNwnParserApp:
             self.log_debug("Monitor thread is still shutting down; restart deferred", "warning")
         else:
             self.monitor_thread = None
-        self._monitor_active_file_name = "-"
+        self.update_active_file_label()
 
     def _schedule_monitor_restart(self) -> None:
         """Retry starting monitoring thread after prior worker shutdown completes."""
@@ -785,7 +812,7 @@ class WoosNwnParserApp:
                 sleep_pressure_state = self._get_queue_pressure_state()
 
                 current_file = directory_monitor.current_log_file
-                self._monitor_active_file_name = current_file.name if current_file is not None else "-"
+                self._monitor_active_file_name = current_file.name if current_file is not None else "N/A"
 
                 if self.monitor_stop_event.is_set():
                     break
@@ -808,10 +835,7 @@ class WoosNwnParserApp:
 
     def update_active_file_label(self) -> None:
         """Update the active file label to show which log file is being monitored."""
-        if self.directory_monitor:
-            self.active_file_text.set(value=self._monitor_active_file_name)
-        else:
-            self.active_file_text.set(value="-")
+        self.active_file_text.set(value=self._monitor_active_file_name or "N/A")
 
     def clear_data(self) -> None:
         """Clear all collected data."""
