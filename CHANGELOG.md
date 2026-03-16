@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Key controls across the app now show tooltips for quicker in-app guidance
+
 ### Changed
 - The app now remembers your selected `First Timestamp` mode between launches
 - Warning dialogs now use the app's dark modal styling instead of a mismatched light system popup
