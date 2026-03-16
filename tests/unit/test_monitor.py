@@ -116,6 +116,25 @@ class TestMonitoringInitialization:
 
         assert monitor.last_mtime > 0.0
 
+    def test_start_monitoring_empty_directory_detects_file_when_it_appears_later(self, temp_log_dir: Path) -> None:
+        """Monitoring should discover a new NWN log file after startup without user action."""
+        monitor = LogDirectoryMonitor(str(temp_log_dir))
+        monitor.start_monitoring()
+
+        assert monitor.current_log_file is None
+
+        parser = Mock()
+        parser.parse_line.return_value = {"type": "combat", "line": "parsed"}
+        data_queue = queue.Queue()
+
+        log1 = temp_log_dir / "nwclientLog1.txt"
+        log1.write_text("new line\n")
+
+        monitor.read_new_lines(parser, data_queue)
+
+        assert monitor.current_log_file == log1
+        assert data_queue.qsize() == 1
+
 
 class TestIncrementalReading:
     """Test suite for read_new_lines method."""

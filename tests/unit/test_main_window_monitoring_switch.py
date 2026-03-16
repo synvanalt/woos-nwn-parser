@@ -52,14 +52,14 @@ def app_shell(shared_tk_root):
     app.refresh_targets = Mock()
     app.monitor_thread = None
     app.monitor_stop_event = threading.Event()
-    app._monitor_active_file_name = "-"
+    app._monitor_active_file_name = "N/A"
     app._monitor_log_queue = queue.SimpleQueue()
     app._debug_monitor_enabled = False
     app._start_monitor_thread = Mock()
     app._stop_monitor_thread = Mock()
     app._drain_monitor_logs = Mock()
 
-    app.active_file_text = tk.StringVar(master=shared_tk_root, value="-")
+    app.active_file_text = tk.StringVar(master=shared_tk_root, value="N/A")
     app.monitoring_var = tk.BooleanVar(master=shared_tk_root, value=False)
     app.monitoring_text = tk.StringVar(master=shared_tk_root, value="Paused")
     app.monitoring_switch = ttk.Checkbutton(
@@ -136,6 +136,7 @@ class TestMonitoringSwitch:
         app_shell._start_monitor_thread.assert_called_once()
         app_shell.root.after.assert_called_once()
         assert app_shell.polling_job == "poll-job-id"
+        assert app_shell.active_file_text.get() == "N/A"
 
     def test_pause_monitoring_turns_switch_off_and_cancels_jobs(self, app_shell):
         app_shell.is_monitoring = True
@@ -169,3 +170,26 @@ class TestMonitoringSwitch:
         assert app_shell.monitoring_var.get() is False
         assert app_shell.monitoring_text.get() == "Paused"
         assert app_shell.directory_monitor is None
+
+    def test_start_monitoring_sets_active_filename_from_monitor(self, app_shell, monkeypatch):
+        class FakeMonitor:
+            def __init__(self, directory):
+                self.directory = directory
+                self.started = False
+                self.current_log_file = main_window_module.Path(r"C:\logs\nwclientLog3.txt")
+
+            def start_monitoring(self):
+                self.started = True
+
+            def read_new_lines(self, *args, **kwargs):
+                return None
+
+            def get_active_log_file(self):
+                return self.current_log_file
+
+        monkeypatch.setattr(main_window_module, "LogDirectoryMonitor", FakeMonitor)
+
+        app_shell.start_monitoring()
+
+        assert app_shell._monitor_active_file_name == "nwclientLog3.txt"
+        assert app_shell.active_file_text.get() == "nwclientLog3.txt"
