@@ -167,7 +167,7 @@ class WoosNwnParserApp:
 
         ttk.Label(file_frame, text="File:").pack(side="left", padx=(10, 0))
         self.active_file_text = tk.StringVar(value="-")
-        self.active_file_label = ttk.Entry(file_frame, state="readonly", textvariable=self.active_file_text, foreground="gray", width=15)
+        self.active_file_label = ttk.Entry(file_frame, state="readonly", textvariable=self.active_file_text, foreground="gray", width=13)
         self.active_file_label.pack(side="left", padx=5)
 
         self.browse_button = ttk.Button(file_frame, text="Browse...", command=self.browse_directory)
