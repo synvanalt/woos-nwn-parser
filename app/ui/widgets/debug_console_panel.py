@@ -6,6 +6,9 @@ messages with color-coded logging levels.
 
 import tkinter as tk
 from tkinter import ttk, font
+from typing import Optional
+
+from ..tooltips import TooltipManager
 
 
 class DebugConsolePanel(ttk.Frame):
@@ -23,6 +26,7 @@ class DebugConsolePanel(ttk.Frame):
     def __init__(
         self,
         parent: ttk.Notebook,
+        tooltip_manager: Optional[TooltipManager] = None,
     ) -> None:
         """Initialize the debug console panel.
 
@@ -30,6 +34,7 @@ class DebugConsolePanel(ttk.Frame):
             parent: Parent notebook widget
         """
         super().__init__(parent, padding="10")
+        self.tooltip_manager = tooltip_manager
         self.debug_mode_var = tk.BooleanVar(value=False)
 
         # Get theme font
@@ -47,15 +52,17 @@ class DebugConsolePanel(ttk.Frame):
         debug_controls_frame.pack(fill="x", padx=(10, 10), pady=(0, 10))
 
         # Debug Switcher to enable/disable debug output
-        ttk.Checkbutton(
+        self.debug_output_toggle = ttk.Checkbutton(
             debug_controls_frame,
             text="Debug Output",
             variable=self.debug_mode_var,
             style="Switch.TCheckbutton",
-        ).pack(side="left", padx=0, pady=0)
+        )
+        self.debug_output_toggle.pack(side="left", padx=0, pady=0)
 
         # Clear debug button
-        ttk.Button(debug_controls_frame, text="Clear Debug Log", command=self.clear).pack(side="right", pady=0)
+        self.clear_debug_button = ttk.Button(debug_controls_frame, text="Clear Debug Log", command=self.clear)
+        self.clear_debug_button.pack(side="right", pady=0)
 
         # Debug text widget with scrollbar
         debug_scroll = ttk.Scrollbar(self)
@@ -77,6 +84,20 @@ class DebugConsolePanel(ttk.Frame):
         self.text.tag_configure("error", foreground="red")  # Errors
 
         debug_scroll.config(command=self.text.yview)
+        self._register_tooltips()
+
+    def _register_tooltips(self) -> None:
+        """Register static tooltips for user-facing controls."""
+        if self.tooltip_manager is None:
+            return
+        self.tooltip_manager.register(
+            self.debug_output_toggle,
+            "Show diagnostic messages from the app, including monitor and parser status information",
+        )
+        self.tooltip_manager.register(
+            self.clear_debug_button,
+            "Clear the current debug console contents",
+        )
 
     def log(self, message: str, msg_type: str = "debug") -> None:
         """Add a message to the debug console.

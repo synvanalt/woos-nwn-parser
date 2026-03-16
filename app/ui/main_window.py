@@ -24,6 +24,7 @@ from ..utils import IMPORT_RESULT_QUEUE_MAXSIZE, import_worker_process
 from ..services import QueueProcessor, DPSCalculationService
 from .formatters import get_default_log_directory
 from .message_dialogs import show_warning_dialog
+from .tooltips import TooltipManager
 from .window_style import apply_dark_title_bar
 from .widgets import DPSPanel, TargetStatsPanel, ImmunityPanel, DeathSnippetPanel, DebugConsolePanel
 
@@ -137,6 +138,7 @@ class WoosNwnParserApp:
 
         # Get the font object defined by the Sun Valley theme to use inside tk non-themed widgets (e.g., tk.Text)
         self.theme_font = font.nametofont("SunValleyBodyFont")
+        self.tooltip_manager = TooltipManager(self.root)
 
         self.setup_ui()
         self.process_queue()
@@ -161,12 +163,14 @@ class WoosNwnParserApp:
         file_frame = ttk.Frame(control_frame)
         file_frame.pack(fill="x", pady=(0, 10))
 
-        ttk.Label(file_frame, text="Log Directory:").pack(side="left", padx=5)
+        self.log_directory_label = ttk.Label(file_frame, text="Log Directory:")
+        self.log_directory_label.pack(side="left", padx=5)
         self.dir_text = tk.StringVar(value="No directory selected")
         self.dir_label = ttk.Entry(file_frame, state="readonly", textvariable=self.dir_text, foreground="gray", width=40)
         self.dir_label.pack(side="left", fill="x", expand=True, padx=(2, 2))
 
-        ttk.Label(file_frame, text="File:").pack(side="left", padx=(10, 0))
+        self.active_file_name_label = ttk.Label(file_frame, text="File:")
+        self.active_file_name_label.pack(side="left", padx=(10, 0))
         self.active_file_text = tk.StringVar(value="N/A")
         self.active_file_label = ttk.Entry(file_frame, state="readonly", textvariable=self.active_file_text, foreground="gray", width=13)
         self.active_file_label.pack(side="left", padx=5)
@@ -207,14 +211,14 @@ class WoosNwnParserApp:
         self.notebook.pack(fill="both", expand=True, padx=10, pady=(5, 10))
 
         # Tab 1: DPS Panel (using DPSPanel widget)
-        self.dps_panel = DPSPanel(self.notebook, self.data_store, self.dps_service)
+        self.dps_panel = DPSPanel(self.notebook, self.data_store, self.dps_service, tooltip_manager=self.tooltip_manager)
         self._restore_persisted_dps_panel_state()
         self.notebook.add(self.dps_panel, text=self._dps_tab_text)
         self.dps_panel.time_tracking_combo.bind("<<ComboboxSelected>>", self._on_time_tracking_mode_changed)
         self.dps_panel.target_filter_combo.bind("<<ComboboxSelected>>", self._on_target_filter_changed)
 
         # Tab 2: Target Stats Panel (using TargetStatsPanel widget)
-        self.stats_panel = TargetStatsPanel(self.notebook, self.data_store)
+        self.stats_panel = TargetStatsPanel(self.notebook, self.data_store, tooltip_manager=self.tooltip_manager)
         self.notebook.add(self.stats_panel, text="Target Stats")
 
         # Tab 3: Immunity Panel (using ImmunityPanel widget)
@@ -222,13 +226,14 @@ class WoosNwnParserApp:
             self.notebook,
             self.data_store,
             self.parser,
+            tooltip_manager=self.tooltip_manager,
             on_parse_immunity_changed=self._on_parse_immunity_changed,
         )
         self.notebook.add(self.immunity_panel, text="Target Immunities")
         self.immunity_panel.target_combo.bind("<<ComboboxSelected>>", self.on_target_selected)
 
         # Tab 4: Death Snippets Panel
-        self.death_snippet_panel = DeathSnippetPanel(self.notebook)
+        self.death_snippet_panel = DeathSnippetPanel(self.notebook, tooltip_manager=self.tooltip_manager)
         self.death_snippet_panel.set_fallback_death_line(self._initial_death_fallback_line)
         self.notebook.add(self.death_snippet_panel, text="Death Snippets")
         self.death_snippet_panel.configure_identity_callbacks(
@@ -239,9 +244,37 @@ class WoosNwnParserApp:
         self.parser.set_death_fallback_line(self.death_snippet_panel.get_fallback_death_line())
 
         # Tab 5: Debug Console Panel (using DebugConsolePanel widget)
-        self.debug_panel = DebugConsolePanel(self.notebook)
+        self.debug_panel = DebugConsolePanel(self.notebook, tooltip_manager=self.tooltip_manager)
         self.debug_panel.debug_mode_var.trace("w", self._on_debug_toggle)
         self.notebook.bind("<Button-1>", self._on_notebook_click, add=True)
+        self._register_tooltips()
+
+    def _register_tooltips(self) -> None:
+        """Register static tooltips for main-window controls."""
+        self.tooltip_manager.register_many(
+            [self.log_directory_label, self.dir_label],
+            "Folder containing your NWN client log files",
+        )
+        self.tooltip_manager.register_many(
+            [self.active_file_name_label, self.active_file_label],
+            "Current log file the monitor considers active",
+        )
+        self.tooltip_manager.register(
+            self.browse_button,
+            "Choose the folder that contains your Neverwinter Nights client logs",
+        )
+        self.tooltip_manager.register(
+            self.monitoring_switch,
+            "Turn live log monitoring on or off",
+        )
+        self.tooltip_manager.register(
+            self.clear_button,
+            "Clear all parsed data from this session",
+        )
+        self.tooltip_manager.register(
+            self.load_parse_button,
+            "Select one or more existing log files and parse them on demand",
+        )
 
     def browse_directory(self) -> None:
         """Open directory dialog to select log directory."""
