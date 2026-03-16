@@ -365,8 +365,11 @@ class WoosNwnParserApp:
         progress.start(8)
         self.import_modal._progressbar = progress
 
-        self.import_abort_button = ttk.Button(container, text="Abort", command=self.abort_load_parse)
-        self.import_abort_button.pack(anchor="se", pady=(14, 0))
+        actions = ttk.Frame(container)
+        actions.pack(side="bottom", fill="x")
+
+        self.import_abort_button = ttk.Button(actions, text="Abort", command=self.abort_load_parse)
+        self.import_abort_button.pack(anchor="e")
 
         self.import_modal.protocol("WM_DELETE_WINDOW", self.abort_load_parse)
 

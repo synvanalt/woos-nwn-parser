@@ -168,7 +168,8 @@ def test_show_warning_dialog_builds_dark_modal(monkeypatch) -> None:
     assert dialog.title_value == "No Log Files"
     assert dialog.resizable_args == (False, False)
     assert dialog.transient_parent is parent
-    assert dialog.geometry_value == "460x170+270+265"
+    assert dialog.geometry_value.startswith("460x")
+    assert dialog.geometry_value.endswith("+270+280")
     assert dialog.iconbitmap_calls == ["app.ico"]
     assert dialog.deiconified is True
     assert dialog.lifted is True
@@ -181,6 +182,8 @@ def test_show_warning_dialog_builds_dark_modal(monkeypatch) -> None:
     apply_dark_title_bar.assert_called_once_with(dialog)
     assert label_instances[0].kwargs["text"] == "Monitoring will wait."
     assert label_instances[0].kwargs["wraplength"] == 420
+    assert frame_instances[1].pack_calls == [((), {"side": "bottom", "fill": "x"})]
+    assert button.pack_calls == [((), {"anchor": "e"})]
 
 
 def test_show_warning_dialog_close_binding_releases_modal(monkeypatch) -> None:

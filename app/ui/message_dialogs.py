@@ -77,7 +77,10 @@ def _show_dialog(
         text=message,
         justify="left",
         wraplength=420,
-    ).pack(anchor="w")
+    ).pack(anchor="w", fill="x")
+
+    actions = ttk.Frame(container)
+    actions.pack(side="bottom", fill="x")
 
     def _close(*_args: object) -> None:
         try:
@@ -86,8 +89,8 @@ def _show_dialog(
             pass
         dialog.destroy()
 
-    ok_button = ttk.Button(container, text="OK", command=_close)
-    ok_button.pack(anchor="e", pady=(16, 0))
+    ok_button = ttk.Button(actions, text="OK", command=_close)
+    ok_button.pack(anchor="e")
 
     dialog.protocol("WM_DELETE_WINDOW", _close)
     dialog.bind("<Return>", _close)

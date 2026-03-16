@@ -11,6 +11,74 @@ from app.ui.main_window import WoosNwnParserApp
 from app.parser import LogParser
 
 
+class _FakeImportToplevel:
+    def __init__(self, parent) -> None:
+        self.parent = parent
+        self._progressbar = None
+        self.protocol_calls = {}
+        self.attributes_calls = []
+
+    def withdraw(self) -> None:
+        return None
+
+    def configure(self, **_kwargs) -> None:
+        return None
+
+    def title(self, _value: str) -> None:
+        return None
+
+    def resizable(self, _width: bool, _height: bool) -> None:
+        return None
+
+    def transient(self, _parent) -> None:
+        return None
+
+    def protocol(self, name: str, callback) -> None:
+        self.protocol_calls[name] = callback
+
+    def attributes(self, *args) -> None:
+        self.attributes_calls.append(args)
+
+    def update_idletasks(self) -> None:
+        return None
+
+    def deiconify(self) -> None:
+        return None
+
+    def lift(self) -> None:
+        return None
+
+    def grab_set(self) -> None:
+        return None
+
+    def after(self, _ms: int, callback) -> None:
+        callback()
+
+    def after_idle(self, callback) -> None:
+        callback()
+
+
+class _FakeWidget:
+    instances = []
+
+    def __init__(self, *args, **kwargs) -> None:
+        self.args = args
+        self.kwargs = kwargs
+        self.pack_calls = []
+        self.started_with = None
+        self.focused = False
+        self.__class__.instances.append(self)
+
+    def pack(self, *args, **kwargs) -> None:
+        self.pack_calls.append((args, kwargs))
+
+    def start(self, interval: int) -> None:
+        self.started_with = interval
+
+    def focus_set(self) -> None:
+        self.focused = True
+
+
 def _make_app_shell() -> WoosNwnParserApp:
     app = WoosNwnParserApp.__new__(WoosNwnParserApp)
     app.is_importing = False
@@ -93,6 +161,40 @@ class TestLoadAndParseWorkflow:
         assert app.import_abort_event.is_set() is True
         app.import_abort_button.config.assert_called_once()
         app.import_status_text.set.assert_called_once_with("Aborting...")
+
+    def test_show_import_modal_places_abort_button_in_bottom_actions_row(self, monkeypatch) -> None:
+        app = _make_app_shell()
+        app.root = Mock()
+        app.abort_load_parse = Mock()
+        app._center_window_on_parent = Mock()
+        app._apply_modal_icon = Mock()
+
+        class FakeFrame(_FakeWidget):
+            instances = []
+
+        class FakeLabel(_FakeWidget):
+            instances = []
+
+        class FakeProgressbar(_FakeWidget):
+            instances = []
+
+        class FakeButton(_FakeWidget):
+            instances = []
+
+        monkeypatch.setattr(main_window_module.tk, "Toplevel", _FakeImportToplevel)
+        monkeypatch.setattr(main_window_module.ttk, "Frame", FakeFrame)
+        monkeypatch.setattr(main_window_module.ttk, "Label", FakeLabel)
+        monkeypatch.setattr(main_window_module.ttk, "Progressbar", FakeProgressbar)
+        monkeypatch.setattr(main_window_module.ttk, "Button", FakeButton)
+        monkeypatch.setattr(main_window_module, "apply_dark_title_bar", Mock())
+        monkeypatch.setattr(main_window_module.tk, "StringVar", lambda value=None: Mock(value=value))
+
+        app._show_import_modal()
+
+        assert len(FakeFrame.instances) == 2
+        assert FakeFrame.instances[1].pack_calls == [((), {"side": "bottom", "fill": "x"})]
+        assert FakeButton.instances[0].pack_calls == [((), {"anchor": "e"})]
+        assert FakeProgressbar.instances[0].started_with == 8
 
     def test_finalize_import_resets_ui_and_refreshes(self) -> None:
         app = _make_app_shell()
