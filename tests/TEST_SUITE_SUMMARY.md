@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 16, 2026 (log-directory browse and delayed-file discovery coverage refresh)
+**Last Updated:** March 16, 2026 (dark-dialog theming and monitoring filename retention coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **654 tests collected**
+- Result: **659 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 35 modules, 605 tests
+- `tests/unit/`: 36 modules, 610 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 43 test modules, 654 tests
+- Total: 44 test modules, 659 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -48,9 +48,10 @@ Notes:
 - `test_ui_optimizations.py` (19)
 - `test_death_snippet_panel.py` (26)
 - `test_debug_console_panel.py` (6)
-- `test_main_window_load_parse.py` (22)
+- `test_main_window_load_parse.py` (23)
+- `test_message_dialogs.py` (3)
 - `test_settings.py` (9)
-- `test_main_window_monitoring_switch.py` (6)
+- `test_main_window_monitoring_switch.py` (7)
 - `test_main_window_debug_tab_unlock.py` (5)
 - `test_main_window_orchestration.py` (24)
 - `test_monitor_edge_cases.py` (4)
@@ -93,10 +94,11 @@ Notes:
 - DPS service/pipeline:
   - `test_dps_service.py`, `test_dps_pipeline_integration.py`
 - UI widget/main-window behavior and refresh optimizations:
-  - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
+  - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_message_dialogs.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
   - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, tree-sort scan bypass when callers already control order, and Target Stats staying empty after Clear Data-style store clears
   - Includes main-window orchestration coverage for single-read target-list fanout and panel refresh coordination, plus regression coverage that full tree rebuilds do not reapply sort more than necessary
-  - Includes browse-directory coverage for `File` label fallback to `N/A`, active-file selection from the newest NWN log, and monitor rebinding when the user changes directories mid-session
+  - Includes browse-directory coverage for `File` label fallback to `N/A`, active-file selection from the newest NWN log, monitor rebinding when the user changes directories mid-session, and retention of the last known filename when monitoring is paused
+  - Includes dark modal dialog coverage for app-owned warning popups and bottom-right action-row alignment shared by warning and import-progress modals
   - Includes import payload application coverage for batched mutation submission on the Tk thread while preserving death-snippet delivery, death-character auto-identification, and queue-drain lifecycle behavior
   - Includes Death Snippets coverage for guarded `wooparseme` auto-identification and one-click character-name clearing back to the hint state
   - Includes dedicated realtime backlog coverage for bounded queue saturation, post-read monitor backpressure pacing, pressure-banded Tk drain budgets, and coalesced refresh behavior under producer-faster-than-consumer load
