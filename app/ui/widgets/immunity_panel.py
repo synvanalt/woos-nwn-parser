@@ -35,7 +35,7 @@ class ImmunityPanel(ttk.Frame):
     # )
 
     DISCLAIMER_TEXT = (
-        "*Displayed immunity % may be overstated if target also has damage resistance or reduction"
+        "*Displayed immunity % may be overstated if target also has damage resistance or damage reduction"
     )
 
     def __init__(

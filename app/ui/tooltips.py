@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import tkinter as tk
 from tkinter import font
 from typing import Optional
+import weakref
 
 
 @dataclass(frozen=True)
@@ -24,13 +25,17 @@ class TooltipManager:
 
     def __init__(self, host: tk.Misc) -> None:
         self.host = host
-        self._specs: dict[tk.Misc, TooltipSpec] = {}
-        self._bind_ids: dict[tk.Misc, dict[str, str]] = {}
+        self._specs: weakref.WeakKeyDictionary[tk.Misc, TooltipSpec] = weakref.WeakKeyDictionary()
+        self._tagged_widgets: weakref.WeakSet[tk.Misc] = weakref.WeakSet()
         self._popup: Optional[tk.Toplevel] = None
         self._label: Optional[tk.Label] = None
         self._pending_widget: Optional[tk.Misc] = None
         self._active_widget: Optional[tk.Misc] = None
         self._show_job = None
+        self._bindtag = f"TooltipTarget_{id(self)}"
+        self._class_sequences = ("<Enter>", "<Leave>", "<ButtonPress>")
+        self._popup_bind_ids: dict[str, str] = {}
+        self._install_bindtag_handlers()
 
     def register(
         self,
@@ -48,12 +53,10 @@ class TooltipManager:
             wraplength=TooltipSpec.wraplength if wraplength is None else int(wraplength),
         )
         self._specs[widget] = spec
-        self._bind_ids[widget] = {
-            "<Enter>": widget.bind("<Enter>", lambda event, w=widget: self._on_enter(w, event), add=True),
-            "<Leave>": widget.bind("<Leave>", lambda event, w=widget: self._on_leave(w, event), add=True),
-            "<ButtonPress>": widget.bind("<ButtonPress>", lambda event, w=widget: self._on_leave(w, event), add=True),
-            "<Destroy>": widget.bind("<Destroy>", lambda event, w=widget: self._on_destroy(w, event), add=True),
-        }
+        bindtags = widget.bindtags()
+        if self._bindtag not in bindtags:
+            widget.bindtags((self._bindtag, *bindtags))
+        self._tagged_widgets.add(widget)
 
     def register_many(
         self,
@@ -69,15 +72,25 @@ class TooltipManager:
 
     def unregister(self, widget: tk.Misc) -> None:
         """Remove tooltip bindings and metadata for a widget."""
-        bind_ids = self._bind_ids.pop(widget, {})
-        for sequence, bind_id in bind_ids.items():
-            try:
-                widget.unbind(sequence, bind_id)
-            except tk.TclError:
-                pass
         self._specs.pop(widget, None)
+        self._remove_bindtag(widget)
         if self._active_widget is widget or self._pending_widget is widget:
             self.hide()
+
+    def destroy(self) -> None:
+        """Release tooltip resources before the host toplevel is destroyed."""
+        self.hide()
+        self._specs.clear()
+        self._remove_all_bindtags()
+        self._unbind_class_handlers()
+        popup = self._popup
+        self._popup = None
+        self._label = None
+        if popup is not None:
+            try:
+                popup.destroy()
+            except tk.TclError:
+                pass
 
     def hide(self) -> None:
         """Hide the tooltip popup and clear active state."""
@@ -90,20 +103,26 @@ class TooltipManager:
             except tk.TclError:
                 pass
 
-    def _on_enter(self, widget: tk.Misc, event: tk.Event) -> None:
+    def _on_enter(self, event: tk.Event) -> None:
+        widget = self._coerce_widget(getattr(event, "widget", None))
+        if widget is None:
+            return
         spec = self._specs.get(widget)
         if spec is None or not spec.text:
             return
         self._cancel_show_job()
         self._pending_widget = widget
-        self._show_job = widget.after(spec.delay_ms, lambda w=widget, e=event: self._show(w, e))
+        self._show_job = self.host.after(spec.delay_ms, lambda w=widget, x=event.x_root, y=event.y_root: self._show(w, x, y))
 
-    def _on_leave(self, widget: tk.Misc, _event: tk.Event) -> None:
+    def _on_leave(self, event: tk.Event) -> None:
+        widget = self._coerce_widget(getattr(event, "widget", None))
+        if widget is None:
+            return
         if self._pending_widget is widget or self._active_widget is widget:
             self.hide()
 
-    def _on_destroy(self, widget: tk.Misc, _event: tk.Event) -> None:
-        self.unregister(widget)
+    def _on_popup_dismiss(self, _event: tk.Event) -> None:
+        self.hide()
 
     def _cancel_show_job(self) -> None:
         if self._show_job is None:
@@ -142,10 +161,50 @@ class TooltipManager:
             font=tooltip_font,
         )
         label.pack(fill="both", expand=True)
-        popup.bind("<FocusOut>", lambda _event: self.hide(), add=True)
-        popup.bind("<Unmap>", lambda _event: self.hide(), add=True)
+        self._popup_bind_ids = {
+            "<FocusOut>": popup.bind("<FocusOut>", self._on_popup_dismiss, add=True),
+            "<Unmap>": popup.bind("<Unmap>", self._on_popup_dismiss, add=True),
+        }
         self._popup = popup
         self._label = label
+
+    def _install_bindtag_handlers(self) -> None:
+        """Bind shared event handlers for the tooltip bindtag."""
+        self.host.bind_class(self._bindtag, "<Enter>", self._on_enter)
+        self.host.bind_class(self._bindtag, "<Leave>", self._on_leave)
+        self.host.bind_class(self._bindtag, "<ButtonPress>", self._on_leave)
+
+    def _unbind_class_handlers(self) -> None:
+        """Remove manager-owned shared class bindings."""
+        for sequence in self._class_sequences:
+            try:
+                self.host.bind_class(self._bindtag, sequence, "")
+            except tk.TclError:
+                pass
+
+    def _remove_bindtag(self, widget: tk.Misc) -> None:
+        """Remove the tooltip bindtag from a widget if it still exists."""
+        try:
+            bindtags = tuple(tag for tag in widget.bindtags() if tag != self._bindtag)
+            widget.bindtags(bindtags)
+        except tk.TclError:
+            pass
+        try:
+            self._tagged_widgets.discard(widget)
+        except TypeError:
+            pass
+
+    def _remove_all_bindtags(self) -> None:
+        """Detach the tooltip bindtag from all still-live widgets."""
+        for widget in list(self._tagged_widgets):
+            self._remove_bindtag(widget)
+
+    @staticmethod
+    def _coerce_widget(widget: object) -> Optional[tk.Misc]:
+        """Return a Tk widget object when the event target is usable."""
+        if isinstance(widget, tk.Misc):
+            return widget
+        return None
 
     def _resolve_outline_color(self) -> str:
         """Return a muted border color from the active Sun Valley dark theme."""
@@ -163,7 +222,7 @@ class TooltipManager:
                     return value
         return "#7a7a7a"
 
-    def _show(self, widget: tk.Misc, event: tk.Event) -> None:
+    def _show(self, widget: tk.Misc, x_root: int, y_root: int) -> None:
         self._show_job = None
         if self._pending_widget is not widget:
             return
@@ -174,8 +233,8 @@ class TooltipManager:
         if self._popup is None or self._label is None:
             return
         self._label.configure(text=spec.text, wraplength=spec.wraplength)
-        x = int(event.x_root) + spec.offset_x
-        y = int(event.y_root) + spec.offset_y
+        x = int(x_root) + spec.offset_x
+        y = int(y_root) + spec.offset_y
         self._popup.update_idletasks()
         width = self._popup.winfo_reqwidth()
         height = self._popup.winfo_reqheight()

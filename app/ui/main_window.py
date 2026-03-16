@@ -135,6 +135,7 @@ class WoosNwnParserApp:
         self._debug_unlock_click_target = 7
         self._debug_unlock_window_seconds = 3.0
         self._dps_tab_text = "Damage Per Second"
+        self._is_closing = False
 
         # Get the font object defined by the Sun Valley theme to use inside tk non-themed widgets (e.g., tk.Text)
         self.theme_font = font.nametofont("SunValleyBodyFont")
@@ -1239,6 +1240,9 @@ class WoosNwnParserApp:
 
     def on_closing(self) -> None:
         """Handle application closing."""
+        if getattr(self, "_is_closing", False):
+            return
+        self._is_closing = True
         self._flush_pending_session_settings_save()
         if self.is_importing:
             self.import_abort_event.set()
@@ -1248,6 +1252,8 @@ class WoosNwnParserApp:
                 self.import_process.terminate()
         self.pause_monitoring()
         self.data_store.close()
+        if hasattr(self, "tooltip_manager"):
+            self.tooltip_manager.destroy()
         self.root.destroy()
 
     def _build_session_settings(self) -> AppSettings:

@@ -395,6 +395,21 @@ def test_on_closing_terminates_active_import_process(app_shell) -> None:
     app_shell.root.destroy.assert_called_once()
 
 
+def test_on_closing_is_reentrant_safe(app_shell) -> None:
+    app_shell._flush_pending_session_settings_save = Mock()
+    app_shell.data_store = Mock()
+    app_shell.pause_monitoring = Mock()
+    app_shell.tooltip_manager = Mock()
+
+    app_shell.on_closing()
+    app_shell.on_closing()
+
+    app_shell.pause_monitoring.assert_called_once()
+    app_shell.data_store.close.assert_called_once()
+    app_shell.tooltip_manager.destroy.assert_called_once()
+    app_shell.root.destroy.assert_called_once()
+
+
 def test_init_uses_persisted_settings_over_defaults(monkeypatch) -> None:
     root = Mock()
     root.after = Mock()
