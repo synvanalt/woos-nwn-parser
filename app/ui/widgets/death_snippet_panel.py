@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, Optional
 
 from ...constants import DAMAGE_TYPE_PALETTE
 from ..formatters import damage_type_to_color
+from ..tooltips import TooltipManager
 
 
 def _compile_damage_patterns() -> tuple[tuple[str, ...], tuple[tuple[str, re.Pattern[str]], ...], tuple[tuple[str, re.Pattern[str]], ...]]:
@@ -66,9 +67,10 @@ class DeathSnippetPanel(ttk.Frame):
         re.IGNORECASE,
     )
 
-    def __init__(self, parent: ttk.Notebook) -> None:
+    def __init__(self, parent: ttk.Notebook, tooltip_manager: Optional[TooltipManager] = None) -> None:
         super().__init__(parent, padding="10")
         self._notebook = parent
+        self.tooltip_manager = tooltip_manager
         self.death_events: list[Dict[str, Any]] = []
         self._event_sequence: int = 0
         self.killed_by_var = tk.StringVar(value=self.EMPTY_DROPDOWN_PLACEHOLDER)
@@ -99,12 +101,13 @@ class DeathSnippetPanel(ttk.Frame):
 
         character_row = ttk.Frame(config_frame)
         character_row.pack(fill="x", pady=(0, 7))
-        ttk.Label(
+        self.character_name_label = ttk.Label(
             character_row,
             text="Character Name:",
             width=self.CONFIG_LABEL_WIDTH,
             anchor="w",
-        ).pack(side="left", padx=(0, 5))
+        )
+        self.character_name_label.pack(side="left", padx=(0, 5))
         self.character_name_entry = ttk.Entry(
             character_row,
             textvariable=self.character_name_var,
@@ -121,12 +124,13 @@ class DeathSnippetPanel(ttk.Frame):
 
         fallback_row = ttk.Frame(config_frame)
         fallback_row.pack(fill="x", pady=(0, 7))
-        ttk.Label(
+        self.fallback_line_label = ttk.Label(
             fallback_row,
             text="Fallback Log Line:",
             width=self.CONFIG_LABEL_WIDTH,
             anchor="w",
-        ).pack(side="left", padx=(0, 5))
+        )
+        self.fallback_line_label.pack(side="left", padx=(0, 5))
         self.fallback_death_line_entry = ttk.Entry(
             fallback_row,
             textvariable=self.fallback_death_line_var,
@@ -141,12 +145,13 @@ class DeathSnippetPanel(ttk.Frame):
             _event.widget.selection_clear()
             self.render_selected_event()
 
-        ttk.Label(
+        self.killed_by_label = ttk.Label(
             selector_frame,
             text="Killed by:",
             width=self.CONFIG_LABEL_WIDTH,
             anchor="w",
-        ).pack(side="left", padx=(0, 5))
+        )
+        self.killed_by_label.pack(side="left", padx=(0, 5))
         self.killed_by_combo = ttk.Combobox(
             selector_frame,
             state="disabled",
@@ -156,12 +161,13 @@ class DeathSnippetPanel(ttk.Frame):
         self.killed_by_combo.pack(side="left", fill="x", expand=True)
         self.killed_by_combo.bind("<<ComboboxSelected>>", _on_death_selected)
 
-        ttk.Checkbutton(
+        self.line_wrap_toggle = ttk.Checkbutton(
             selector_frame,
             text="Line Wrap",
             variable=self.line_wrap_var,
             command=self._on_line_wrap_toggled,
-        ).pack(side="left", padx=(8, 0))
+        )
+        self.line_wrap_toggle.pack(side="left", padx=(8, 0))
 
         text_frame = ttk.Frame(self)
         text_frame.pack(fill="both", expand=True)
@@ -184,6 +190,32 @@ class DeathSnippetPanel(ttk.Frame):
         self._enable_character_name_hint_if_empty()
         self.character_name_var.trace_add("write", self._on_character_name_text_changed)
         self.fallback_death_line_var.trace_add("write", self._on_fallback_line_text_changed)
+        self._register_tooltips()
+
+    def _register_tooltips(self) -> None:
+        """Register static tooltips for user-facing controls."""
+        if self.tooltip_manager is None:
+            return
+        self.tooltip_manager.register_many(
+            [self.character_name_label, self.character_name_entry],
+            "Your character name for detection of death events",
+        )
+        self.tooltip_manager.register(
+            self.clear_name_button,
+            "Clear the saved character name and return to auto-detection or manual entry",
+        )
+        self.tooltip_manager.register_many(
+            [self.fallback_line_label, self.fallback_death_line_entry],
+            "Backup text used to detect your death when character name is left empty",
+        )
+        self.tooltip_manager.register_many(
+            [self.killed_by_label, self.killed_by_combo],
+            "Choose a recorded death event to display",
+        )
+        self.tooltip_manager.register(
+            self.line_wrap_toggle,
+            "Wrap long log lines to the panel width",
+        )
 
     def _on_notebook_tab_changed(self, _event: tk.Event) -> None:
         """Set default focus to selector dropdown when entering this panel."""

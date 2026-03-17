@@ -6,11 +6,12 @@ with time tracking modes and target filtering.
 
 import tkinter as tk
 from tkinter import ttk
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 from ...storage import DataStore
 from ...services import DPSCalculationService
 from ..formatters import damage_type_to_color, apply_tag_to_tree, format_time
+from ..tooltips import TooltipManager
 from .sorted_treeview import SortedTreeview
 
 
@@ -30,6 +31,7 @@ class DPSPanel(ttk.Frame):
         parent: ttk.Notebook,
         data_store: DataStore,
         dps_service: DPSCalculationService,
+        tooltip_manager: Optional[TooltipManager] = None,
     ) -> None:
         """Initialize the DPS panel.
 
@@ -41,6 +43,7 @@ class DPSPanel(ttk.Frame):
         super().__init__(parent, padding="10")
         self.data_store = data_store
         self.dps_service = dps_service
+        self.tooltip_manager = tooltip_manager
         # Cache for incremental updates
         self._cached_data: dict = {}  # character -> {dps, total_damage, hit_rate, time}
         self._cached_breakdown: dict = {}  # character -> [(damage_type, total_damage, dps), ...]
@@ -103,9 +106,8 @@ class DPSPanel(ttk.Frame):
         dps_controls_frame.pack(fill="x", expand=False, padx=0, pady=(10, 0))
 
         # First timestamp mode selector
-        ttk.Label(dps_controls_frame, text="First Timestamp:").pack(
-            side="left", padx=(5, 5)
-        )
+        self.first_timestamp_label = ttk.Label(dps_controls_frame, text="First Timestamp:")
+        self.first_timestamp_label.pack(side="left", padx=(5, 5))
         self.time_tracking_var = tk.StringVar(value="Per Character")
         self.time_tracking_combo = ttk.Combobox(
             dps_controls_frame,
@@ -118,9 +120,8 @@ class DPSPanel(ttk.Frame):
         self.time_tracking_combo.current(0)
 
         # Target Selector
-        ttk.Label(dps_controls_frame, text="Filter Target:").pack(
-            side="left", padx=(5, 5)
-        )
+        self.filter_target_label = ttk.Label(dps_controls_frame, text="Filter Target:")
+        self.filter_target_label.pack(side="left", padx=(5, 5))
         self.target_filter_var = tk.StringVar(value="All")
         self.target_filter_combo = ttk.Combobox(
             dps_controls_frame,
@@ -131,6 +132,20 @@ class DPSPanel(ttk.Frame):
         )
         self.target_filter_combo.pack(side="left", fill="x", expand=True, padx=(0, 12))
         self.target_filter_combo.current(0)
+        self._register_tooltips()
+
+    def _register_tooltips(self) -> None:
+        """Register static tooltips for user-facing controls."""
+        if self.tooltip_manager is None:
+            return
+        self.tooltip_manager.register_many(
+            [self.first_timestamp_label, self.time_tracking_combo],
+            "Choose how time is measured for DPS – 'Per Character' starts each attacker at their own first hit, 'Global' uses one shared session start time",
+        )
+        self.tooltip_manager.register_many(
+            [self.filter_target_label, self.target_filter_combo],
+            "Limit the DPS table to damage dealt to one target, or show all targets combined",
+        )
 
     def refresh(self) -> None:
         """Refresh the DPS display with current data using incremental updates.

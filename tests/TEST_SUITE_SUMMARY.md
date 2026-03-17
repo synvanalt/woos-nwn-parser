@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 16, 2026 (dark-dialog theming and monitoring filename retention coverage refresh)
+**Last Updated:** March 16, 2026 (tooltip coverage and dark-theme tooltip outline refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **659 tests collected**
+- Result: **665 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 36 modules, 610 tests
+- `tests/unit/`: 38 modules, 616 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 44 test modules, 659 tests
+- Total: 46 test modules, 665 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -59,6 +59,8 @@ Notes:
 - `test_realtime_backpressure.py` (2)
 - `test_sorted_treeview_edge_cases.py` (7)
 - `test_storage_edge_branches.py` (8)
+- `test_tooltip_registration.py` (3)
+- `test_tooltips.py` (3)
 - `test_utils_worker_pipeline.py` (14)
 
 ### Integration (`tests/integration`)
@@ -99,6 +101,7 @@ Notes:
   - Includes main-window orchestration coverage for single-read target-list fanout and panel refresh coordination, plus regression coverage that full tree rebuilds do not reapply sort more than necessary
   - Includes browse-directory coverage for `File` label fallback to `N/A`, active-file selection from the newest NWN log, monitor rebinding when the user changes directories mid-session, and retention of the last known filename when monitoring is paused
   - Includes dark modal dialog coverage for app-owned warning popups and bottom-right action-row alignment shared by warning and import-progress modals
+  - Includes shared tooltip-manager coverage for delayed show/hide behavior, popup reuse, overwrite-safe registration, and first-pass tooltip wiring on the main window plus DPS, Target Immunities, Death Snippets, and Debug controls
   - Includes import payload application coverage for batched mutation submission on the Tk thread while preserving death-snippet delivery, death-character auto-identification, and queue-drain lifecycle behavior
   - Includes Death Snippets coverage for guarded `wooparseme` auto-identification and one-click character-name clearing back to the hint state
   - Includes dedicated realtime backlog coverage for bounded queue saturation, post-read monitor backpressure pacing, pressure-banded Tk drain budgets, and coalesced refresh behavior under producer-faster-than-consumer load

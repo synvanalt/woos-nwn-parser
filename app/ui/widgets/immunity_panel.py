@@ -13,6 +13,7 @@ from ...storage import DataStore
 from ...parser import LogParser
 from ...utils import calculate_immunity_percentage
 from ..formatters import damage_type_to_color, apply_tag_to_tree
+from ..tooltips import TooltipManager
 from .sorted_treeview import SortedTreeview
 
 
@@ -34,7 +35,7 @@ class ImmunityPanel(ttk.Frame):
     # )
 
     DISCLAIMER_TEXT = (
-        "*Displayed immunity % may be overstated if target also has damage resistance or reduction"
+        "*Displayed immunity % may be overstated if target also has damage resistance or damage reduction"
     )
 
     def __init__(
@@ -42,6 +43,7 @@ class ImmunityPanel(ttk.Frame):
         parent: ttk.Notebook,
         data_store: DataStore,
         parser: LogParser,
+        tooltip_manager: Optional[TooltipManager] = None,
         on_parse_immunity_changed: Optional[Callable[[bool], None]] = None,
     ) -> None:
         """Initialize the immunity panel.
@@ -54,6 +56,7 @@ class ImmunityPanel(ttk.Frame):
         super().__init__(parent, padding="10")
         self.data_store = data_store
         self.parser = parser
+        self.tooltip_manager = tooltip_manager
         self.on_parse_immunity_changed = on_parse_immunity_changed
         self.immunity_pct_cache: Dict[str, Dict[str, Optional[int]]] = {}
         self._cached_target: str = ""
@@ -81,13 +84,14 @@ class ImmunityPanel(ttk.Frame):
                 self.on_parse_immunity_changed(val)
             self.refresh_display()
 
-        ttk.Checkbutton(
+        self.parse_immunity_toggle = ttk.Checkbutton(
             selector_frame,
             text="Parse Immunities",
             variable=self.parse_immunity_var,
             command=_on_toggle_immunity,
             style="Switch.TCheckbutton",
-        ).pack(side="left", padx=0, pady=0)
+        )
+        self.parse_immunity_toggle.pack(side="left", padx=0, pady=0)
 
         def _on_target_selected(event: tk.Event) -> None:
             """Handle target selection change."""
@@ -98,7 +102,8 @@ class ImmunityPanel(ttk.Frame):
         self.target_combo = ttk.Combobox(selector_frame, state="readonly", width=30)
         self.target_combo.pack(side="right", padx=5, fill="x", expand=False)
         self.target_combo.bind("<<ComboboxSelected>>", _on_target_selected)
-        ttk.Label(selector_frame, text="Select Target:").pack(side="right", padx=5)
+        self.select_target_label = ttk.Label(selector_frame, text="Select Target:")
+        self.select_target_label.pack(side="right", padx=5)
 
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True)
@@ -139,6 +144,20 @@ class ImmunityPanel(ttk.Frame):
         )
         self.disclaimer_label.pack(fill="x", padx=(10, 10), pady=(8, 0))
         self.bind("<Configure>", self._on_panel_resize)
+        self._register_tooltips()
+
+    def _register_tooltips(self) -> None:
+        """Register static tooltips for user-facing controls."""
+        if self.tooltip_manager is None:
+            return
+        self.tooltip_manager.register(
+            self.parse_immunity_toggle,
+            "Parse damage immunity log lines to estimate immunity percentages per damage type",
+        )
+        self.tooltip_manager.register_many(
+            [self.select_target_label, self.target_combo],
+            "Choose which target to inspect for immunity and absorbed-damage details",
+        )
 
     def _on_panel_resize(self, event: tk.Event) -> None:
         """Keep disclaimer wrapping aligned with the current panel width."""

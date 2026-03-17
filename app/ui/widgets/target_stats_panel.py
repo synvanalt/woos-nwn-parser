@@ -4,10 +4,11 @@ This module contains the TargetStatsPanel widget that displays target
 statistics including AC, AB, and save values.
 """
 
-from typing import Any
+from typing import Any, Optional
 from tkinter import ttk
 
 from ...storage import DataStore
+from ..tooltips import TooltipManager
 from .sorted_treeview import SortedTreeview
 
 
@@ -26,6 +27,7 @@ class TargetStatsPanel(ttk.Frame):
         parent: ttk.Notebook,
         data_store: DataStore,
         parser=None,
+        tooltip_manager: Optional[TooltipManager] = None,
     ) -> None:
         """Initialize the target stats panel.
 
@@ -37,6 +39,7 @@ class TargetStatsPanel(ttk.Frame):
         super().__init__(parent, padding="10")
         self.data_store = data_store
         self.parser = parser
+        self.tooltip_manager = tooltip_manager
         self._cached_rows: dict = {}
         self._item_ids: dict = {}
         self._cached_row_tokens: dict[str, tuple[Any, ...]] = {}
