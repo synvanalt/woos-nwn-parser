@@ -1,6 +1,6 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 20, 2026 (shared ingestion pipeline parity coverage refresh)
+**Last Updated:** March 20, 2026 (typed parsed-event fixture cleanup refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
@@ -148,6 +148,9 @@ Notes:
 - `tests/helpers/store_mutations.py`
   - Provides shared builders for the public-first storage API, including `apply(...)`, `damage_row(...)`, `dps_update(...)`, `damage_dealt(...)`, `attack(...)`, `immunity(...)`, `save(...)`, and `epic_dodge(...)`.
   - Used by storage, panel, DPS service, and import-related tests to keep setup aligned with production mutation batching.
+- `tests/helpers/parsed_event_factories.py`
+  - Provides typed parsed-event builders for queue and ingestion tests, including damage, immunity, attack, save, and death-related events.
+  - Keeps parsed-event fixtures aligned with the strict runtime dataclass contract without reintroducing dict-to-event compatibility shims.
 
 ## Fixture Files (`tests/fixtures`)
 

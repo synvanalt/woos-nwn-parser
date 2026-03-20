@@ -188,7 +188,7 @@ woos-nwn-parser/
 
 **LogParser** (`parser.py`)
 - Parses NWN combat log lines using regex patterns
-- Extracts damage, attacks, saves, immunity, and death snippet events
+- Emits typed parsed events for damage, attacks, saves, immunity, and death
 - Supports player filtering and immunity parsing toggles
 
 **DataStore** (`storage.py`)
@@ -210,7 +210,7 @@ woos-nwn-parser/
 
 **QueueProcessor** (`services/queue_processor.py`)
 - Drains the live parser queue in bounded batches
-- Delegates parsed-event normalization to the shared ingestion engine
+- Consumes typed parsed events through the shared ingestion engine
 - Aggregates deduplicated UI refresh targets and side events into the drain result
 - Manages periodic cleanup of stale immunity queue entries
 
@@ -220,7 +220,7 @@ woos-nwn-parser/
 - Keeps unmatched damage/immunity observations in bounded queues and prunes stale entries
 
 **EventIngestionEngine** (`services/event_ingestion.py`)
-- Converts parsed damage, attack, save, immunity, and death-related events into normalized store mutations and side events
+- Converts typed parsed damage, attack, save, immunity, and death events into normalized store mutations and side events
 - Owns the transient immunity-matching state used by both live monitoring and historic import
 - Keeps live queue processing and import payload generation aligned through one shared normalization path
 
