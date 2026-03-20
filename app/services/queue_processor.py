@@ -16,7 +16,6 @@ from ..parsed_events import (
     AttackCriticalHitEvent,
     AttackHitEvent,
     AttackMissEvent,
-    coerce_parsed_event,
     DamageDealtEvent,
     DeathCharacterIdentifiedEvent,
     DeathSnippetEvent,
@@ -95,7 +94,6 @@ class QueueProcessor:
                         break
 
                 data = data_queue.get_nowait()
-                data = coerce_parsed_event(data)
                 result.events_processed += 1
 
                 event_result = self._handle_event_batched(
@@ -178,7 +176,7 @@ class QueueProcessor:
 
     def _handle_event_batched(
         self,
-        data: ParsedEvent | dict[str, Any],
+        data: ParsedEvent,
         pending_mutations: List[StoreMutation],
         on_log_message: Callable[[str, str], None],
         debug_enabled: bool,
@@ -209,11 +207,7 @@ class QueueProcessor:
         )
 
         if not event_result.handled:
-            event_type = data.type if isinstance(data, ParsedEvent) else str(data.get("type", "unknown"))
-            message = data.get("message", "")
-            if not message:
-                message = f"Event: {event_type} - {data}"
-            on_log_message(message, event_type)
+            on_log_message(f"Unhandled parsed event: {data}", "error")
 
         result: Dict[str, Any] = {}
         if event_result.dps_updated:
@@ -233,16 +227,13 @@ class QueueProcessor:
     def _log_debug_event(
         self,
         *,
-        data: ParsedEvent | dict[str, Any],
+        data: ParsedEvent,
         event_result: IngestionResult,
         had_pending_immunity_types: set[str],
         on_log_message: Callable[[str, str], None],
         debug_enabled: bool,
     ) -> None:
         if not debug_enabled:
-            return
-
-        if isinstance(data, dict):
             return
 
         if isinstance(data, DamageDealtEvent):

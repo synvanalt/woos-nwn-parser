@@ -9,6 +9,14 @@ from unittest.mock import Mock
 import app.utils
 from app.models import AttackMutation, DamageMutation, EpicDodgeMutation, ImmunityMutation, SaveMutation
 from app.parser import LogParser
+from app.parsed_events import (
+    AttackHitEvent,
+    DamageDealtEvent,
+    DeathCharacterIdentifiedEvent,
+    DeathSnippetEvent,
+    ImmunityObservedEvent,
+    SaveObservedEvent,
+)
 from app.services.event_ingestion import EventIngestionEngine
 from app.services.queue_processor import QueueProcessor
 from app.storage import DataStore
@@ -394,55 +402,50 @@ def test_iter_file_ops_chunks_streams_large_parse_without_materializing(monkeypa
 def test_shared_ingestion_engine_matches_queue_processor_and_import_payloads(monkeypatch) -> None:
     now = datetime(2026, 1, 9, 14, 30, 0)
     parsed_events = [
-        {
-            "type": "immunity",
-            "target": "Goblin",
-            "damage_type": "Fire",
-            "immunity_points": 10,
-            "timestamp": now,
-            "line_number": 1,
-        },
-        {
-            "type": "damage_dealt",
-            "attacker": "Woo",
-            "target": "Goblin",
-            "total_damage": 50,
-            "damage_types": {"Physical": 30, "Fire": 20},
-            "timestamp": now,
-            "line_number": 2,
-        },
-        {
-            "type": "attack_hit",
-            "attacker": "Woo",
-            "target": "Goblin",
-            "roll": 14,
-            "bonus": 5,
-            "total": 19,
-            "timestamp": now,
-            "line_number": 3,
-        },
-        {
-            "type": "save",
-            "target": "Goblin",
-            "save_type": "fort",
-            "bonus": 12,
-            "timestamp": now,
-            "line_number": 4,
-        },
-        {
-            "type": "death_snippet",
-            "target": "Goblin",
-            "killer": "Woo",
-            "lines": ["a", "b"],
-            "timestamp": now,
-            "line_number": 5,
-        },
-        {
-            "type": "death_character_identified",
-            "character_name": "Woo Wildrock",
-            "timestamp": now,
-            "line_number": 6,
-        },
+        ImmunityObservedEvent(
+            target="Goblin",
+            damage_type="Fire",
+            immunity_points=10,
+            dmg_reduced=10,
+            timestamp=now,
+            line_number=1,
+        ),
+        DamageDealtEvent(
+            attacker="Woo",
+            target="Goblin",
+            total_damage=50,
+            damage_types={"Physical": 30, "Fire": 20},
+            timestamp=now,
+            line_number=2,
+        ),
+        AttackHitEvent(
+            attacker="Woo",
+            target="Goblin",
+            roll=14,
+            bonus=5,
+            total=19,
+            timestamp=now,
+            line_number=3,
+        ),
+        SaveObservedEvent(
+            target="Goblin",
+            save_type="fort",
+            bonus=12,
+            timestamp=now,
+            line_number=4,
+        ),
+        DeathSnippetEvent(
+            target="Goblin",
+            killer="Woo",
+            lines=["a", "b"],
+            timestamp=now,
+            line_number=5,
+        ),
+        DeathCharacterIdentifiedEvent(
+            character_name="Woo Wildrock",
+            timestamp=now,
+            line_number=6,
+        ),
     ]
 
     engine = EventIngestionEngine(parse_immunity=True)
@@ -477,11 +480,11 @@ def test_shared_ingestion_engine_matches_queue_processor_and_import_payloads(mon
     def _normalize_death_events(items):
         return [
             {
-                "type": item.get("type"),
-                "target": item.get("target", ""),
-                "killer": item.get("killer", ""),
-                "lines": item.get("lines", []),
-                "timestamp": item.get("timestamp"),
+                "type": item.type,
+                "target": item.target,
+                "killer": item.killer,
+                "lines": item.lines or [],
+                "timestamp": item.timestamp,
             }
             for item in items
         ]
@@ -489,8 +492,8 @@ def test_shared_ingestion_engine_matches_queue_processor_and_import_payloads(mon
     def _normalize_identity_events(items):
         return [
             {
-                "type": item.get("type"),
-                "character_name": item.get("character_name", ""),
+                "type": item.type,
+                "character_name": item.character_name,
             }
             for item in items
         ]

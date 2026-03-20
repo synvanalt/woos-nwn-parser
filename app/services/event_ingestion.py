@@ -17,7 +17,6 @@ from ..parsed_events import (
     AttackCriticalHitEvent,
     AttackHitEvent,
     AttackMissEvent,
-    coerce_parsed_event,
     DamageDealtEvent,
     DeathCharacterIdentifiedEvent,
     DeathSnippetEvent,
@@ -97,9 +96,8 @@ class EventIngestionEngine:
             return self._disabled_matcher.pending_immunity_queue
         return self._matcher.pending_immunity_queue
 
-    def consume(self, parsed_event: ParsedEvent | dict[str, object]) -> IngestionResult:
+    def consume(self, parsed_event: ParsedEvent) -> IngestionResult:
         """Consume one parsed event and return normalized outputs."""
-        parsed_event = coerce_parsed_event(parsed_event)
         if isinstance(parsed_event, DamageDealtEvent):
             return self._consume_damage(parsed_event)
         if isinstance(parsed_event, ImmunityObservedEvent):

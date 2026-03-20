@@ -9,6 +9,7 @@ from pathlib import Path
 
 from app.monitor import LogDirectoryMonitor
 from app.parser import LogParser
+from app.parsed_events import DamageDealtEvent
 
 
 class TestDebugMode:
@@ -260,7 +261,7 @@ class TestDebugModeBackwardCompatibility:
         while not data_queue.empty():
             items.append(data_queue.get())
 
-        damage_events = [i for i in items if i.get('type') == 'damage_dealt']
+        damage_events = [i for i in items if isinstance(i, DamageDealtEvent)]
         assert len(damage_events) >= 1  # At least one damage event parsed
 
     def test_error_messages_still_queued(self, temp_log_dir: Path) -> None:

@@ -10,6 +10,7 @@ from unittest.mock import Mock
 from app.services.queue_processor import QueueProcessor
 from app.storage import DataStore
 from app.parser import LogParser
+from tests.helpers.parsed_events import from_dict
 
 
 class TestBatchedEventProcessing:
@@ -26,14 +27,14 @@ class TestBatchedEventProcessing:
 
         # Add multiple damage events with attacker set
         for i in range(10):
-            data_queue.put({
+            data_queue.put(from_dict({
                 'type': 'damage_dealt',
                 'attacker': 'Woo',  # Must have attacker for DPS tracking
                 'target': 'Goblin',
                 'total_damage': 50,  # Must have damage > 0
                 'timestamp': now,
                 'damage_types': {'Physical': 50}
-            })
+            }))
 
         result = processor.process_queue(data_queue, Mock())
         assert result.dps_updated is True
@@ -49,14 +50,14 @@ class TestBatchedEventProcessing:
 
         # Add multiple attacks to same target
         for i in range(10):
-            data_queue.put({
+            data_queue.put(from_dict({
                 'type': 'attack_hit',
                 'attacker': 'Woo',
                 'target': 'Goblin',
                 'roll': 15,
                 'bonus': 10,
                 'total': 25
-            })
+            }))
 
         result = processor.process_queue(data_queue, Mock())
         assert result.targets_to_refresh == {'Goblin'}
@@ -73,14 +74,14 @@ class TestBatchedEventProcessing:
         # Add attacks to 3 different targets
         for target in ['Goblin', 'Orc', 'Dragon']:
             for i in range(5):
-                data_queue.put({
+                data_queue.put(from_dict({
                     'type': 'attack_hit',
                     'attacker': 'Woo',
                     'target': target,
                     'roll': 15,
                     'bonus': 10,
                     'total': 25
-                })
+                }))
 
         result = processor.process_queue(data_queue, Mock())
         assert result.targets_to_refresh == {'Goblin', 'Orc', 'Dragon'}
@@ -95,23 +96,23 @@ class TestBatchedEventProcessing:
         now = datetime.now()
 
         # Queue immunity event
-        data_queue.put({
+        data_queue.put(from_dict({
             'type': 'immunity',
             'target': 'Goblin',
             'damage_type': 'Fire',
             'immunity_points': 10,
             'timestamp': now
-        })
+        }))
 
         # Queue matching damage event
-        data_queue.put({
+        data_queue.put(from_dict({
             'type': 'damage_dealt',
             'attacker': 'Woo',
             'target': 'Goblin',
             'total_damage': 50,
             'timestamp': now,
             'damage_types': {'Fire': 50}
-        })
+        }))
 
         result = processor.process_queue(data_queue, Mock())
         assert result.immunity_targets == {'Goblin'}
@@ -127,14 +128,14 @@ class TestBatchedEventProcessing:
 
         # Add multiple damage events to same target
         for i in range(5):
-            data_queue.put({
+            data_queue.put(from_dict({
                 'type': 'damage_dealt',
                 'attacker': 'Woo',
                 'target': 'Goblin',
                 'total_damage': 50,
                 'timestamp': now,
                 'damage_types': {'Physical': 50}
-            })
+            }))
 
         result = processor.process_queue(data_queue, Mock())
         assert result.damage_targets == {'Goblin'}
@@ -149,23 +150,23 @@ class TestBatchedEventProcessing:
         now = datetime.now()
 
         # Add mixed events
-        data_queue.put({
+        data_queue.put(from_dict({
             'type': 'damage_dealt',
             'attacker': 'Woo',
             'target': 'Goblin',
             'total_damage': 50,
             'timestamp': now,
             'damage_types': {'Physical': 50}
-        })
+        }))
 
-        data_queue.put({
+        data_queue.put(from_dict({
             'type': 'attack_hit',
             'attacker': 'Woo',
             'target': 'Orc',
             'roll': 15,
             'bonus': 10,
             'total': 25
-        })
+        }))
 
         # Process queue
         processor.process_queue(data_queue, Mock())
@@ -208,14 +209,14 @@ class TestBatchedProcessingPerformance:
 
         # Add many events with valid attacker and damage
         for i in range(num_events):
-            data_queue.put({
+            data_queue.put(from_dict({
                 'type': 'damage_dealt',
                 'attacker': 'Woo',  # Must have attacker
                 'target': 'Goblin',
                 'total_damage': 50,  # Must have damage > 0
                 'timestamp': now,
                 'damage_types': {'Physical': 50}
-            })
+            }))
 
         result = processor.process_queue(data_queue, Mock())
         assert result.dps_updated is True
@@ -238,23 +239,23 @@ class TestBatchedProcessingPerformance:
 
             # Mix of attacks and damage
             if i % 2 == 0:
-                data_queue.put({
+                data_queue.put(from_dict({
                     'type': 'attack_hit',
                     'attacker': 'Woo',
                     'target': target,
                     'roll': 15,
                     'bonus': 10,
                     'total': 25
-                })
+                }))
             else:
-                data_queue.put({
+                data_queue.put(from_dict({
                     'type': 'damage_dealt',
                     'attacker': 'Woo',
                     'target': target,
                     'total_damage': 50,
                     'timestamp': now,
                     'damage_types': {'Physical': 50}
-                })
+                }))
 
         result = processor.process_queue(data_queue, Mock())
         assert result.dps_updated is True
@@ -275,14 +276,14 @@ class TestBatchedProcessingPerformance:
         now = datetime.now()
 
         for _ in range(2501):
-            data_queue.put({
+            data_queue.put(from_dict({
                 'type': 'damage_dealt',
                 'attacker': 'Woo',
                 'target': 'Goblin',
                 'total_damage': 50,
                 'timestamp': now,
                 'damage_types': {'Physical': 50}
-            })
+            }))
 
         result = processor.process_queue(data_queue, Mock(), max_events=1)
 

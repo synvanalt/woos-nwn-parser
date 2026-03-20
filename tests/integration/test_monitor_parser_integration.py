@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app.monitor import LogDirectoryMonitor
 from app.parser import LogParser
+from app.parsed_events import DamageDealtEvent
 from tests.conftest import LogMessageCapture
 
 
@@ -40,7 +41,7 @@ class TestMonitorParserIntegration:
             events.append(item)
 
         # Should have parsed the damage line
-        damage_events = [e for e in events if e.get('type') == 'damage_dealt']
+        damage_events = [e for e in events if isinstance(e, DamageDealtEvent)]
         assert len(damage_events) > 0
 
 

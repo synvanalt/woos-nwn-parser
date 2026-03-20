@@ -8,6 +8,7 @@ import queue
 import threading
 import multiprocessing as mp
 import time
+from datetime import datetime
 from time import perf_counter
 from collections import deque
 from pathlib import Path
@@ -17,6 +18,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, font
 
 from ..parser import LogParser
+from ..parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
 from ..storage import DataStore
 from ..monitor import LogDirectoryMonitor
 from ..settings import AppSettings, load_app_settings, save_app_settings
@@ -512,13 +514,17 @@ class WoosNwnParserApp:
 
             death_snippets = item['death_snippets']
             if death_snippets:
-                self.death_snippet_panel.add_death_events(death_snippets)
+                self.death_snippet_panel.add_death_events(
+                    [self._death_snippet_from_payload(event) for event in death_snippets]
+                )
                 item['death_snippets'] = []
 
             identity_events = item['death_character_identified']
             if identity_events:
                 for identity_event in identity_events:
-                    self._on_death_character_identified(identity_event)
+                    self._on_death_character_identified(
+                        self._death_character_identified_from_payload(identity_event)
+                    )
                 item['death_character_identified'] = []
 
             self._pending_file_payloads.popleft()
@@ -1211,13 +1217,39 @@ class WoosNwnParserApp:
         if self.immunity_panel.target_combo.get() == target:
             self.immunity_panel.refresh_display()
 
-    def _on_death_snippet(self, event: Dict[str, Any]) -> None:
+    @staticmethod
+    def _death_snippet_from_payload(payload: Dict[str, Any]) -> DeathSnippetEvent:
+        """Build a typed death-snippet event from import payload data."""
+        timestamp = payload.get("timestamp")
+        if not isinstance(timestamp, datetime):
+            timestamp = datetime.min
+        return DeathSnippetEvent(
+            target=str(payload.get("target", "")),
+            killer=str(payload.get("killer", "")),
+            lines=list(payload.get("lines", []) or []),
+            timestamp=timestamp,
+            line_number=None,
+        )
+
+    @staticmethod
+    def _death_character_identified_from_payload(payload: Dict[str, Any]) -> DeathCharacterIdentifiedEvent:
+        """Build a typed identity event from import payload data."""
+        timestamp = payload.get("timestamp")
+        if not isinstance(timestamp, datetime):
+            timestamp = datetime.min
+        return DeathCharacterIdentifiedEvent(
+            character_name=str(payload.get("character_name", "")),
+            timestamp=timestamp,
+            line_number=None,
+        )
+
+    def _on_death_snippet(self, event: DeathSnippetEvent) -> None:
         """Callback from queue processor when a death snippet is produced."""
         self.death_snippet_panel.add_death_event(event)
 
-    def _on_death_character_identified(self, event: Dict[str, Any]) -> None:
+    def _on_death_character_identified(self, event: DeathCharacterIdentifiedEvent) -> None:
         """Callback when parser auto-identifies player character via whisper token."""
-        character_name = str(event.get("character_name", "")).strip()
+        character_name = event.character_name.strip()
         if not character_name:
             return
         if self.death_snippet_panel.get_character_name():

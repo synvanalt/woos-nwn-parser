@@ -181,12 +181,12 @@ class TestDamageDealtParsing:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'damage_dealt'
-        assert result['attacker'] == 'Woo'
-        assert result['target'] == 'Goblin'
-        assert result['total_damage'] == 50
-        assert result['damage_types'] == {'Physical': 30, 'Fire': 20}
-        assert isinstance(result['timestamp'], datetime)
+        assert result.type == 'damage_dealt'
+        assert result.attacker == 'Woo'
+        assert result.target == 'Goblin'
+        assert result.total_damage == 50
+        assert result.damage_types == {'Physical': 30, 'Fire': 20}
+        assert isinstance(result.timestamp, datetime)
 
     def test_parse_damage_with_multiword_types(self, parser: LogParser) -> None:
         """Test parsing damage with multi-word damage types."""
@@ -194,7 +194,7 @@ class TestDamageDealtParsing:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['damage_types'] == {'Positive Energy': 50, 'Divine': 30, 'Pure': 20}
+        assert result.damage_types == {'Positive Energy': 50, 'Divine': 30, 'Pure': 20}
 
     def test_parse_damage_player_filter_match(self, parser_with_player: LogParser) -> None:
         """Test parsing damage when player matches filter."""
@@ -203,7 +203,7 @@ class TestDamageDealtParsing:
 
         assert result is not None
         assert isinstance(result, DamageDealtEvent)
-        assert result['attacker'] == 'TestPlayer'
+        assert result.attacker == 'TestPlayer'
 
     def test_parse_damage_player_filter_no_match(self, parser_with_player: LogParser) -> None:
         """Damage events still emit normally even when player_name differs."""
@@ -212,7 +212,7 @@ class TestDamageDealtParsing:
 
         assert result is not None
         assert isinstance(result, DamageDealtEvent)
-        assert result["attacker"] == "OtherPlayer"
+        assert result.attacker == "OtherPlayer"
 
 
 class TestImmunityParsing:
@@ -230,10 +230,10 @@ class TestImmunityParsing:
         result = parser_with_immunity.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'immunity'
-        assert result['target'] == 'Goblin'
-        assert result['damage_type'] == 'Fire'
-        assert result['immunity_points'] == 10
+        assert result.type == 'immunity'
+        assert result.target == 'Goblin'
+        assert result.damage_type == 'Fire'
+        assert result.immunity_points == 10
 
     def test_parse_immunity_points_variant(self, parser_with_immunity: LogParser) -> None:
         """Test parsing immunity with 'points'."""
@@ -241,8 +241,8 @@ class TestImmunityParsing:
         result = parser_with_immunity.parse_line(line)
 
         assert result is not None
-        assert result['immunity_points'] == 5
-        assert result['damage_type'] == 'Cold'
+        assert result.immunity_points == 5
+        assert result.damage_type == 'Cold'
 
     def test_parse_immunity_point_singular(self, parser_with_immunity: LogParser) -> None:
         """Test parsing immunity with 'point' (singular)."""
@@ -250,7 +250,7 @@ class TestImmunityParsing:
         result = parser_with_immunity.parse_line(line)
 
         assert result is not None
-        assert result['immunity_points'] == 1
+        assert result.immunity_points == 1
 
 
 class TestAttackParsing:
@@ -263,12 +263,12 @@ class TestAttackParsing:
 
         assert result is not None
         assert isinstance(result, AttackHitEvent)
-        assert result['type'] == 'attack_hit'
-        assert result['attacker'] == 'Woo'
-        assert result['target'] == 'Goblin'
-        assert result['roll'] == 14
-        assert result['bonus'] == 5
-        assert result['total'] == 19
+        assert result.type == 'attack_hit'
+        assert result.attacker == 'Woo'
+        assert result.target == 'Goblin'
+        assert result.roll == 14
+        assert result.bonus == 5
+        assert result.total == 19
 
     def test_parse_attack_miss(self, parser: LogParser) -> None:
         """Test parsing attack miss."""
@@ -276,9 +276,9 @@ class TestAttackParsing:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_miss'
-        assert result['roll'] == 8
-        assert result['total'] == 13
+        assert result.type == 'attack_miss'
+        assert result.roll == 8
+        assert result.total == 13
 
     def test_parse_attack_critical_hit(self, parser: LogParser) -> None:
         """Test parsing critical hit."""
@@ -286,8 +286,8 @@ class TestAttackParsing:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_hit_critical'
-        assert result['roll'] == 18
+        assert result.type == 'attack_hit_critical'
+        assert result.roll == 18
 
     def test_parse_attack_natural_1(self, parser: LogParser) -> None:
         """Test parsing natural 1 miss."""
@@ -295,8 +295,8 @@ class TestAttackParsing:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_miss'
-        assert result['was_nat1'] is True
+        assert result.type == 'attack_miss'
+        assert result.was_nat1 is True
 
     def test_parse_attack_natural_20(self, parser: LogParser) -> None:
         """Test parsing natural 20 hit."""
@@ -304,8 +304,8 @@ class TestAttackParsing:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_hit'
-        assert result['was_nat20'] is True
+        assert result.type == 'attack_hit'
+        assert result.was_nat20 is True
 
     def test_parse_attack_preserves_totals_for_downstream_ac_tracking(self, parser: LogParser) -> None:
         """Test attack events preserve totals for downstream AC tracking."""
@@ -316,13 +316,13 @@ class TestAttackParsing:
         miss_result = parser.parse_line(miss_line)
 
         assert hit_result is not None
-        assert hit_result['type'] == 'attack_hit'
-        assert hit_result['target'] == 'Goblin'
-        assert hit_result['total'] == 21
+        assert hit_result.type == 'attack_hit'
+        assert hit_result.target == 'Goblin'
+        assert hit_result.total == 21
         assert miss_result is not None
-        assert miss_result['type'] == 'attack_miss'
-        assert miss_result['target'] == 'Goblin'
-        assert miss_result['total'] == 15
+        assert miss_result.type == 'attack_miss'
+        assert miss_result.target == 'Goblin'
+        assert miss_result.total == 15
 
     def test_parse_attack_emits_bonus_for_downstream_tracking(self, parser: LogParser) -> None:
         """Test that parsing attacks emits bonus data for downstream tracking."""
@@ -330,8 +330,8 @@ class TestAttackParsing:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['attacker'] == 'Goblin'
-        assert result['bonus'] == 8
+        assert result.attacker == 'Goblin'
+        assert result.bonus == 8
 
     def test_parse_concealment_miss_excluded_from_ac(self, parser: LogParser) -> None:
         """Test that concealment misses are excluded from AC estimation.
@@ -346,12 +346,12 @@ class TestAttackParsing:
         )
 
         assert hit_result is not None
-        assert hit_result['type'] == 'attack_hit'
-        assert hit_result['total'] == 40
+        assert hit_result.type == 'attack_hit'
+        assert hit_result.total == 40
         assert concealment_result is not None
-        assert concealment_result['type'] == 'attack_miss'
-        assert concealment_result['is_concealment'] is True
-        assert concealment_result['total'] == 79
+        assert concealment_result.type == 'attack_miss'
+        assert concealment_result.is_concealment is True
+        assert concealment_result.total == 79
 
     def test_parse_concealment_miss_does_not_drop_event(self, parser: LogParser) -> None:
         """Concealment-only attacks should still emit miss events."""
@@ -359,9 +359,9 @@ class TestAttackParsing:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_miss'
-        assert result['is_concealment'] is True
-        assert result['target'] == 'Mage'
+        assert result.type == 'attack_miss'
+        assert result.is_concealment is True
+        assert result.target == 'Mage'
 
     def test_parse_concealment_with_regular_misses(self, parser: LogParser) -> None:
         """Test that concealment misses don't interfere with regular AC estimation.
@@ -377,14 +377,14 @@ class TestAttackParsing:
         hit_result = parser.parse_line("Warrior attacks DisplacedBoss: *hit*: (15 + 30 = 45)")
 
         assert miss_result is not None
-        assert miss_result['type'] == 'attack_miss'
-        assert miss_result['is_concealment'] is False
-        assert miss_result['total'] == 38
+        assert miss_result.type == 'attack_miss'
+        assert miss_result.is_concealment is False
+        assert miss_result.total == 38
         assert concealment_result is not None
-        assert concealment_result['is_concealment'] is True
+        assert concealment_result.is_concealment is True
         assert hit_result is not None
-        assert hit_result['type'] == 'attack_hit'
-        assert hit_result['total'] == 45
+        assert hit_result.type == 'attack_hit'
+        assert hit_result.total == 45
 
     def test_parse_concealment_percentage_variations(self, parser: LogParser) -> None:
         """Test parsing concealment misses with different percentages."""
@@ -396,8 +396,8 @@ class TestAttackParsing:
         ]
 
         assert hit_result is not None
-        assert hit_result['type'] == 'attack_hit'
-        assert all(result is not None and result['is_concealment'] is True for result in concealment_results)
+        assert hit_result.type == 'attack_hit'
+        assert all(result is not None and result.is_concealment is True for result in concealment_results)
 
     def test_parse_target_concealed_without_outcome_is_ignored(self, parser: LogParser) -> None:
         """No-outcome target-concealed lines should not emit attacks or affect stats."""
@@ -420,12 +420,12 @@ class TestAttackParsing:
 
         assert result is not None
         assert isinstance(result, AttackCriticalHitEvent)
-        assert result['type'] == 'attack_hit_critical'
-        assert result['attacker'] == 'Woo Whirlwind'
-        assert result['target'] == 'Cerberus'
-        assert result['roll'] == 19
-        assert result['bonus'] == 17
-        assert result['total'] == 36
+        assert result.type == 'attack_hit_critical'
+        assert result.attacker == 'Woo Whirlwind'
+        assert result.target == 'Cerberus'
+        assert result.roll == 19
+        assert result.bonus == 17
+        assert result.total == 36
 
     def test_parse_target_concealed_malformed_roll_falls_back_cleanly(self, parser: LogParser) -> None:
         """Malformed target-concealed fast-path lines should fail cleanly."""
@@ -452,7 +452,7 @@ class TestAttackParsing:
             parser.parse_line("Enemy attacks WooWildrock: *hit*: (11 + 45 = 56)"),
         ]
 
-        assert [result['type'] if result else None for result in results] == [
+        assert [result.type if result else None for result in results] == [
             'attack_hit',
             'attack_hit',
             'attack_miss',
@@ -460,8 +460,8 @@ class TestAttackParsing:
             'attack_miss',
             'attack_hit',
         ]
-        assert results[3] is not None and results[3]['is_concealment'] is True
-        assert results[4] is not None and results[4]['is_concealment'] is True
+        assert results[3] is not None and results[3].is_concealment is True
+        assert results[4] is not None and results[4].is_concealment is True
 
 
 class TestEpicDodgeParsing:
@@ -473,16 +473,16 @@ class TestEpicDodgeParsing:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result["type"] == "epic_dodge"
-        assert result["target"] == "Epic Undead Monk"
+        assert result.type == "epic_dodge"
+        assert result.target == "Epic Undead Monk"
 
     def test_parse_epic_dodge_emits_event(self, parser: LogParser) -> None:
         """Test Epic Dodge line emits a queue event for downstream consumers."""
         line = "Epic Undead Monk : Epic Dodge : Attack evaded"
         result = parser.parse_line(line)
         assert result is not None
-        assert result["type"] == "epic_dodge"
-        assert result["target"] == "Epic Undead Monk"
+        assert result.type == "epic_dodge"
+        assert result.target == "Epic Undead Monk"
 
     def test_parse_epic_dodge_preserves_target_name(self, parser: LogParser) -> None:
         """Test Epic Dodge parsing preserves complex target names."""
@@ -491,7 +491,7 @@ class TestEpicDodgeParsing:
 
         target = "10 AC DUMMY - Chaotic Evil - Boss Damage Reduction"
         assert result is not None
-        assert result["target"] == target
+        assert result.target == target
 
 
 class TestAttackPrefixCombinations:
@@ -507,12 +507,12 @@ class TestAttackPrefixCombinations:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_hit'
-        assert result['attacker'] == 'Woo Whirlwind'
-        assert result['target'] == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
-        assert result['roll'] == 5
-        assert result['bonus'] == 66
-        assert result['total'] == 71
+        assert result.type == 'attack_hit'
+        assert result.attacker == 'Woo Whirlwind'
+        assert result.target == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
+        assert result.roll == 5
+        assert result.bonus == 66
+        assert result.total == 71
 
     def test_parse_attack_with_two_abilities(self, parser: LogParser) -> None:
         """Test parsing attack with two ability prefixes (Flurry of Blows + Sneak Attack)."""
@@ -520,12 +520,12 @@ class TestAttackPrefixCombinations:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_hit'
-        assert result['attacker'] == 'Woo Whirlwind'
-        assert result['target'] == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
-        assert result['roll'] == 5
-        assert result['bonus'] == 57
-        assert result['total'] == 62
+        assert result.type == 'attack_hit'
+        assert result.attacker == 'Woo Whirlwind'
+        assert result.target == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
+        assert result.roll == 5
+        assert result.bonus == 57
+        assert result.total == 62
 
     def test_parse_attack_off_hand_only(self, parser: LogParser) -> None:
         """Test parsing off-hand attack without ability prefix."""
@@ -533,12 +533,12 @@ class TestAttackPrefixCombinations:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_hit'
-        assert result['attacker'] == 'Woo Wildrock'
-        assert result['target'] == 'Ash-Tusk Clan High Priest'
-        assert result['roll'] == 6
-        assert result['bonus'] == 66
-        assert result['total'] == 72
+        assert result.type == 'attack_hit'
+        assert result.attacker == 'Woo Wildrock'
+        assert result.target == 'Ash-Tusk Clan High Priest'
+        assert result.roll == 6
+        assert result.bonus == 66
+        assert result.total == 72
 
     def test_parse_attack_off_hand_with_single_ability(self, parser: LogParser) -> None:
         """Test parsing off-hand attack with single ability (Death Attack)."""
@@ -546,12 +546,12 @@ class TestAttackPrefixCombinations:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_hit_critical'
-        assert result['attacker'] == 'GENERAL KORGAN'
-        assert result['target'] == 'Woo Wildrock'
-        assert result['roll'] == 18
-        assert result['bonus'] == 65
-        assert result['total'] == 83
+        assert result.type == 'attack_hit_critical'
+        assert result.attacker == 'GENERAL KORGAN'
+        assert result.target == 'Woo Wildrock'
+        assert result.roll == 18
+        assert result.bonus == 65
+        assert result.total == 83
 
     def test_parse_attack_with_threat_roll_hit(self, parser: LogParser) -> None:
         """Threat-roll hit lines should still parse as hits."""
@@ -562,12 +562,12 @@ class TestAttackPrefixCombinations:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result["type"] == "attack_hit"
-        assert result["attacker"] == "Tyrmon's Fighter"
-        assert result["target"] == "Cerberus"
-        assert result["roll"] == 20
-        assert result["bonus"] == 50
-        assert result["total"] == 70
+        assert result.type == "attack_hit"
+        assert result.attacker == "Tyrmon's Fighter"
+        assert result.target == "Cerberus"
+        assert result.roll == 20
+        assert result.bonus == 50
+        assert result.total == 70
 
     def test_parse_attack_off_hand_with_two_abilities(self, parser: LogParser) -> None:
         """Test parsing off-hand attack with two abilities (Flurry of Blows + Sneak Attack)."""
@@ -575,12 +575,12 @@ class TestAttackPrefixCombinations:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_hit'
-        assert result['attacker'] == 'Woo Whirlwind'
-        assert result['target'] == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
-        assert result['roll'] == 9
-        assert result['bonus'] == 45
-        assert result['total'] == 54
+        assert result.type == 'attack_hit'
+        assert result.attacker == 'Woo Whirlwind'
+        assert result.target == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
+        assert result.roll == 9
+        assert result.bonus == 45
+        assert result.total == 54
 
     def test_parse_attack_of_opportunity_only(self, parser: LogParser) -> None:
         """Test parsing attack of opportunity without other prefixes."""
@@ -588,12 +588,12 @@ class TestAttackPrefixCombinations:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_hit'
-        assert result['attacker'] == 'Woo Whirlwind'
-        assert result['target'] == '10 AC DUMMY'
-        assert result['roll'] == 5
-        assert result['bonus'] == 66
-        assert result['total'] == 71
+        assert result.type == 'attack_hit'
+        assert result.attacker == 'Woo Whirlwind'
+        assert result.target == '10 AC DUMMY'
+        assert result.roll == 5
+        assert result.bonus == 66
+        assert result.total == 71
 
     def test_parse_attack_no_prefix(self, parser: LogParser) -> None:
         """Test parsing basic attack without any prefix (regression test)."""
@@ -601,12 +601,12 @@ class TestAttackPrefixCombinations:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_hit'
-        assert result['attacker'] == 'Woo Whirlwind'
-        assert result['target'] == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
-        assert result['roll'] == 10
-        assert result['bonus'] == 61
-        assert result['total'] == 71
+        assert result.type == 'attack_hit'
+        assert result.attacker == 'Woo Whirlwind'
+        assert result.target == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
+        assert result.roll == 10
+        assert result.bonus == 61
+        assert result.total == 71
 
     def test_parse_attack_with_ability_miss(self, parser: LogParser) -> None:
         """Test parsing miss with ability prefix."""
@@ -614,11 +614,11 @@ class TestAttackPrefixCombinations:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_miss'
-        assert result['attacker'] == 'Woo Whirlwind'
-        assert result['target'] == '10 AC DUMMY'
-        assert result['roll'] == 3
-        assert result['total'] == 69
+        assert result.type == 'attack_miss'
+        assert result.attacker == 'Woo Whirlwind'
+        assert result.target == '10 AC DUMMY'
+        assert result.roll == 3
+        assert result.total == 69
 
     def test_parse_attack_with_ability_preserves_roll_data(self, parser: LogParser) -> None:
         """Test that attacks with ability prefixes preserve roll data."""
@@ -629,9 +629,9 @@ class TestAttackPrefixCombinations:
         miss_result = parser.parse_line(miss_line)
 
         assert hit_result is not None
-        assert hit_result['total'] == 62
+        assert hit_result.total == 62
         assert miss_result is not None
-        assert miss_result['total'] == 59
+        assert miss_result.total == 59
 
     def test_parse_attack_with_three_word_ability(self, parser: LogParser) -> None:
         """Test parsing attack with multi-word ability names."""
@@ -639,11 +639,11 @@ class TestAttackPrefixCombinations:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'attack_hit'
-        assert result['attacker'] == 'Woo Whirlwind'
-        assert result['target'] == 'Training Dummy'
-        assert result['roll'] == 15
-        assert result['total'] == 65
+        assert result.type == 'attack_hit'
+        assert result.attacker == 'Woo Whirlwind'
+        assert result.target == 'Training Dummy'
+        assert result.roll == 15
+        assert result.total == 65
 
     def test_parse_attack_with_plus_sign_ability_prefix(self, parser: LogParser) -> None:
         """Ability prefixes containing '+' should still preserve the attacker name."""
@@ -654,12 +654,12 @@ class TestAttackPrefixCombinations:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result["type"] == "attack_hit"
-        assert result["attacker"] == "SpecialistBuby"
-        assert result["target"] == "Cursed Beholder Tyrant"
-        assert result["roll"] == 12
-        assert result["bonus"] == 62
-        assert result["total"] == 74
+        assert result.type == "attack_hit"
+        assert result.attacker == "SpecialistBuby"
+        assert result.target == "Cursed Beholder Tyrant"
+        assert result.roll == 12
+        assert result.bonus == 62
+        assert result.total == 74
 
 
 class TestSaveParsing:
@@ -671,10 +671,10 @@ class TestSaveParsing:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['type'] == 'save'
-        assert result['target'] == 'Goblin'
-        assert result['save_type'] == 'fort'
-        assert result['bonus'] == 3
+        assert result.type == 'save'
+        assert result.target == 'Goblin'
+        assert result.save_type == 'fort'
+        assert result.bonus == 3
 
     def test_parse_reflex_save(self, parser: LogParser) -> None:
         """Test parsing reflex save."""
@@ -682,8 +682,8 @@ class TestSaveParsing:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['save_type'] == 'ref'
-        assert result['bonus'] == 2
+        assert result.save_type == 'ref'
+        assert result.bonus == 2
 
     def test_parse_will_save(self, parser: LogParser) -> None:
         """Test parsing will save."""
@@ -691,8 +691,8 @@ class TestSaveParsing:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['save_type'] == 'will'
-        assert result['bonus'] == 10
+        assert result.save_type == 'will'
+        assert result.bonus == 10
 
     def test_parse_save_preserves_bonus_for_downstream_tracking(self, parser: LogParser) -> None:
         """Test that parsing saves preserves bonus data."""
@@ -700,9 +700,9 @@ class TestSaveParsing:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result['target'] == 'Goblin'
-        assert result['save_type'] == 'fort'
-        assert result['bonus'] == 5
+        assert result.target == 'Goblin'
+        assert result.save_type == 'fort'
+        assert result.bonus == 5
 
 
 class TestEdgeCases:
@@ -729,7 +729,7 @@ class TestEdgeCases:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert isinstance(result['timestamp'], datetime)
+        assert isinstance(result.timestamp, datetime)
 
     def test_parse_line_with_malformed_timestamp_uses_single_cached_fallback_now(
         self,
@@ -752,7 +752,7 @@ class TestEdgeCases:
         result = parser.parse_line(line)
 
         assert result is not None
-        assert result["timestamp"] == FixedDatetime(2026, 3, 9, 12, 0, 0)
+        assert result.timestamp == FixedDatetime(2026, 3, 9, 12, 0, 0)
         assert calls == 1
 
     def test_parse_malformed_damage_breakdown(self, parser: LogParser) -> None:
@@ -781,12 +781,12 @@ class TestDeathSnippetParsing:
         )
 
         assert result is not None
-        assert result['type'] == 'death_snippet'
-        assert result['target'] == 'Woo Wildrock'
-        assert result['killer'] == 'HYDROXYS THE TRAVELER OF PLANES'
-        assert result['lines'][-1].endswith("Your God refuses to hear your prayers!")
+        assert result.type == 'death_snippet'
+        assert result.target == 'Woo Wildrock'
+        assert result.killer == 'HYDROXYS THE TRAVELER OF PLANES'
+        assert result.lines[-1].endswith("Your God refuses to hear your prayers!")
 
-        snippet_joined = "\n".join(result['lines'])
+        snippet_joined = "\n".join(result.lines)
         assert "HYDROXYS THE TRAVELER OF PLANES attacks Woo Wildrock" in snippet_joined
         # Case-sensitive matching: lower-case name line should not be included.
         assert "woo wildrock attacks" not in snippet_joined
@@ -815,7 +815,7 @@ class TestDeathSnippetParsing:
         )
 
         assert result is not None
-        snippet_joined = "\n".join(result['lines'])
+        snippet_joined = "\n".join(result.lines)
         assert "Orc attacks Ann" in snippet_joined
         assert "Orc attacks Anna" not in snippet_joined
 
@@ -825,8 +825,8 @@ class TestDeathSnippetParsing:
         )
 
         assert result is not None
-        assert result["type"] == "death_character_identified"
-        assert result["character_name"] == "Woo Wildrock"
+        assert result.type == "death_character_identified"
+        assert result.character_name == "Woo Wildrock"
         assert parser.death_character_name == "Woo Wildrock"
 
     def test_whisper_token_matching_is_case_insensitive(self, parser: LogParser) -> None:
@@ -834,8 +834,8 @@ class TestDeathSnippetParsing:
             "[CHAT WINDOW TEXT] [Sat Mar  7 17:53:39] Woo Wildrock: [Whisper] WoOPaRsEmE"
         )
         assert result is not None
-        assert result["type"] == "death_character_identified"
-        assert result["character_name"] == "Woo Wildrock"
+        assert result.type == "death_character_identified"
+        assert result.character_name == "Woo Wildrock"
 
     def test_character_known_uses_killed_line_and_ignores_fallback(self, parser: LogParser) -> None:
         parser.set_death_character_name("Woo Wildrock")
@@ -847,10 +847,10 @@ class TestDeathSnippetParsing:
         )
 
         assert death_event is not None
-        assert death_event["type"] == "death_snippet"
-        assert death_event["target"] == "Woo Wildrock"
-        assert death_event["killer"] == "HYDROXYS"
-        assert death_event["lines"][-1].endswith("HYDROXYS killed Woo Wildrock")
+        assert death_event.type == "death_snippet"
+        assert death_event.target == "Woo Wildrock"
+        assert death_event.killer == "HYDROXYS"
+        assert death_event.lines[-1].endswith("HYDROXYS killed Woo Wildrock")
 
         fallback_event = parser.parse_line(
             "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:37] Your God refuses to hear your prayers!"
@@ -874,6 +874,6 @@ class TestDeathSnippetParsing:
         )
 
         assert result is not None
-        assert result["type"] == "death_snippet"
-        assert result["target"] == "Woo Wildrock"
+        assert result.type == "death_snippet"
+        assert result.target == "Woo Wildrock"
 

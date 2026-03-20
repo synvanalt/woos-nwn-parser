@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 import app.ui.main_window as main_window_module
 from app.models import DamageMutation, SaveMutation
+from app.parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
 from app.ui.main_window import WoosNwnParserApp
 from app.parser import LogParser
 
@@ -279,12 +280,13 @@ class TestLoadAndParseWorkflow:
     def test_on_death_snippet_forwards_event_to_panel(self) -> None:
         app = _make_app_shell()
         app.death_snippet_panel = Mock()
-        event = {
-            "type": "death_snippet",
-            "target": "Woo Wildrock",
-            "killer": "HYDROXIS",
-            "lines": ["line-1", "line-2"],
-        }
+        event = DeathSnippetEvent(
+            target="Woo Wildrock",
+            killer="HYDROXIS",
+            lines=["line-1", "line-2"],
+            timestamp=main_window_module.datetime.min,
+            line_number=None,
+        )
 
         app._on_death_snippet(event)
 
@@ -314,6 +316,9 @@ class TestLoadAndParseWorkflow:
         app._apply_pending_payloads_incremental()
 
         app.death_snippet_panel.add_death_events.assert_called_once()
+        emitted = app.death_snippet_panel.add_death_events.call_args.args[0]
+        assert len(emitted) == 1
+        assert isinstance(emitted[0], DeathSnippetEvent)
 
     def test_apply_pending_payloads_forwards_death_character_identified_events(self) -> None:
         app = _make_app_shell()
@@ -335,12 +340,9 @@ class TestLoadAndParseWorkflow:
 
         app._apply_pending_payloads_incremental()
 
-        app._on_death_character_identified.assert_called_once_with(
-            {
-                "type": "death_character_identified",
-                "character_name": "Woo Wildrock",
-            }
-        )
+        emitted = app._on_death_character_identified.call_args.args[0]
+        assert isinstance(emitted, DeathCharacterIdentifiedEvent)
+        assert emitted.character_name == "Woo Wildrock"
 
     def test_apply_pending_payloads_incremental_spans_ticks_and_drains(self, monkeypatch) -> None:
         app = _make_app_shell()
@@ -483,7 +485,11 @@ class TestLoadAndParseWorkflow:
         app.death_snippet_panel.get_character_name.return_value = ""
 
         app._on_death_character_identified(
-            {"type": "death_character_identified", "character_name": "Woo Wildrock"}
+            DeathCharacterIdentifiedEvent(
+                character_name="Woo Wildrock",
+                timestamp=main_window_module.datetime.min,
+                line_number=None,
+            )
         )
 
         app.death_snippet_panel.set_character_name.assert_called_once_with("Woo Wildrock")
@@ -494,7 +500,11 @@ class TestLoadAndParseWorkflow:
         app.death_snippet_panel.get_character_name.return_value = "Existing Name"
 
         app._on_death_character_identified(
-            {"type": "death_character_identified", "character_name": "Woo Wildrock"}
+            DeathCharacterIdentifiedEvent(
+                character_name="Woo Wildrock",
+                timestamp=main_window_module.datetime.min,
+                line_number=None,
+            )
         )
 
         app.death_snippet_panel.set_character_name.assert_not_called()
@@ -504,7 +514,11 @@ class TestLoadAndParseWorkflow:
         app.death_snippet_panel = Mock()
 
         app._on_death_character_identified(
-            {"type": "death_character_identified", "character_name": "   "}
+            DeathCharacterIdentifiedEvent(
+                character_name="   ",
+                timestamp=main_window_module.datetime.min,
+                line_number=None,
+            )
         )
 
         app.death_snippet_panel.get_character_name.assert_not_called()

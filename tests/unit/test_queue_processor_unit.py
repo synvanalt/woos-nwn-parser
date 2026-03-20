@@ -12,6 +12,8 @@ from unittest.mock import Mock, call
 from app.services.queue_processor import QueueProcessor
 from app.storage import DataStore
 from app.parser import LogParser
+from app.parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
+from tests.helpers.parsed_events import from_dict
 
 
 def _process(
@@ -28,8 +30,12 @@ def _process(
     debug_enabled: bool = False,
 ) -> object:
     """Compatibility test helper that maps legacy callback-style calls to QueueDrainResult."""
+    normalized_queue: queue.Queue = queue.Queue()
+    while not data_queue.empty():
+        item = data_queue.get_nowait()
+        normalized_queue.put(from_dict(item) if isinstance(item, dict) else item)
     result = processor.process_queue(
-        data_queue,
+        normalized_queue,
         on_log_message,
         debug_enabled=debug_enabled,
     )
@@ -263,8 +269,11 @@ class TestEventRouting:
             on_immunity_changed
         )
 
-        # Verify message was logged
-        on_log_message.assert_called_with('Test debug message', 'debug')
+        # Unknown non-parsed payloads are surfaced as unhandled input.
+        on_log_message.assert_called_with(
+            "Unhandled parsed event: {'type': 'debug', 'message': 'Test debug message'}",
+            'error',
+        )
 
 
 class TestDamageBuffering:
@@ -1009,8 +1018,9 @@ class TestCallbacks:
 
         on_death_snippet.assert_called_once()
         emitted = on_death_snippet.call_args[0][0]
-        assert emitted['type'] == 'death_snippet'
-        assert emitted['target'] == 'Woo Wildrock'
+        assert isinstance(emitted, DeathSnippetEvent)
+        assert emitted.type == 'death_snippet'
+        assert emitted.target == 'Woo Wildrock'
 
     def test_on_character_identified_called(self, queue_processor: QueueProcessor) -> None:
         """Test that character-identified callback is called for identity events."""
@@ -1031,8 +1041,9 @@ class TestCallbacks:
 
         on_character_identified.assert_called_once()
         emitted = on_character_identified.call_args[0][0]
-        assert emitted["type"] == "death_character_identified"
-        assert emitted["character_name"] == "Woo Wildrock"
+        assert isinstance(emitted, DeathCharacterIdentifiedEvent)
+        assert emitted.type == "death_character_identified"
+        assert emitted.character_name == "Woo Wildrock"
 
 
 class TestErrorHandling:
@@ -1146,5 +1157,8 @@ class TestErrorHandling:
         )
 
         # Message should be logged
-        on_log_message.assert_called_with('Unknown event', 'invalid_type')
+        on_log_message.assert_called_with(
+            "Unhandled parsed event: {'type': 'invalid_type', 'message': 'Unknown event'}",
+            'error',
+        )
 

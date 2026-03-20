@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock
 
 from app.services.queue_processor import QueueProcessor
+from tests.helpers.parsed_events import from_dict
 
 
 def _build_processor_with_mocks() -> tuple[QueueProcessor, Mock, Mock]:
@@ -25,13 +26,13 @@ def test_save_event_logs_only_when_debug_enabled() -> None:
     }
 
     q = queue.Queue()
-    q.put(payload)
+    q.put(from_dict(payload))
     on_log_message = Mock()
 
     processor.process_queue(q, on_log_message, debug_enabled=False)
     on_log_message.assert_not_called()
 
-    q.put(payload)
+    q.put(from_dict(payload))
     processor.process_queue(q, on_log_message, debug_enabled=True)
     on_log_message.assert_called_once()
     assert "SAVE" in on_log_message.call_args.args[0]
@@ -47,8 +48,8 @@ def test_unknown_event_without_message_logs_generated_fallback_message() -> None
 
     on_log_message.assert_called_once()
     msg, msg_type = on_log_message.call_args.args
-    assert msg_type == "mystery_event"
-    assert msg.startswith("Event: mystery_event")
+    assert msg_type == "error"
+    assert msg.startswith("Unhandled parsed event:")
 
 
 def test_damage_dealt_logs_dps_tracking_error_when_store_raises() -> None:
@@ -57,14 +58,14 @@ def test_damage_dealt_logs_dps_tracking_error_when_store_raises() -> None:
 
     q = queue.Queue()
     q.put(
-        {
+        from_dict({
             "type": "damage_dealt",
             "attacker": "Woo",
             "target": "Goblin",
             "total_damage": 20,
             "damage_types": {"Fire": 20},
             "timestamp": datetime.now(),
-        }
+        })
     )
 
     on_log_message = Mock()
@@ -79,14 +80,14 @@ def test_damage_dealt_logs_insert_error_when_damage_event_insert_fails() -> None
 
     q = queue.Queue()
     q.put(
-        {
+        from_dict({
             "type": "damage_dealt",
             "attacker": "Woo",
             "target": "Goblin",
             "total_damage": 20,
             "damage_types": {"Fire": 20},
             "timestamp": datetime.now(),
-        }
+        })
     )
 
     on_log_message = Mock()
@@ -111,14 +112,14 @@ def test_queued_immunity_mismatch_emits_debug_log() -> None:
 
     q = queue.Queue()
     q.put(
-        {
+        from_dict({
             "type": "damage_dealt",
             "attacker": "Woo",
             "target": target,
             "total_damage": 20,
             "damage_types": {damage_type: 20},
             "timestamp": now,
-        }
+        })
     )
 
     on_log_message = Mock()

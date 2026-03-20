@@ -11,6 +11,7 @@ from queue import Queue
 from app.services.queue_processor import QueueProcessor
 from app.storage import DataStore
 from app.parser import LogParser
+from tests.helpers.parsed_events import from_dict
 
 
 class TestQueueProcessor(unittest.TestCase):
@@ -53,7 +54,7 @@ class TestQueueProcessor(unittest.TestCase):
             'damage_types': {'Piercing': 50},
         }
 
-        self.queue.put(damage_event)
+        self.queue.put(from_dict(damage_event))
 
         result = self.processor.process_queue(self.queue, Mock())
         self.assertTrue(result.dps_updated)
@@ -72,7 +73,7 @@ class TestQueueProcessor(unittest.TestCase):
             'timestamp': datetime.now(),
         }
 
-        self.queue.put(immunity_event)
+        self.queue.put(from_dict(immunity_event))
 
         self.processor.process_queue(self.queue, Mock())
 
@@ -96,7 +97,7 @@ class TestQueueProcessor(unittest.TestCase):
             'damage_types': {'Fire': 50},
         }
 
-        self.queue.put(damage_event)
+        self.queue.put(from_dict(damage_event))
         self.processor.process_queue(self.queue, Mock())
 
         # Then add matching immunity event
@@ -108,7 +109,7 @@ class TestQueueProcessor(unittest.TestCase):
             'timestamp': now,
         }
 
-        self.queue.put(immunity_event)
+        self.queue.put(from_dict(immunity_event))
         self.processor.process_queue(self.queue, Mock())
 
         self.data_store.apply_mutations.assert_called()
@@ -124,7 +125,7 @@ class TestQueueProcessor(unittest.TestCase):
             'total': 15,
         }
 
-        self.queue.put(attack_event)
+        self.queue.put(from_dict(attack_event))
         self.processor.process_queue(self.queue, Mock())
 
         self.data_store.apply_mutations.assert_called_once()
@@ -169,7 +170,7 @@ class TestQueueProcessor(unittest.TestCase):
             'total': 25,
         }
 
-        self.queue.put(crit_event)
+        self.queue.put(from_dict(crit_event))
         self.processor.process_queue(self.queue, Mock())
 
         self.data_store.apply_mutations.assert_called_once()
@@ -186,7 +187,7 @@ class TestQueueProcessor(unittest.TestCase):
             'damage_types': {'Piercing': 50, 'Fire': 50},
         }
 
-        self.queue.put(damage_event)
+        self.queue.put(from_dict(damage_event))
         self.processor.process_queue(self.queue, Mock())
 
         # Verify damage buffer contains the damage data
@@ -227,7 +228,7 @@ class TestQueueProcessorIntegration(unittest.TestCase):
             'damage_types': {'Fire': 100},
         }
 
-        self.queue.put(damage_event)
+        self.queue.put(from_dict(damage_event))
         self.processor.process_queue(self.queue, Mock())
 
         # Process immunity event
@@ -239,7 +240,7 @@ class TestQueueProcessorIntegration(unittest.TestCase):
             'timestamp': now,
         }
 
-        self.queue.put(immunity_event)
+        self.queue.put(from_dict(immunity_event))
         self.processor.process_queue(self.queue, Mock())
 
         # Verify data was recorded

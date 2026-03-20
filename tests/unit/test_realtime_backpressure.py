@@ -14,6 +14,7 @@ import pytest
 
 import app.ui.main_window as main_window_module
 from app.parser import LogParser
+from app.parsed_events import AttackHitEvent, DamageDealtEvent
 from app.services import QueueProcessor
 from app.storage import DataStore
 from app.ui.main_window import WoosNwnParserApp
@@ -38,8 +39,8 @@ class _AfterRecorder:
 class _FakeRealtimeMonitor:
     """Feed parsed events into the bounded realtime queue like the monitor thread."""
 
-    def __init__(self, events: list[dict]) -> None:
-        self._remaining: deque[dict] = deque(events)
+    def __init__(self, events: list[object]) -> None:
+        self._remaining: deque[object] = deque(events)
         self.current_log_file = SimpleNamespace(name="nwclientLog1.txt")
         self.max_lines_requests: list[int] = []
         self.produced_batch_sizes: list[int] = []
@@ -74,28 +75,28 @@ class _FakeRealtimeMonitor:
         return bool(self._remaining)
 
 
-def _make_realtime_event(index: int, now: datetime) -> dict:
+def _make_realtime_event(index: int, now: datetime) -> DamageDealtEvent | AttackHitEvent:
     """Generate mixed high-volume combat events for queue pressure tests."""
     target = f"Target-{index % 5}"
     attacker = f"Woo-{index % 2}"
     if index % 2 == 0:
-        return {
-            "type": "damage_dealt",
-            "attacker": attacker,
-            "target": target,
-            "total_damage": 50,
-            "timestamp": now,
-            "damage_types": {"Physical": 50},
-        }
-    return {
-        "type": "attack_hit",
-        "attacker": attacker,
-        "target": target,
-        "roll": 15,
-        "bonus": 10,
-        "total": 25,
-        "timestamp": now,
-    }
+        return DamageDealtEvent(
+            attacker=attacker,
+            target=target,
+            total_damage=50,
+            timestamp=now,
+            damage_types={"Physical": 50},
+            line_number=index,
+        )
+    return AttackHitEvent(
+        attacker=attacker,
+        target=target,
+        roll=15,
+        bonus=10,
+        total=25,
+        timestamp=now,
+        line_number=index,
+    )
 
 
 def _build_app_shell() -> tuple[WoosNwnParserApp, _AfterRecorder]:
@@ -234,7 +235,16 @@ def test_monitor_loop_uses_post_read_pressure_for_sleep(monkeypatch: pytest.Monk
     app, _after_recorder = _build_app_shell()
     now = datetime.now()
     for _ in range(WoosNwnParserApp.DATA_QUEUE_PRESSURED_THRESHOLD - 500):
-        app.data_queue.put({"type": "seed"})
+        app.data_queue.put(
+            DamageDealtEvent(
+                attacker="seed",
+                target="seed-target",
+                total_damage=1,
+                timestamp=now,
+                damage_types={"Physical": 1},
+                line_number=-1,
+            )
+        )
     fake_monitor = _FakeRealtimeMonitor(
         [_make_realtime_event(index, now) for index in range(WoosNwnParserApp.MONITOR_LINES_PER_POLL_NORMAL)]
     )
