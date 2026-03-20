@@ -3,10 +3,15 @@
 import io
 import queue
 import time
+from datetime import datetime
 from unittest.mock import Mock
 
 import app.utils
 from app.models import AttackMutation, DamageMutation, EpicDodgeMutation, ImmunityMutation, SaveMutation
+from app.parser import LogParser
+from app.services.event_ingestion import EventIngestionEngine
+from app.services.queue_processor import QueueProcessor
+from app.storage import DataStore
 from app.utils import iter_file_ops_chunks, parse_file_to_ops, import_worker_process
 
 
@@ -384,3 +389,118 @@ def test_iter_file_ops_chunks_streams_large_parse_without_materializing(monkeypa
     assert len(chunks[0]["mutations"]) == 2000
     assert len(chunks[1]["mutations"]) == 2000
     assert len(chunks[2]["mutations"]) == 1000
+
+
+def test_shared_ingestion_engine_matches_queue_processor_and_import_payloads(monkeypatch) -> None:
+    now = datetime(2026, 1, 9, 14, 30, 0)
+    parsed_events = [
+        {
+            "type": "immunity",
+            "target": "Goblin",
+            "damage_type": "Fire",
+            "immunity_points": 10,
+            "timestamp": now,
+            "line_number": 1,
+        },
+        {
+            "type": "damage_dealt",
+            "attacker": "Woo",
+            "target": "Goblin",
+            "total_damage": 50,
+            "damage_types": {"Physical": 30, "Fire": 20},
+            "timestamp": now,
+            "line_number": 2,
+        },
+        {
+            "type": "attack_hit",
+            "attacker": "Woo",
+            "target": "Goblin",
+            "roll": 14,
+            "bonus": 5,
+            "total": 19,
+            "timestamp": now,
+            "line_number": 3,
+        },
+        {
+            "type": "save",
+            "target": "Goblin",
+            "save_type": "fort",
+            "bonus": 12,
+            "timestamp": now,
+            "line_number": 4,
+        },
+        {
+            "type": "death_snippet",
+            "target": "Goblin",
+            "killer": "Woo",
+            "lines": ["a", "b"],
+            "timestamp": now,
+            "line_number": 5,
+        },
+        {
+            "type": "death_character_identified",
+            "character_name": "Woo Wildrock",
+            "timestamp": now,
+            "line_number": 6,
+        },
+    ]
+
+    engine = EventIngestionEngine(parse_immunity=True)
+    engine_mutations = []
+    engine_deaths = []
+    engine_identity = []
+    for parsed_event in parsed_events:
+        result = engine.consume(parsed_event)
+        engine_mutations.extend(result.mutations)
+        if result.death_event:
+            engine_deaths.append(result.death_event)
+        if result.character_identified:
+            engine_identity.append(result.character_identified)
+
+    processor = QueueProcessor(DataStore(), LogParser(parse_immunity=True))
+    live_queue: queue.Queue = queue.Queue()
+    for parsed_event in parsed_events:
+        live_queue.put(parsed_event)
+    live_result = processor.process_queue(live_queue, Mock())
+
+    parse_results = iter(parsed_events)
+    monkeypatch.setattr(
+        "app.parser.LogParser.parse_line",
+        lambda self, line: next(parse_results, None),
+    )
+    monkeypatch.setattr(
+        "builtins.open",
+        lambda *args, **kwargs: io.StringIO("\n".join("line" for _ in parsed_events)),
+    )
+    import_result = parse_file_to_ops("ignored.txt", parse_immunity=True)
+
+    def _normalize_death_events(items):
+        return [
+            {
+                "type": item.get("type"),
+                "target": item.get("target", ""),
+                "killer": item.get("killer", ""),
+                "lines": item.get("lines", []),
+                "timestamp": item.get("timestamp"),
+            }
+            for item in items
+        ]
+
+    def _normalize_identity_events(items):
+        return [
+            {
+                "type": item.get("type"),
+                "character_name": item.get("character_name", ""),
+            }
+            for item in items
+        ]
+
+    assert live_result.dps_updated is True
+    assert live_result.damage_targets == {"Goblin"}
+    assert live_result.targets_to_refresh == {"Goblin"}
+    assert live_result.immunity_targets == {"Goblin"}
+    assert live_result.death_events == engine_deaths
+    assert live_result.character_identity_events == engine_identity
+    assert engine_mutations == import_result["ops"]["mutations"]
+    assert _normalize_death_events(live_result.death_events) == import_result["ops"]["death_snippets"]
+    assert _normalize_identity_events(live_result.character_identity_events) == import_result["ops"]["death_character_identified"]

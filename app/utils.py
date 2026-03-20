@@ -9,14 +9,9 @@ import queue
 import time
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
-from .models import (
-    AttackMutation,
-    DamageMutation,
-    EpicDodgeMutation,
-    SaveMutation,
-    StoreMutation,
-)
+from .models import StoreMutation
 from .parser import LogParser
+from .services.event_ingestion import EventIngestionEngine, IngestionResult
 from .services.immunity_matcher import ImmunityMatcher
 
 ABORT_CHECK_MASK = 0x3FF
@@ -26,15 +21,6 @@ IMPORT_QUEUE_PUT_TIMEOUT_SEC = 0.05
 IMPORT_QUEUE_ABORT_PUT_GRACE_SEC = 0.20
 IMPORT_MUTATION_BATCH_SIZE = 2000
 IMPORT_STREAM_CHUNK_SIZE = 4000
-
-
-def _event_line_number(parsed_data: Dict[str, Any], fallback: int) -> int:
-    line_number = parsed_data.get("line_number")
-    if line_number is None:
-        return fallback
-    return int(line_number)
-
-
 # Forward damage logic (AUTHORITATIVE)
 def compute_dmg_reduced(dmg_before_immunity: int, immunity: float) -> int:
     """
@@ -213,7 +199,10 @@ def parse_and_import_file(
     try:
 
         lines_processed = 0
-        immunity_matcher = ImmunityMatcher() if parser.parse_immunity else None
+        ingestion_engine = EventIngestionEngine(
+            parse_immunity=parser.parse_immunity,
+            matcher_factory=ImmunityMatcher,
+        )
 
         last_progress_report = 0
         pending_mutations: List[StoreMutation] = []
@@ -253,115 +242,7 @@ def parse_and_import_file(
                 lines_processed += 1
                 parsed_data = parser.parse_line(line)
                 if parsed_data:
-                    event_type = parsed_data['type']
-                    if event_type == 'damage_dealt':
-                        target = parsed_data['target']
-                        attacker = parsed_data['attacker']
-                        timestamp = parsed_data['timestamp']
-                        total_damage = int(parsed_data['total_damage'] or 0)
-                        line_number = _event_line_number(parsed_data, lines_processed)
-
-                        # Always track DPS data for all characters
-                        damage_types = parsed_data.get('damage_types', {})
-                        pending_mutations.append(
-                            DamageMutation(
-                                target=target,
-                                total_damage=total_damage,
-                                attacker=attacker,
-                                timestamp=timestamp,
-                                count_for_dps=True,
-                                damage_types=damage_types,
-                            )
-                        )
-
-                        # Always store target damage events for complete data tracking (consistent with monitoring behavior)
-                        # Store all damage types from this damage_dealt event
-                        for dt, amount in damage_types.items():
-                            pending_mutations.append(
-                                DamageMutation(
-                                    target=target,
-                                    damage_type=dt,
-                                    total_damage=amount,
-                                    attacker=attacker,
-                                    timestamp=timestamp,
-                                )
-                            )
-                        if immunity_matcher is not None:
-                            pending_mutations.extend(
-                                immunity_matcher.queue_damage_event(
-                                    target=target,
-                                    damage_types=damage_types,
-                                    timestamp=timestamp,
-                                    line_number=line_number,
-                                    attacker=attacker,
-                                )
-                            )
-
-                    elif event_type == 'immunity':
-                        if immunity_matcher is not None:
-                            pending_mutations.extend(
-                                immunity_matcher.queue_immunity(
-                                    target=parsed_data['target'],
-                                    damage_type=parsed_data['damage_type'],
-                                    immunity_points=int(parsed_data['immunity_points'] or 0),
-                                    timestamp=parsed_data['timestamp'],
-                                    line_number=_event_line_number(parsed_data, lines_processed),
-                                )
-                            )
-
-                    # Handle attack events
-                    elif event_type == 'attack_hit':
-                        pending_mutations.append(
-                            AttackMutation(
-                                attacker=parsed_data['attacker'],
-                                target=parsed_data['target'],
-                                outcome='hit',
-                                roll=parsed_data.get('roll'),
-                                bonus=parsed_data.get('bonus'),
-                                total=parsed_data.get('total'),
-                                was_nat1=bool(parsed_data.get('was_nat1', False)),
-                                was_nat20=bool(parsed_data.get('was_nat20', False)),
-                                is_concealment=bool(parsed_data.get('is_concealment', False)),
-                            )
-                        )
-                    elif event_type == 'attack_hit_critical':
-                        pending_mutations.append(
-                            AttackMutation(
-                                attacker=parsed_data['attacker'],
-                                target=parsed_data['target'],
-                                outcome='critical_hit',
-                                roll=parsed_data.get('roll'),
-                                bonus=parsed_data.get('bonus'),
-                                total=parsed_data.get('total'),
-                                was_nat1=bool(parsed_data.get('was_nat1', False)),
-                                was_nat20=bool(parsed_data.get('was_nat20', False)),
-                                is_concealment=bool(parsed_data.get('is_concealment', False)),
-                            )
-                        )
-                    elif event_type == 'attack_miss':
-                        pending_mutations.append(
-                            AttackMutation(
-                                attacker=parsed_data['attacker'],
-                                target=parsed_data['target'],
-                                outcome='miss',
-                                roll=parsed_data.get('roll'),
-                                bonus=parsed_data.get('bonus'),
-                                total=parsed_data.get('total'),
-                                was_nat1=bool(parsed_data.get('was_nat1', False)),
-                                was_nat20=bool(parsed_data.get('was_nat20', False)),
-                                is_concealment=bool(parsed_data.get('is_concealment', False)),
-                            )
-                        )
-                    elif event_type == 'save':
-                        pending_mutations.append(
-                            SaveMutation(
-                                target=parsed_data['target'],
-                                save_key=parsed_data['save_type'],
-                                bonus=int(parsed_data['bonus']),
-                            )
-                        )
-                    elif event_type == 'epic_dodge':
-                        pending_mutations.append(EpicDodgeMutation(target=parsed_data['target']))
+                    pending_mutations.extend(ingestion_engine.consume(parsed_data).mutations)
 
                     if len(pending_mutations) >= IMPORT_MUTATION_BATCH_SIZE:
                         flush_mutations()
@@ -447,144 +328,29 @@ def _build_import_parser(
     return parser
 
 
-def _append_import_ops(
-    parsed_data: Dict[str, Any],
+def _append_ingestion_result(
+    ingestion_result: IngestionResult,
     *,
-    immunity_matcher: Optional[ImmunityMatcher],
     mutations: List[StoreMutation],
     death_snippets: List[Dict[str, Any]],
     death_character_identified: List[Dict[str, Any]],
 ) -> None:
-    """Translate one parsed event into import payload operations."""
-    event_type = parsed_data['type']
+    """Append one normalized ingestion result to import payload buffers."""
+    mutations.extend(ingestion_result.mutations)
 
-    if event_type == 'damage_dealt':
-        target = parsed_data['target']
-        attacker = parsed_data['attacker']
-        timestamp = parsed_data['timestamp']
-        total_damage = int(parsed_data['total_damage'] or 0)
-        damage_types = parsed_data.get('damage_types', {})
-        line_number = _event_line_number(parsed_data, 0)
-
-        mutations.append(
-            DamageMutation(
-                target=target,
-                total_damage=total_damage,
-                attacker=attacker,
-                timestamp=timestamp,
-                count_for_dps=True,
-                damage_types=damage_types,
-            )
-        )
-        for damage_type, amount in damage_types.items():
-            mutations.append(
-                DamageMutation(
-                    target=target,
-                    damage_type=damage_type,
-                    total_damage=amount,
-                    attacker=attacker,
-                    timestamp=timestamp,
-                )
-            )
-
-        if immunity_matcher is not None:
-            mutations.extend(
-                immunity_matcher.queue_damage_event(
-                    target=target,
-                    damage_types=damage_types,
-                    timestamp=timestamp,
-                    line_number=line_number,
-                    attacker=attacker,
-                )
-            )
-        return
-
-    if event_type == 'immunity':
-        if immunity_matcher is not None:
-            mutations.extend(
-                immunity_matcher.queue_immunity(
-                    target=parsed_data['target'],
-                    damage_type=parsed_data['damage_type'],
-                    immunity_points=int(parsed_data['immunity_points'] or 0),
-                    timestamp=parsed_data['timestamp'],
-                    line_number=_event_line_number(parsed_data, 0),
-                )
-            )
-        return
-
-    if event_type == 'attack_hit':
-        mutations.append(
-            AttackMutation(
-                attacker=parsed_data['attacker'],
-                target=parsed_data['target'],
-                outcome='hit',
-                roll=parsed_data.get('roll'),
-                bonus=parsed_data.get('bonus'),
-                total=parsed_data.get('total'),
-                was_nat20=bool(parsed_data.get('was_nat20', False)),
-                is_concealment=bool(parsed_data.get('is_concealment', False)),
-            )
-        )
-        return
-
-    if event_type == 'attack_hit_critical':
-        mutations.append(
-            AttackMutation(
-                attacker=parsed_data['attacker'],
-                target=parsed_data['target'],
-                outcome='critical_hit',
-                roll=parsed_data.get('roll'),
-                bonus=parsed_data.get('bonus'),
-                total=parsed_data.get('total'),
-                was_nat20=bool(parsed_data.get('was_nat20', False)),
-                is_concealment=bool(parsed_data.get('is_concealment', False)),
-            )
-        )
-        return
-
-    if event_type == 'attack_miss':
-        mutations.append(
-            AttackMutation(
-                attacker=parsed_data['attacker'],
-                target=parsed_data['target'],
-                outcome='miss',
-                roll=parsed_data.get('roll'),
-                bonus=parsed_data.get('bonus'),
-                total=parsed_data.get('total'),
-                was_nat1=bool(parsed_data.get('was_nat1', False)),
-                is_concealment=bool(parsed_data.get('is_concealment', False)),
-            )
-        )
-        return
-
-    if event_type == 'save':
-        mutations.append(
-            SaveMutation(
-                target=parsed_data.get('target'),
-                save_key=parsed_data.get('save_type'),
-                bonus=int(parsed_data.get('bonus')),
-            )
-        )
-        return
-
-    if event_type == 'epic_dodge':
-        mutations.append(EpicDodgeMutation(target=parsed_data.get('target')))
-        return
-
-    if event_type == 'death_snippet':
+    if ingestion_result.death_event:
         death_snippets.append({
-            'target': parsed_data.get('target', ''),
-            'killer': parsed_data.get('killer', ''),
-            'lines': parsed_data.get('lines', []),
-            'timestamp': parsed_data.get('timestamp'),
+            'target': ingestion_result.death_event.get('target', ''),
+            'killer': ingestion_result.death_event.get('killer', ''),
+            'lines': ingestion_result.death_event.get('lines', []),
+            'timestamp': ingestion_result.death_event.get('timestamp'),
             'type': 'death_snippet',
         })
-        return
 
-    if event_type == 'death_character_identified':
+    if ingestion_result.character_identified:
         death_character_identified.append({
             'type': 'death_character_identified',
-            'character_name': parsed_data.get('character_name', ''),
+            'character_name': ingestion_result.character_identified.get('character_name', ''),
         })
 
 
@@ -596,7 +362,10 @@ def _collect_file_ops(
 ) -> tuple[int, bool, Dict[str, List[Any]]]:
     """Collect all import operations for a file."""
     lines_processed = 0
-    immunity_matcher = ImmunityMatcher() if parser.parse_immunity else None
+    ingestion_engine = EventIngestionEngine(
+        parse_immunity=parser.parse_immunity,
+        matcher_factory=ImmunityMatcher,
+    )
     mutations: List[StoreMutation] = []
     death_snippets: List[Dict[str, Any]] = []
     death_character_identified: List[Dict[str, Any]] = []
@@ -619,9 +388,8 @@ def _collect_file_ops(
             if not parsed_data:
                 continue
 
-            _append_import_ops(
-                parsed_data,
-                immunity_matcher=immunity_matcher,
+            _append_ingestion_result(
+                ingestion_engine.consume(parsed_data),
                 mutations=mutations,
                 death_snippets=death_snippets,
                 death_character_identified=death_character_identified,
@@ -651,7 +419,10 @@ def iter_file_ops_chunks(
     )
     chunk_size = max(1, int(chunk_size))
     lines_processed = 0
-    immunity_matcher = ImmunityMatcher() if parser.parse_immunity else None
+    ingestion_engine = EventIngestionEngine(
+        parse_immunity=parser.parse_immunity,
+        matcher_factory=ImmunityMatcher,
+    )
     pending_mutations: List[StoreMutation] = []
     pending_death_snippets: List[Dict[str, Any]] = []
     pending_identity_events: List[Dict[str, Any]] = []
@@ -694,9 +465,8 @@ def iter_file_ops_chunks(
             if not parsed_data:
                 continue
 
-            _append_import_ops(
-                parsed_data,
-                immunity_matcher=immunity_matcher,
+            _append_ingestion_result(
+                ingestion_engine.consume(parsed_data),
                 mutations=pending_mutations,
                 death_snippets=pending_death_snippets,
                 death_character_identified=pending_identity_events,
