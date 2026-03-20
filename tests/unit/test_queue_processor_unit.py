@@ -13,7 +13,7 @@ from app.services.queue_processor import QueueProcessor
 from app.storage import DataStore
 from app.parser import LogParser
 from app.parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
-from tests.helpers.parsed_events import from_dict
+from tests.helpers import parsed_event_factories as event_factories
 
 
 def _process(
@@ -30,12 +30,8 @@ def _process(
     debug_enabled: bool = False,
 ) -> object:
     """Compatibility test helper that maps legacy callback-style calls to QueueDrainResult."""
-    normalized_queue: queue.Queue = queue.Queue()
-    while not data_queue.empty():
-        item = data_queue.get_nowait()
-        normalized_queue.put(from_dict(item) if isinstance(item, dict) else item)
     result = processor.process_queue(
-        normalized_queue,
+        data_queue,
         on_log_message,
         debug_enabled=debug_enabled,
     )
@@ -81,14 +77,13 @@ class TestEventRouting:
         """Test routing damage_dealt event to correct handler."""
         data_queue = queue.Queue()
 
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'total_damage': 50,
-            'timestamp': datetime.now(),
-            'damage_types': {'Physical': 50}
-        }
+        damage_event = event_factories.damage_event(
+            attacker='Woo',
+            target='Goblin',
+            total_damage=50,
+            timestamp=datetime.now(),
+            damage_types={'Physical': 50},
+        )
 
         data_queue.put(damage_event)
 
@@ -117,13 +112,12 @@ class TestEventRouting:
         queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
 
-        immunity_event = {
-            'type': 'immunity',
-            'target': 'Goblin',
-            'damage_type': 'Fire',
-            'immunity_points': 10,
-            'timestamp': datetime.now()
-        }
+        immunity_event = event_factories.immunity_event(
+            target='Goblin',
+            damage_type='Fire',
+            immunity_points=10,
+            timestamp=datetime.now(),
+        )
 
         data_queue.put(immunity_event)
 
@@ -147,15 +141,14 @@ class TestEventRouting:
         """Test routing attack_hit event to correct handler."""
         data_queue = queue.Queue()
 
-        attack_event = {
-            'type': 'attack_hit',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'roll': 15,
-            'bonus': '5',
-            'total': 20,
-            'timestamp': datetime.now()
-        }
+        attack_event = event_factories.attack_hit_event(
+            attacker='Woo',
+            target='Goblin',
+            roll=15,
+            bonus=5,
+            total=20,
+            timestamp=datetime.now(),
+        )
 
         data_queue.put(attack_event)
 
@@ -181,15 +174,14 @@ class TestEventRouting:
         """Test routing attack_miss event to correct handler."""
         data_queue = queue.Queue()
 
-        attack_event = {
-            'type': 'attack_miss',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'roll': 8,
-            'bonus': '5',
-            'total': 13,
-            'timestamp': datetime.now()
-        }
+        attack_event = event_factories.attack_miss_event(
+            attacker='Woo',
+            target='Goblin',
+            roll=8,
+            bonus=5,
+            total=13,
+            timestamp=datetime.now(),
+        )
 
         data_queue.put(attack_event)
 
@@ -215,15 +207,14 @@ class TestEventRouting:
         """Test routing critical_hit event to correct handler."""
         data_queue = queue.Queue()
 
-        attack_event = {
-            'type': 'attack_hit_critical',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'roll': 20,
-            'bonus': '5',
-            'total': 25,
-            'timestamp': datetime.now()
-        }
+        attack_event = event_factories.critical_hit_event(
+            attacker='Woo',
+            target='Goblin',
+            roll=20,
+            bonus=5,
+            total=25,
+            timestamp=datetime.now(),
+        )
 
         data_queue.put(attack_event)
 
@@ -284,14 +275,13 @@ class TestDamageBuffering:
         queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
 
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Dragon',
-            'total_damage': 100,
-            'timestamp': datetime.now(),
-            'damage_types': {'Fire': 60, 'Physical': 40}
-        }
+        damage_event = event_factories.damage_event(
+            attacker='Woo',
+            target='Dragon',
+            total_damage=100,
+            timestamp=datetime.now(),
+            damage_types={'Fire': 60, 'Physical': 40},
+        )
 
         data_queue.put(damage_event)
 
@@ -312,23 +302,21 @@ class TestDamageBuffering:
         queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
 
-        damage_event1 = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'total_damage': 50,
-            'timestamp': datetime.now(),
-            'damage_types': {'Physical': 50}
-        }
+        damage_event1 = event_factories.damage_event(
+            attacker='Woo',
+            target='Goblin',
+            total_damage=50,
+            timestamp=datetime.now(),
+            damage_types={'Physical': 50},
+        )
 
-        damage_event2 = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'total_damage': 100,
-            'timestamp': datetime.now(),
-            'damage_types': {'Fire': 100}
-        }
+        damage_event2 = event_factories.damage_event(
+            attacker='Woo',
+            target='Goblin',
+            total_damage=100,
+            timestamp=datetime.now(),
+            damage_types={'Fire': 100},
+        )
 
         data_queue.put(damage_event1)
         data_queue.put(damage_event2)
@@ -346,23 +334,21 @@ class TestDamageBuffering:
         queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
 
-        damage_event1 = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'total_damage': 50,
-            'timestamp': datetime.now(),
-            'damage_types': {'Physical': 50}
-        }
+        damage_event1 = event_factories.damage_event(
+            attacker='Woo',
+            target='Goblin',
+            total_damage=50,
+            timestamp=datetime.now(),
+            damage_types={'Physical': 50},
+        )
 
-        damage_event2 = {
-            'type': 'damage_dealt',
-            'attacker': 'Rogue',
-            'target': 'Orc',
-            'total_damage': 40,
-            'timestamp': datetime.now(),
-            'damage_types': {'Cold': 40}
-        }
+        damage_event2 = event_factories.damage_event(
+            attacker='Rogue',
+            target='Orc',
+            total_damage=40,
+            timestamp=datetime.now(),
+            damage_types={'Cold': 40},
+        )
 
         data_queue.put(damage_event1)
         data_queue.put(damage_event2)
@@ -385,13 +371,12 @@ class TestImmunityQueuing:
         queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
 
-        immunity_event = {
-            'type': 'immunity',
-            'target': 'Goblin',
-            'damage_type': 'Fire',
-            'immunity_points': 10,
-            'timestamp': datetime.now()
-        }
+        immunity_event = event_factories.immunity_event(
+            target='Goblin',
+            damage_type='Fire',
+            immunity_points=10,
+            timestamp=datetime.now(),
+        )
 
         data_queue.put(immunity_event)
 
@@ -414,24 +399,20 @@ class TestImmunityQueuing:
 
         now = datetime.now()
 
-        # First, damage event
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'total_damage': 50,
-            'timestamp': now,
-            'damage_types': {'Fire': 50}
-        }
+        damage_event = event_factories.damage_event(
+            attacker='Woo',
+            target='Goblin',
+            total_damage=50,
+            timestamp=now,
+            damage_types={'Fire': 50},
+        )
 
-        # Then, immunity event
-        immunity_event = {
-            'type': 'immunity',
-            'target': 'Goblin',
-            'damage_type': 'Fire',
-            'immunity_points': 10,
-            'timestamp': now
-        }
+        immunity_event = event_factories.immunity_event(
+            target='Goblin',
+            damage_type='Fire',
+            immunity_points=10,
+            timestamp=now,
+        )
 
         data_queue.put(damage_event)
         data_queue.put(immunity_event)
@@ -455,36 +436,33 @@ class TestImmunityQueuing:
         now = datetime.now()
 
         data_queue.put(
-            {
-                'type': 'damage_dealt',
-                'attacker': 'Woo',
-                'target': 'Goblin',
-                'total_damage': 20,
-                'timestamp': now,
-                'line_number': 1,
-                'damage_types': {'Fire': 20},
-            }
+            event_factories.damage_event(
+                attacker='Woo',
+                target='Goblin',
+                total_damage=20,
+                timestamp=now,
+                line_number=1,
+                damage_types={'Fire': 20},
+            )
         )
         data_queue.put(
-            {
-                'type': 'immunity',
-                'target': 'Goblin',
-                'damage_type': 'Fire',
-                'immunity_points': 10,
-                'timestamp': now,
-                'line_number': 2,
-            }
+            event_factories.immunity_event(
+                target='Goblin',
+                damage_type='Fire',
+                immunity_points=10,
+                timestamp=now,
+                line_number=2,
+            )
         )
         data_queue.put(
-            {
-                'type': 'damage_dealt',
-                'attacker': 'Woo',
-                'target': 'Goblin',
-                'total_damage': 50,
-                'timestamp': now,
-                'line_number': 3,
-                'damage_types': {'Fire': 50},
-            }
+            event_factories.damage_event(
+                attacker='Woo',
+                target='Goblin',
+                total_damage=50,
+                timestamp=now,
+                line_number=3,
+                damage_types={'Fire': 50},
+            )
         )
 
         _process(queue_processor, data_queue, Mock(), Mock(), Mock(), Mock())
@@ -501,24 +479,20 @@ class TestImmunityQueuing:
 
         now = datetime.now()
 
-        # Damage with Physical
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'total_damage': 50,
-            'timestamp': now,
-            'damage_types': {'Physical': 50}
-        }
+        damage_event = event_factories.damage_event(
+            attacker='Woo',
+            target='Goblin',
+            total_damage=50,
+            timestamp=now,
+            damage_types={'Physical': 50},
+        )
 
-        # Immunity for Fire (not in damage)
-        immunity_event = {
-            'type': 'immunity',
-            'target': 'Goblin',
-            'damage_type': 'Fire',
-            'immunity_points': 10,
-            'timestamp': now
-        }
+        immunity_event = event_factories.immunity_event(
+            target='Goblin',
+            damage_type='Fire',
+            immunity_points=10,
+            timestamp=now,
+        )
 
         data_queue.put(damage_event)
         data_queue.put(immunity_event)
@@ -539,24 +513,20 @@ class TestImmunityQueuing:
 
         now = datetime.now()
 
-        # First, immunity (no damage yet)
-        immunity_event = {
-            'type': 'immunity',
-            'target': 'Goblin',
-            'damage_type': 'Fire',
-            'immunity_points': 10,
-            'timestamp': now
-        }
+        immunity_event = event_factories.immunity_event(
+            target='Goblin',
+            damage_type='Fire',
+            immunity_points=10,
+            timestamp=now,
+        )
 
-        # Then, matching damage
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'total_damage': 50,
-            'timestamp': now,
-            'damage_types': {'Fire': 50}
-        }
+        damage_event = event_factories.damage_event(
+            attacker='Woo',
+            target='Goblin',
+            total_damage=50,
+            timestamp=now,
+            damage_types={'Fire': 50},
+        )
 
         data_queue.put(immunity_event)
         data_queue.put(damage_event)
@@ -583,21 +553,19 @@ class TestImmunityQueuing:
 
         now = datetime.now()
 
-        immunity1 = {
-            'type': 'immunity',
-            'target': 'Dragon',
-            'damage_type': 'Fire',
-            'immunity_points': 20,
-            'timestamp': now
-        }
+        immunity1 = event_factories.immunity_event(
+            target='Dragon',
+            damage_type='Fire',
+            immunity_points=20,
+            timestamp=now,
+        )
 
-        immunity2 = {
-            'type': 'immunity',
-            'target': 'Dragon',
-            'damage_type': 'Cold',
-            'immunity_points': 15,
-            'timestamp': now
-        }
+        immunity2 = event_factories.immunity_event(
+            target='Dragon',
+            damage_type='Cold',
+            immunity_points=15,
+            timestamp=now,
+        )
 
         data_queue.put(immunity1)
         data_queue.put(immunity2)
@@ -635,15 +603,14 @@ class TestCleanupMethods:
         )
 
     @staticmethod
-    def _make_damage_event(target: str) -> dict:
-        return {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': target,
-            'total_damage': 50,
-            'timestamp': datetime.now(),
-            'damage_types': {'Physical': 50},
-        }
+    def _make_damage_event(target: str):
+        return event_factories.damage_event(
+            attacker='Woo',
+            target=target,
+            total_damage=50,
+            timestamp=datetime.now(),
+            damage_types={'Physical': 50},
+        )
 
     def test_cleanup_stale_immunities(self, queue_processor: QueueProcessor) -> None:
         """Test that old immunity entries are cleaned up."""
@@ -718,14 +685,13 @@ class TestCleanupMethods:
 
         # Verify counter increments on process_queue calls
         initial_count = queue_processor.parsed_event_count
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Target1',
-            'total_damage': 50,
-            'timestamp': datetime.now(),
-            'damage_types': {'Physical': 50}
-        }
+        damage_event = event_factories.damage_event(
+            attacker='Woo',
+            target='Target1',
+            total_damage=50,
+            timestamp=datetime.now(),
+            damage_types={'Physical': 50},
+        )
         data_queue.put(damage_event)
 
         _process(queue_processor,
@@ -852,14 +818,13 @@ class TestDPSTracking:
         """Test that DPS is updated when damage is dealt."""
         data_queue = queue.Queue()
 
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'total_damage': 100,
-            'timestamp': datetime.now(),
-            'damage_types': {'Fire': 60, 'Physical': 40}
-        }
+        damage_event = event_factories.damage_event(
+            attacker='Woo',
+            target='Goblin',
+            total_damage=100,
+            timestamp=datetime.now(),
+            damage_types={'Fire': 60, 'Physical': 40},
+        )
 
         data_queue.put(damage_event)
 
@@ -876,14 +841,13 @@ class TestDPSTracking:
         """Test that damage events are inserted into data store."""
         data_queue = queue.Queue()
 
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'total_damage': 50,
-            'timestamp': datetime.now(),
-            'damage_types': {'Physical': 30, 'Fire': 20}
-        }
+        damage_event = event_factories.damage_event(
+            attacker='Woo',
+            target='Goblin',
+            total_damage=50,
+            timestamp=datetime.now(),
+            damage_types={'Physical': 30, 'Fire': 20},
+        )
 
         data_queue.put(damage_event)
 
@@ -903,14 +867,13 @@ class TestCallbacks:
         """Test that on_dps_updated callback is called."""
         data_queue = queue.Queue()
 
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'total_damage': 50,
-            'timestamp': datetime.now(),
-            'damage_types': {'Physical': 50}
-        }
+        damage_event = event_factories.damage_event(
+            attacker='Woo',
+            target='Goblin',
+            total_damage=50,
+            timestamp=datetime.now(),
+            damage_types={'Physical': 50},
+        )
 
         data_queue.put(damage_event)
 
@@ -931,14 +894,12 @@ class TestCallbacks:
 
         now = datetime.now()
 
-        # First, queue an immunity without matching damage
-        immunity_event = {
-            'type': 'immunity',
-            'target': 'Goblin',
-            'damage_type': 'Fire',
-            'immunity_points': 10,
-            'timestamp': now
-        }
+        immunity_event = event_factories.immunity_event(
+            target='Goblin',
+            damage_type='Fire',
+            immunity_points=10,
+            timestamp=now,
+        )
 
         data_queue.put(immunity_event)
 
@@ -947,15 +908,13 @@ class TestCallbacks:
             Mock(), Mock(), Mock(), Mock()
         )
 
-        # Now send matching damage which should process the queued immunity
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'total_damage': 50,
-            'timestamp': now,
-            'damage_types': {'Fire': 50}
-        }
+        damage_event = event_factories.damage_event(
+            attacker='Woo',
+            target='Goblin',
+            total_damage=50,
+            timestamp=now,
+            damage_types={'Fire': 50},
+        )
 
         data_queue.put(damage_event)
 
@@ -973,14 +932,13 @@ class TestCallbacks:
         """Test that on_damage_dealt callback is called when provided."""
         data_queue = queue.Queue()
 
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'Woo',
-            'target': 'Goblin',
-            'total_damage': 50,
-            'timestamp': datetime.now(),
-            'damage_types': {'Physical': 50}
-        }
+        damage_event = event_factories.damage_event(
+            attacker='Woo',
+            target='Goblin',
+            total_damage=50,
+            timestamp=datetime.now(),
+            damage_types={'Physical': 50},
+        )
 
         data_queue.put(damage_event)
 
@@ -997,16 +955,15 @@ class TestCallbacks:
     def test_on_death_snippet_called(self, queue_processor: QueueProcessor) -> None:
         """Test that on_death_snippet callback is called for death snippet events."""
         data_queue = queue.Queue()
-        death_event = {
-            'type': 'death_snippet',
-            'target': 'Woo Wildrock',
-            'killer': 'Hydroxys',
-            'lines': [
+        death_event = event_factories.death_snippet_event(
+            target='Woo Wildrock',
+            killer='Hydroxys',
+            lines=[
                 "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] Hydroxys killed Woo Wildrock",
                 "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] Your God refuses to hear your prayers!",
             ],
-            'timestamp': datetime.now(),
-        }
+            timestamp=datetime.now(),
+        )
         data_queue.put(death_event)
 
         on_death_snippet = Mock()
@@ -1025,11 +982,10 @@ class TestCallbacks:
     def test_on_character_identified_called(self, queue_processor: QueueProcessor) -> None:
         """Test that character-identified callback is called for identity events."""
         data_queue = queue.Queue()
-        identity_event = {
-            "type": "death_character_identified",
-            "character_name": "Woo Wildrock",
-            "timestamp": datetime.now(),
-        }
+        identity_event = event_factories.death_character_identified_event(
+            character_name='Woo Wildrock',
+            timestamp=datetime.now(),
+        )
         data_queue.put(identity_event)
 
         on_character_identified = Mock()
@@ -1054,13 +1010,12 @@ class TestErrorHandling:
         queue_processor.parser.parse_immunity = False
         data_queue = queue.Queue()
 
-        immunity_event = {
-            'type': 'immunity',
-            'target': 'Goblin',
-            'damage_type': 'Fire',
-            'immunity_points': 10,
-            'timestamp': datetime.now()
-        }
+        immunity_event = event_factories.immunity_event(
+            target='Goblin',
+            damage_type='Fire',
+            immunity_points=10,
+            timestamp=datetime.now(),
+        )
 
         data_queue.put(immunity_event)
 
@@ -1084,14 +1039,13 @@ class TestErrorHandling:
         queue_processor.parser.parse_immunity = False
         data_queue = queue.Queue()
         data_queue.put(
-            {
-                'type': 'damage_dealt',
-                'attacker': 'Woo',
-                'target': 'Goblin',
-                'total_damage': 50,
-                'timestamp': datetime.now(),
-                'damage_types': {'Fire': 20, 'Physical': 30},
-            }
+            event_factories.damage_event(
+                attacker='Woo',
+                target='Goblin',
+                total_damage=50,
+                timestamp=datetime.now(),
+                damage_types={'Fire': 20, 'Physical': 30},
+            )
         )
 
         _process(queue_processor, data_queue, Mock(), Mock(), Mock(), Mock())
@@ -1108,14 +1062,13 @@ class TestErrorHandling:
         data_queue = queue.Queue()
         for idx in range(100):
             data_queue.put(
-                {
-                    'type': 'damage_dealt',
-                    'attacker': 'Woo',
-                    'target': f'DisabledTarget{idx}',
-                    'total_damage': 50,
-                    'timestamp': datetime.now(),
-                    'damage_types': {'Physical': 50},
-                }
+                event_factories.damage_event(
+                    attacker='Woo',
+                    target=f'DisabledTarget{idx}',
+                    total_damage=50,
+                    timestamp=datetime.now(),
+                    damage_types={'Physical': 50},
+                )
             )
 
         cleanup_mock = Mock()
