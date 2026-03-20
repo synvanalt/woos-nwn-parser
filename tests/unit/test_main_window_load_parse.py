@@ -1,15 +1,20 @@
-"""Unit tests for load-and-parse workflow in main window."""
+"""Unit tests for import-controller workflow and related app callbacks."""
 
-import threading
+from __future__ import annotations
+
 import queue
+import threading
 from collections import deque
+from datetime import datetime
 from unittest.mock import Mock
 
+import app.ui.controllers.import_controller as import_module
 import app.ui.main_window as main_window_module
 from app.models import DamageMutation, SaveMutation
 from app.parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
-from app.ui.main_window import WoosNwnParserApp
 from app.parser import LogParser
+from app.ui.controllers.import_controller import ImportController
+from app.ui.main_window import WoosNwnParserApp
 
 
 class _FakeImportToplevel:
@@ -52,6 +57,12 @@ class _FakeImportToplevel:
     def grab_set(self) -> None:
         return None
 
+    def grab_release(self) -> None:
+        return None
+
+    def destroy(self) -> None:
+        return None
+
     def after(self, _ms: int, callback) -> None:
         callback()
 
@@ -67,7 +78,6 @@ class _FakeWidget:
         self.kwargs = kwargs
         self.pack_calls = []
         self.started_with = None
-        self.focused = False
         self.__class__.instances.append(self)
 
     def pack(self, *args, **kwargs) -> None:
@@ -76,100 +86,92 @@ class _FakeWidget:
     def start(self, interval: int) -> None:
         self.started_with = interval
 
-    def focus_set(self) -> None:
-        self.focused = True
+    def stop(self) -> None:
+        return None
+
+
+def _make_controller() -> ImportController:
+    return ImportController(
+        root=Mock(after=Mock(return_value="poll-next"), after_cancel=Mock()),
+        parser=LogParser(parse_immunity=True),
+        data_store=Mock(apply_mutations=Mock()),
+        dps_panel=Mock(refresh=Mock()),
+        death_snippet_panel=Mock(add_death_events=Mock()),
+        pause_monitoring=Mock(),
+        refresh_targets=Mock(),
+        set_controls_busy=Mock(),
+        log_debug=Mock(),
+        get_window_icon_path=lambda: None,
+        center_window_on_parent=Mock(),
+        apply_modal_icon=Mock(),
+        on_character_identified=Mock(),
+        import_apply_frame_budget_ms=6.0,
+        import_apply_mutation_batch_size=384,
+    )
 
 
 def _make_app_shell() -> WoosNwnParserApp:
     app = WoosNwnParserApp.__new__(WoosNwnParserApp)
-    app.is_importing = False
-    app.is_monitoring = False
-    app.monitoring_was_active_before_import = False
-    app.import_abort_event = threading.Event()
-    app.import_thread = None
-    app.import_process = None
-    app.import_abort_flag = None
-    app.import_result_queue = None
-    app.import_poll_job = None
-    app.import_modal = None
-    app.import_status_text = None
-    app.import_progress_text = None
-    app.import_abort_button = None
-    app._import_status_lock = threading.Lock()
-    app._import_status = {}
-    app._pending_file_payloads = deque()
-    app._is_applying_payload = False
-    app._last_modal_file = ""
-    app._last_modal_files_completed = -1
-    app.window_icon_path = None
     app.parser = LogParser(parse_immunity=True)
-    app.pause_monitoring = Mock()
-    app._set_import_ui_busy = Mock()
-    app._show_import_modal = Mock()
-    app._start_import_worker = Mock()
-    app._poll_import_progress = Mock()
+    app.death_snippet_panel = Mock()
+    app.dps_panel = Mock()
+    app.dps_service = Mock()
+    app.settings_controller = Mock()
     return app
 
 
 def _patch_perf_counter(monkeypatch, values: list[float]) -> None:
-    """Patch main-window perf_counter to return deterministic values."""
     ticks = iter(values)
-    monkeypatch.setattr(main_window_module, "perf_counter", lambda: next(ticks))
+    monkeypatch.setattr(import_module, "perf_counter", lambda: next(ticks))
 
 
-class TestLoadAndParseWorkflow:
-    """Test suite for selected-file load and parse controls."""
-
+class TestImportController:
     def test_cancelled_file_selection_noops(self, monkeypatch) -> None:
-        app = _make_app_shell()
-        monkeypatch.setattr(main_window_module.filedialog, "askopenfilenames", lambda **kwargs: ())
+        controller = _make_controller()
+        monkeypatch.setattr(import_module.filedialog, "askopenfilenames", lambda **kwargs: ())
 
-        app.load_and_parse_selected_files()
+        controller.start_from_dialog(is_monitoring=False)
 
-        assert app.is_importing is False
-        app.pause_monitoring.assert_not_called()
-        app._set_import_ui_busy.assert_not_called()
-        app._start_import_worker.assert_not_called()
+        assert controller.is_importing is False
+        controller.pause_monitoring.assert_not_called()
+        controller.set_controls_busy.assert_not_called()
 
     def test_import_pauses_monitoring_and_sorts_files(self, monkeypatch) -> None:
-        app = _make_app_shell()
-        app.is_monitoring = True
+        controller = _make_controller()
+        controller.show_modal = Mock()
+        controller.start_worker = Mock()
+        controller.poll_progress = Mock()
         monkeypatch.setattr(
-            main_window_module.filedialog,
+            import_module.filedialog,
             "askopenfilenames",
             lambda **kwargs: ("/tmp/zeta.txt", "/tmp/alpha.txt"),
         )
 
-        app.load_and_parse_selected_files()
+        controller.start_from_dialog(is_monitoring=True)
 
-        assert app.is_importing is True
-        assert app.monitoring_was_active_before_import is True
-        app.pause_monitoring.assert_called_once()
-        app._set_import_ui_busy.assert_called_once_with(True)
-        app._show_import_modal.assert_called_once()
-        app._poll_import_progress.assert_called_once()
-        args, _ = app._start_import_worker.call_args
-        assert [p.name for p in args[0]] == ["alpha.txt", "zeta.txt"]
+        assert controller.is_importing is True
+        assert controller.monitoring_was_active_before_import is True
+        controller.pause_monitoring.assert_called_once_with()
+        controller.set_controls_busy.assert_called_once_with(True)
+        controller.show_modal.assert_called_once_with()
+        controller.poll_progress.assert_called_once_with()
+        selected_files = controller.start_worker.call_args.args[0]
+        assert [path.name for path in selected_files] == ["alpha.txt", "zeta.txt"]
 
     def test_abort_sets_event_and_disables_button(self) -> None:
-        app = _make_app_shell()
-        app.is_importing = True
-        app.import_abort_button = Mock()
-        app.import_status_text = Mock()
+        controller = _make_controller()
+        controller.is_importing = True
+        controller.import_abort_button = Mock()
+        controller.import_status_text = Mock()
 
-        app.abort_load_parse()
+        controller.abort()
 
-        assert app.import_abort_event.is_set() is True
-        app.import_abort_button.config.assert_called_once()
-        app.import_status_text.set.assert_called_once_with("Aborting...")
+        assert controller.import_abort_event.is_set() is True
+        controller.import_abort_button.config.assert_called_once_with(state=import_module.tk.DISABLED)
+        controller.import_status_text.set.assert_called_once_with("Aborting...")
 
     def test_show_import_modal_places_abort_button_in_bottom_actions_row(self, monkeypatch) -> None:
-        app = _make_app_shell()
-        app.root = Mock()
-        app.abort_load_parse = Mock()
-        app._center_window_on_parent = Mock()
-        app._apply_modal_icon = Mock()
-        app._show_import_modal = WoosNwnParserApp._show_import_modal.__get__(app, WoosNwnParserApp)
+        controller = _make_controller()
 
         class FakeFrame(_FakeWidget):
             instances = []
@@ -183,15 +185,15 @@ class TestLoadAndParseWorkflow:
         class FakeButton(_FakeWidget):
             instances = []
 
-        monkeypatch.setattr(main_window_module.tk, "Toplevel", _FakeImportToplevel)
-        monkeypatch.setattr(main_window_module.ttk, "Frame", FakeFrame)
-        monkeypatch.setattr(main_window_module.ttk, "Label", FakeLabel)
-        monkeypatch.setattr(main_window_module.ttk, "Progressbar", FakeProgressbar)
-        monkeypatch.setattr(main_window_module.ttk, "Button", FakeButton)
-        monkeypatch.setattr(main_window_module, "apply_dark_title_bar", Mock())
-        monkeypatch.setattr(main_window_module.tk, "StringVar", lambda value=None: Mock(value=value))
+        monkeypatch.setattr(import_module.tk, "Toplevel", _FakeImportToplevel)
+        monkeypatch.setattr(import_module.ttk, "Frame", FakeFrame)
+        monkeypatch.setattr(import_module.ttk, "Label", FakeLabel)
+        monkeypatch.setattr(import_module.ttk, "Progressbar", FakeProgressbar)
+        monkeypatch.setattr(import_module.ttk, "Button", FakeButton)
+        monkeypatch.setattr(import_module, "apply_dark_title_bar", Mock())
+        monkeypatch.setattr(import_module.tk, "StringVar", lambda value=None: Mock(value=value))
 
-        app._show_import_modal()
+        controller.show_modal()
 
         assert len(FakeFrame.instances) == 2
         assert FakeFrame.instances[1].pack_calls == [((), {"side": "bottom", "fill": "x"})]
@@ -199,64 +201,32 @@ class TestLoadAndParseWorkflow:
         assert FakeProgressbar.instances[0].started_with == 8
 
     def test_finalize_import_resets_ui_and_refreshes(self) -> None:
-        app = _make_app_shell()
-        app.root = Mock()
-        app.import_poll_job = "poll-id"
-        app.is_importing = True
-        app.refresh_targets = Mock()
-        app.dps_panel = Mock()
-        app.log_debug = Mock()
-        progress = Mock()
-        modal = Mock()
+        controller = _make_controller()
+        controller.import_poll_job = "poll-id"
+        controller.is_importing = True
+        progress = Mock(stop=Mock())
+        modal = _FakeImportToplevel(None)
         modal._progressbar = progress
-        app.import_modal = modal
-        app._import_status = {
-            "total_files": 2,
-            "errors": [],
-            "aborted": False,
-        }
+        modal.grab_release = Mock()
+        modal.destroy = Mock()
+        controller.import_modal = modal
+        controller._import_status = {"total_files": 2, "errors": [], "aborted": False}
 
-        app._finalize_import()
+        controller.finalize()
 
-        app.root.after_cancel.assert_called_once_with("poll-id")
-        app._set_import_ui_busy.assert_called_once_with(False)
-        progress.stop.assert_called_once()
-        modal.grab_release.assert_called_once()
-        modal.destroy.assert_called_once()
-        app.refresh_targets.assert_called_once()
-        app.dps_panel.refresh.assert_called_once()
-        assert app.is_importing is False
-
-    def test_clear_data_clears_target_stats_cache(self) -> None:
-        app = _make_app_shell()
-        app.root = Mock()
-        app.data_store = Mock()
-        app.immunity_panel = Mock()
-        app.immunity_panel.tree.get_children.return_value = ("iid1",)
-        app.dps_panel = Mock()
-        app.dps_panel.tree.get_children.return_value = ("iid2",)
-        app.stats_panel = Mock()
-        app.stats_panel.tree.get_children.return_value = ("iid3",)
-        app.death_snippet_panel = Mock()
-        app.dps_service = Mock()
-        app.refresh_targets = Mock()
-        app.dps_refresh_job = None
-        app._refresh_job = None
-        app._dps_dirty = False
-        app._targets_dirty = False
-        app._immunity_dirty_targets = set()
-
-        app.clear_data()
-
-        app.stats_panel.clear_cache.assert_called_once()
-        app.refresh_targets.assert_called_once()
+        controller.root.after_cancel.assert_called_once_with("poll-id")
+        controller.set_controls_busy.assert_called_once_with(False)
+        progress.stop.assert_called_once_with()
+        modal.grab_release.assert_called_once_with()
+        modal.destroy.assert_called_once_with()
+        controller.refresh_targets.assert_called_once_with()
+        controller.dps_panel.refresh.assert_called_once_with()
+        assert controller.is_importing is False
 
     def test_file_counter_updates_immediately_on_file_completed_event(self) -> None:
-        app = _make_app_shell()
-        app.root = Mock()
-        app.root.after = Mock()
-        app.import_result_queue = queue.Queue()
-        app._import_status = {
+        controller = _make_controller()
+        controller.import_result_queue = queue.Queue()
+        controller._import_status = {
             "files_completed": 0,
             "total_files": 2,
             "current_file": "alpha.txt",
@@ -265,190 +235,130 @@ class TestLoadAndParseWorkflow:
             "success": False,
             "worker_done": False,
         }
-        app.import_result_queue.put({
-            "event": "file_completed",
-            "index": 1,
-            "file_name": "alpha.txt",
-        })
+        controller.import_result_queue.put({"event": "file_completed", "index": 1, "file_name": "alpha.txt"})
 
-        app._drain_import_events()
+        controller.drain_events()
 
-        assert app._import_status["files_completed"] == 1
-        assert len(app._pending_file_payloads) == 0
-        app.root.after.assert_not_called()
-
-    def test_on_death_snippet_forwards_event_to_panel(self) -> None:
-        app = _make_app_shell()
-        app.death_snippet_panel = Mock()
-        event = DeathSnippetEvent(
-            target="Woo Wildrock",
-            killer="HYDROXIS",
-            lines=["line-1", "line-2"],
-            timestamp=main_window_module.datetime.min,
-            line_number=None,
-        )
-
-        app._on_death_snippet(event)
-
-        app.death_snippet_panel.add_death_event.assert_called_once_with(event)
+        assert controller._import_status["files_completed"] == 1
+        assert len(controller._pending_file_payloads) == 0
+        controller.root.after.assert_not_called()
 
     def test_apply_pending_payloads_uses_event_api_for_death_snippets(self) -> None:
-        app = _make_app_shell()
-        app.root = Mock()
-        app.death_snippet_panel = Mock()
-        app._is_applying_payload = True
-        app._pending_file_payloads.append({
-            "mutations": [],
-            "death_snippets": [
-                {
-                    "type": "death_snippet",
-                    "timestamp": None,
-                    "killer": "HYDROXIS",
-                    "target": "Woo Wildrock",
-                    "lines": ["line-1", "line-2"],
-                }
-            ],
-            "death_character_identified": [],
-            "index": 1,
-            "mutation_idx": 0,
-        })
+        controller = _make_controller()
+        controller._is_applying_payload = True
+        controller._pending_file_payloads.append(
+            {
+                "mutations": [],
+                "death_snippets": [
+                    {
+                        "timestamp": None,
+                        "killer": "HYDROXIS",
+                        "target": "Woo Wildrock",
+                        "lines": ["line-1", "line-2"],
+                    }
+                ],
+                "death_character_identified": [],
+                "index": 1,
+                "mutation_idx": 0,
+            }
+        )
 
-        app._apply_pending_payloads_incremental()
+        controller.apply_pending_payloads_incremental()
 
-        app.death_snippet_panel.add_death_events.assert_called_once()
-        emitted = app.death_snippet_panel.add_death_events.call_args.args[0]
+        controller.death_snippet_panel.add_death_events.assert_called_once()
+        emitted = controller.death_snippet_panel.add_death_events.call_args.args[0]
         assert len(emitted) == 1
         assert isinstance(emitted[0], DeathSnippetEvent)
 
     def test_apply_pending_payloads_forwards_death_character_identified_events(self) -> None:
-        app = _make_app_shell()
-        app.root = Mock()
-        app._on_death_character_identified = Mock()
-        app._is_applying_payload = True
-        app._pending_file_payloads.append({
-            "mutations": [],
-            "death_snippets": [],
-            "death_character_identified": [
-                {
-                    "type": "death_character_identified",
-                    "character_name": "Woo Wildrock",
-                }
-            ],
-            "index": 1,
-            "mutation_idx": 0,
-        })
+        controller = _make_controller()
+        controller._is_applying_payload = True
+        controller._pending_file_payloads.append(
+            {
+                "mutations": [],
+                "death_snippets": [],
+                "death_character_identified": [{"character_name": "Woo Wildrock"}],
+                "index": 1,
+                "mutation_idx": 0,
+            }
+        )
 
-        app._apply_pending_payloads_incremental()
+        controller.apply_pending_payloads_incremental()
 
-        emitted = app._on_death_character_identified.call_args.args[0]
+        emitted = controller.on_character_identified.call_args.args[0]
         assert isinstance(emitted, DeathCharacterIdentifiedEvent)
         assert emitted.character_name == "Woo Wildrock"
 
     def test_apply_pending_payloads_incremental_spans_ticks_and_drains(self, monkeypatch) -> None:
-        app = _make_app_shell()
-        app.root = Mock()
-        app.root.after = Mock()
-        app.data_store = Mock()
-        app.death_snippet_panel = Mock()
-        app._on_death_character_identified = Mock()
-        app.IMPORT_APPLY_MUTATION_BATCH_SIZE = 1
-        app._is_applying_payload = True
-        app._pending_file_payloads.append({
-            "mutations": [DamageMutation(target="Goblin", total_damage=10, attacker="Orc", timestamp=1.0, count_for_dps=True, damage_types={"slashing": 10})],
-            "death_snippets": [],
-            "death_character_identified": [],
-            "index": 1,
-            "mutation_idx": 0,
-        })
+        controller = _make_controller()
+        controller.import_apply_mutation_batch_size = 1
+        controller._is_applying_payload = True
+        controller._pending_file_payloads.append(
+            {
+                "mutations": [
+                    DamageMutation(
+                        target="Goblin",
+                        total_damage=10,
+                        attacker="Orc",
+                        timestamp=1.0,
+                        count_for_dps=True,
+                        damage_types={"slashing": 10},
+                    )
+                ],
+                "death_snippets": [],
+                "death_character_identified": [],
+                "index": 1,
+                "mutation_idx": 0,
+            }
+        )
 
-        # Tick 1: process one operation then run out of time.
         _patch_perf_counter(monkeypatch, [0.0, 0.0, 0.007])
-        app._apply_pending_payloads_incremental()
+        controller.apply_pending_payloads_incremental()
 
-        assert len(app._pending_file_payloads) == 1
-        assert app._pending_file_payloads[0]["mutation_idx"] == 1
-        assert app._is_applying_payload is True
-        app.root.after.assert_called_once_with(1, app._apply_pending_payloads_incremental)
-        app.data_store.apply_mutations.assert_called_once()
+        assert len(controller._pending_file_payloads) == 1
+        assert controller._pending_file_payloads[0]["mutation_idx"] == 1
+        assert controller._is_applying_payload is True
+        controller.root.after.assert_called_once_with(1, controller.apply_pending_payloads_incremental)
+        controller.data_store.apply_mutations.assert_called_once()
 
-        # Tick 2: finish all remaining stages and drain queue.
         _patch_perf_counter(monkeypatch, [1.0] * 20)
-        app._apply_pending_payloads_incremental()
+        controller.apply_pending_payloads_incremental()
 
-        assert len(app._pending_file_payloads) == 0
-        assert app._is_applying_payload is False
-        assert app.root.after.call_count == 1
-
-    def test_is_applying_payload_lifecycle_tracks_queue_drain(self, monkeypatch) -> None:
-        app = _make_app_shell()
-        app.root = Mock()
-        app.root.after = Mock()
-        app.data_store = Mock()
-        app.death_snippet_panel = Mock()
-        app._on_death_character_identified = Mock()
-        app.IMPORT_APPLY_MUTATION_BATCH_SIZE = 1
-        app._is_applying_payload = True
-        app._pending_file_payloads.append({
-            "mutations": [SaveMutation(target="Goblin", save_key="fort", bonus=4)],
-            "death_snippets": [],
-            "death_character_identified": [],
-            "index": 1,
-            "mutation_idx": 0,
-        })
-
-        _patch_perf_counter(monkeypatch, [0.0, 0.0, 0.01])
-        app._apply_pending_payloads_incremental()
-        assert app._is_applying_payload is True
-        assert len(app._pending_file_payloads) == 1
-
-        _patch_perf_counter(monkeypatch, [1.0, 1.0, 1.001, 1.002, 1.003, 1.004])
-        app._apply_pending_payloads_incremental()
-        assert app._is_applying_payload is False
-        assert len(app._pending_file_payloads) == 0
+        assert len(controller._pending_file_payloads) == 0
+        assert controller._is_applying_payload is False
 
     def test_apply_pending_payloads_batches_multiple_mutations_per_apply_call(self, monkeypatch) -> None:
-        app = _make_app_shell()
-        app.root = Mock()
-        app.root.after = Mock()
-        app.data_store = Mock()
-        app.death_snippet_panel = Mock()
-        app.IMPORT_APPLY_MUTATION_BATCH_SIZE = 2
-        app._is_applying_payload = True
+        controller = _make_controller()
+        controller.import_apply_mutation_batch_size = 2
+        controller._is_applying_payload = True
         mutations = [
             SaveMutation(target="Goblin", save_key="fort", bonus=4),
             SaveMutation(target="Goblin", save_key="reflex", bonus=5),
             SaveMutation(target="Goblin", save_key="will", bonus=6),
         ]
-        app._pending_file_payloads.append({
-            "mutations": mutations,
-            "death_snippets": [],
-            "death_character_identified": [],
-            "index": 1,
-            "mutation_idx": 0,
-        })
+        controller._pending_file_payloads.append(
+            {
+                "mutations": mutations,
+                "death_snippets": [],
+                "death_character_identified": [],
+                "index": 1,
+                "mutation_idx": 0,
+            }
+        )
 
         _patch_perf_counter(monkeypatch, [0.0] * 20)
-        app._apply_pending_payloads_incremental()
+        controller.apply_pending_payloads_incremental()
 
-        assert app.data_store.apply_mutations.call_count == 2
-        first_call = app.data_store.apply_mutations.call_args_list[0].args[0]
-        second_call = app.data_store.apply_mutations.call_args_list[1].args[0]
-        assert first_call == mutations[:2]
-        assert second_call == mutations[2:]
-        assert len(app._pending_file_payloads) == 0
-        assert app._is_applying_payload is False
+        assert controller.data_store.apply_mutations.call_count == 2
+        assert controller.data_store.apply_mutations.call_args_list[0].args[0] == mutations[:2]
+        assert controller.data_store.apply_mutations.call_args_list[1].args[0] == mutations[2:]
 
     def test_poll_import_progress_waits_for_streaming_apply_before_finalize(self, monkeypatch) -> None:
-        app = _make_app_shell()
-        app.root = Mock()
-        app.root.after = Mock(return_value="poll-next")
-        app._poll_import_progress = WoosNwnParserApp._poll_import_progress.__get__(app, WoosNwnParserApp)
-        app.is_importing = True
-        app.import_result_queue = queue.Queue()
-        app._finalize_import = Mock()
-        app.data_store = Mock()
-        app.death_snippet_panel = Mock()
-        app._import_status = {
+        controller = _make_controller()
+        controller.is_importing = True
+        controller.import_result_queue = queue.Queue()
+        controller.finalize = Mock()
+        controller._import_status = {
             "files_completed": 0,
             "total_files": 1,
             "current_file": "alpha.txt",
@@ -457,145 +367,47 @@ class TestLoadAndParseWorkflow:
             "success": False,
             "worker_done": False,
         }
-        app.import_result_queue.put({
-            "event": "ops_chunk",
-            "index": 1,
-            "ops": {
-                "mutations": [DamageMutation(target="Goblin", total_damage=10, attacker="Orc", timestamp=1.0, count_for_dps=True, damage_types={"slashing": 10})],
-            },
-        })
-        app.import_result_queue.put({"event": "file_completed", "index": 1, "file_name": "alpha.txt"})
-        app.import_result_queue.put({"event": "done"})
+        controller.import_result_queue.put(
+            {
+                "event": "ops_chunk",
+                "index": 1,
+                "ops": {
+                    "mutations": [
+                        DamageMutation(
+                            target="Goblin",
+                            total_damage=10,
+                            attacker="Orc",
+                            timestamp=1.0,
+                            count_for_dps=True,
+                            damage_types={"slashing": 10},
+                        )
+                    ]
+                },
+            }
+        )
+        controller.import_result_queue.put({"event": "file_completed", "index": 1, "file_name": "alpha.txt"})
+        controller.import_result_queue.put({"event": "done"})
 
-        app._poll_import_progress()
+        controller.poll_progress()
 
-        assert app._is_applying_payload is True
-        app.root.after.assert_called()
-        app._finalize_import.assert_not_called()
+        assert controller._is_applying_payload is True
+        controller.finalize.assert_not_called()
 
         _patch_perf_counter(monkeypatch, [0.0] * 30)
-        app._apply_pending_payloads_incremental()
+        controller.apply_pending_payloads_incremental()
+        controller.poll_progress()
 
-        app._poll_import_progress()
-        app._finalize_import.assert_called_once()
-
-    def test_on_death_character_identified_sets_panel_character(self) -> None:
-        app = _make_app_shell()
-        app.death_snippet_panel = Mock()
-        app.death_snippet_panel.get_character_name.return_value = ""
-
-        app._on_death_character_identified(
-            DeathCharacterIdentifiedEvent(
-                character_name="Woo Wildrock",
-                timestamp=main_window_module.datetime.min,
-                line_number=None,
-            )
-        )
-
-        app.death_snippet_panel.set_character_name.assert_called_once_with("Woo Wildrock")
-
-    def test_on_death_character_identified_does_not_overwrite_existing_name(self) -> None:
-        app = _make_app_shell()
-        app.death_snippet_panel = Mock()
-        app.death_snippet_panel.get_character_name.return_value = "Existing Name"
-
-        app._on_death_character_identified(
-            DeathCharacterIdentifiedEvent(
-                character_name="Woo Wildrock",
-                timestamp=main_window_module.datetime.min,
-                line_number=None,
-            )
-        )
-
-        app.death_snippet_panel.set_character_name.assert_not_called()
-
-    def test_on_death_character_identified_ignores_empty_name(self) -> None:
-        app = _make_app_shell()
-        app.death_snippet_panel = Mock()
-
-        app._on_death_character_identified(
-            DeathCharacterIdentifiedEvent(
-                character_name="   ",
-                timestamp=main_window_module.datetime.min,
-                line_number=None,
-            )
-        )
-
-        app.death_snippet_panel.get_character_name.assert_not_called()
-        app.death_snippet_panel.set_character_name.assert_not_called()
-
-    def test_identity_and_fallback_callbacks_update_parser(self) -> None:
-        app = _make_app_shell()
-        app.parser = Mock()
-        app._schedule_session_settings_save = Mock()
-
-        app._on_death_character_name_changed("Woo Wildrock")
-        app._on_death_fallback_line_changed("Your God refuses to hear your prayers!")
-
-        app.parser.set_death_character_name.assert_called_once_with("Woo Wildrock")
-        app.parser.set_death_fallback_line.assert_called_once_with("Your God refuses to hear your prayers!")
-        app._schedule_session_settings_save.assert_called_once()
-
-    def test_parse_immunity_callback_updates_parser_and_schedules_save(self) -> None:
-        app = _make_app_shell()
-        app.parser = Mock()
-        app._schedule_session_settings_save = Mock()
-
-        app._on_parse_immunity_changed(False)
-
-        assert app.parser.parse_immunity is False
-        app._schedule_session_settings_save.assert_called_once()
-
-    def test_build_session_settings_includes_parse_immunity(self) -> None:
-        app = _make_app_shell()
-        app.log_directory = r"C:\logs"
-        app.death_snippet_panel = Mock()
-        app.death_snippet_panel.get_fallback_death_line.return_value = "Custom fallback"
-        app.dps_panel = Mock()
-        app.dps_panel.get_time_tracking_mode.return_value = "global"
-        app.parser.parse_immunity = False
-
-        settings = app._build_session_settings()
-
-        assert settings.log_directory == r"C:\logs"
-        assert settings.death_fallback_line == "Custom fallback"
-        assert settings.parse_immunity is False
-        assert settings.first_timestamp_mode == "global"
-
-    def test_schedule_session_settings_save_debounces_jobs(self) -> None:
-        app = _make_app_shell()
-        app.root = Mock()
-        app.root.after = Mock(return_value="new-job")
-        app.root.after_cancel = Mock()
-        app._settings_save_delay_ms = 400
-        app._settings_save_job = "old-job"
-        app._flush_pending_session_settings_save = Mock()
-
-        app._schedule_session_settings_save()
-
-        app.root.after_cancel.assert_called_once_with("old-job")
-        app.root.after.assert_called_once_with(400, app._flush_pending_session_settings_save)
-        assert app._settings_save_job == "new-job"
-
-    def test_flush_pending_session_settings_save_persists_now(self) -> None:
-        app = _make_app_shell()
-        app._settings_save_job = "job-id"
-        app._persist_session_settings = Mock()
-
-        app._flush_pending_session_settings_save()
-
-        assert app._settings_save_job is None
-        app._persist_session_settings.assert_called_once()
+        controller.finalize.assert_called_once_with()
 
     def test_start_import_worker_passes_death_settings_to_worker(self, monkeypatch) -> None:
-        app = _make_app_shell()
-        app._start_import_worker = WoosNwnParserApp._start_import_worker.__get__(app, WoosNwnParserApp)
-        app.parser = Mock()
-        app.parser.parse_immunity = True
-        app.parser.death_character_name = "Woo Wildrock"
-        app.parser.death_fallback_line = "Custom fallback"
+        controller = _make_controller()
+        controller.parser = Mock(
+            parse_immunity=True,
+            death_character_name="Woo Wildrock",
+            death_fallback_line="Custom fallback",
+        )
 
-        class _FakeProcess:
+        class FakeProcess:
             def __init__(self, target, args, daemon) -> None:
                 self.target = target
                 self.args = args
@@ -605,7 +417,7 @@ class TestLoadAndParseWorkflow:
             def start(self) -> None:
                 self.started = True
 
-        class _FakeContext:
+        class FakeContext:
             def __init__(self) -> None:
                 self.process = None
                 self.event = object()
@@ -619,19 +431,119 @@ class TestLoadAndParseWorkflow:
                 return self.queue
 
             def Process(self, target, args, daemon):
-                self.process = _FakeProcess(target=target, args=args, daemon=daemon)
+                self.process = FakeProcess(target=target, args=args, daemon=daemon)
                 return self.process
 
-        fake_ctx = _FakeContext()
-        monkeypatch.setattr(main_window_module.mp, "get_context", lambda _name: fake_ctx)
+        fake_ctx = FakeContext()
+        monkeypatch.setattr(import_module.mp, "get_context", lambda _name: fake_ctx)
 
-        app._start_import_worker([main_window_module.Path("alpha.txt")])
+        controller.start_worker([import_module.Path("alpha.txt")])
 
-        assert app.import_abort_flag is fake_ctx.event
-        assert app.import_result_queue is fake_ctx.queue
-        assert app.import_process is fake_ctx.process
-        assert fake_ctx.process is not None
+        assert controller.import_abort_flag is fake_ctx.event
+        assert controller.import_result_queue is fake_ctx.queue
+        assert controller.import_process is fake_ctx.process
         assert fake_ctx.process.started is True
-        assert fake_ctx.queue_maxsize == main_window_module.IMPORT_RESULT_QUEUE_MAXSIZE
         assert fake_ctx.process.args[4] == "Woo Wildrock"
         assert fake_ctx.process.args[5] == "Custom fallback"
+
+
+class TestMainWindowCallbacks:
+    def test_on_death_snippet_forwards_event_to_panel(self) -> None:
+        app = _make_app_shell()
+        event = DeathSnippetEvent(
+            target="Woo Wildrock",
+            killer="HYDROXIS",
+            lines=["line-1", "line-2"],
+            timestamp=datetime.min,
+            line_number=None,
+        )
+
+        app._on_death_snippet(event)
+
+        app.death_snippet_panel.add_death_event.assert_called_once_with(event)
+
+    def test_on_death_character_identified_sets_panel_character(self) -> None:
+        app = _make_app_shell()
+        app.death_snippet_panel.get_character_name.return_value = ""
+
+        app._on_death_character_identified(
+            DeathCharacterIdentifiedEvent(
+                character_name="Woo Wildrock",
+                timestamp=datetime.min,
+                line_number=None,
+            )
+        )
+
+        app.death_snippet_panel.set_character_name.assert_called_once_with("Woo Wildrock")
+
+    def test_on_death_character_identified_does_not_overwrite_existing_name(self) -> None:
+        app = _make_app_shell()
+        app.death_snippet_panel.get_character_name.return_value = "Existing Name"
+
+        app._on_death_character_identified(
+            DeathCharacterIdentifiedEvent(
+                character_name="Woo Wildrock",
+                timestamp=datetime.min,
+                line_number=None,
+            )
+        )
+
+        app.death_snippet_panel.set_character_name.assert_not_called()
+
+    def test_on_death_character_identified_ignores_empty_name(self) -> None:
+        app = _make_app_shell()
+
+        app._on_death_character_identified(
+            DeathCharacterIdentifiedEvent(
+                character_name="   ",
+                timestamp=datetime.min,
+                line_number=None,
+            )
+        )
+
+        app.death_snippet_panel.get_character_name.assert_not_called()
+
+    def test_identity_and_fallback_callbacks_update_parser(self) -> None:
+        app = _make_app_shell()
+        app.parser = Mock()
+        app._schedule_session_settings_save = Mock()
+
+        app._on_death_character_name_changed("Woo Wildrock")
+        app._on_death_fallback_line_changed("Your God refuses to hear your prayers!")
+
+        app.parser.set_death_character_name.assert_called_once_with("Woo Wildrock")
+        app.parser.set_death_fallback_line.assert_called_once_with("Your God refuses to hear your prayers!")
+        app._schedule_session_settings_save.assert_called_once_with()
+
+    def test_parse_immunity_callback_updates_parser_and_schedules_save(self) -> None:
+        app = _make_app_shell()
+        app.parser = Mock()
+        app._schedule_session_settings_save = Mock()
+
+        app._on_parse_immunity_changed(False)
+
+        assert app.parser.parse_immunity is False
+        app._schedule_session_settings_save.assert_called_once_with()
+
+    def test_build_session_settings_delegates_to_controller(self) -> None:
+        app = _make_app_shell()
+        app.settings_controller.build_settings.return_value = "settings"
+
+        assert app._build_session_settings() == "settings"
+        app.settings_controller.build_settings.assert_called_once_with()
+
+    def test_schedule_session_settings_save_delegates_to_controller(self) -> None:
+        app = _make_app_shell()
+
+        app._schedule_session_settings_save()
+
+        app.settings_controller.schedule_save.assert_called_once_with()
+
+    def test_flush_pending_session_settings_save_updates_cached_settings(self) -> None:
+        app = _make_app_shell()
+        app.settings_controller.settings = "saved-settings"
+
+        app._flush_pending_session_settings_save()
+
+        app.settings_controller.flush_pending_save.assert_called_once_with()
+        assert app._settings == "saved-settings"

@@ -1,114 +1,48 @@
-"""Unit tests for monitoring switch behavior in the main window."""
+"""Unit tests for monitor-controller switch behavior."""
+
+from __future__ import annotations
 
 import queue
 import threading
-import tkinter as tk
-from tkinter import ttk
+from pathlib import Path
 from unittest.mock import Mock
 
-import pytest
-
-from app.ui.main_window import WoosNwnParserApp
-import app.ui.main_window as main_window_module
+import app.ui.controllers.monitor_controller as monitor_module
+from app.ui.controllers.monitor_controller import MonitorController
 
 
-def _can_create_tk_root() -> bool:
-    """Check if Tk root creation is possible in this environment."""
-    try:
-        root = tk.Tk()
-        root.withdraw()
-        root.update_idletasks()
-        root.destroy()
-        return True
-    except (tk.TclError, RuntimeError, Exception):
-        return False
+def _make_controller(log_directory: str | None = r"C:\logs") -> tuple[MonitorController, Mock]:
+    root = Mock()
+    root.after = Mock(return_value="poll-job-id")
+    root.after_cancel = Mock()
 
+    active_file_names: list[str] = []
+    switch_states: list[bool] = []
 
-_TK_AVAILABLE = _can_create_tk_root()
-
-
-@pytest.fixture
-def app_shell(shared_tk_root):
-    """Create a minimal WoosNwnParserApp instance for monitoring switch tests."""
-    if shared_tk_root is None:
-        pytest.skip("Tkinter not available")
-
-    app = WoosNwnParserApp.__new__(WoosNwnParserApp)
-    app.root = Mock()
-    app.root.after = Mock(return_value="poll-job-id")
-    app.root.after_cancel = Mock()
-
-    app.log_directory = r"C:\logs"
-    app.is_monitoring = False
-    app.polling_job = None
-    app.dps_refresh_job = None
-    app.directory_monitor = None
-
-    app.parser = Mock()
-    app.data_queue = queue.Queue()
-    app.data_store = Mock()
-    app.data_store.version = 0
-    app._last_refresh_version = 0
-    app.refresh_targets = Mock()
-    app.monitor_thread = None
-    app.monitor_stop_event = threading.Event()
-    app._monitor_active_file_name = "N/A"
-    app._monitor_log_queue = queue.SimpleQueue()
-    app._debug_monitor_enabled = False
-    app._start_monitor_thread = Mock()
-    app._stop_monitor_thread = Mock()
-    app._drain_monitor_logs = Mock()
-
-    app.active_file_text = tk.StringVar(master=shared_tk_root, value="N/A")
-    app.monitoring_var = tk.BooleanVar(master=shared_tk_root, value=False)
-    app.monitoring_text = tk.StringVar(master=shared_tk_root, value="Paused")
-    app.monitoring_switch = ttk.Checkbutton(
-        shared_tk_root,
-        variable=app.monitoring_var,
-        textvariable=app.monitoring_text,
-        style="Switch.TCheckbutton",
+    controller = MonitorController(
+        root=root,
+        parser=Mock(),
+        data_queue=queue.Queue(),
+        debug_panel=Mock(get_debug_enabled=Mock(return_value=False)),
+        dps_panel=Mock(refresh=Mock()),
+        get_log_directory=lambda: log_directory,
+        set_log_directory=Mock(),
+        set_monitoring_switch_ui=lambda is_on: switch_states.append(is_on),
+        set_active_file_name=lambda file_name: active_file_names.append(file_name),
+        log_debug=Mock(),
+        persist_settings_now=Mock(),
+        get_window_icon_path=lambda: None,
+        get_queue_pressure_state=lambda: "normal",
+        get_monitor_max_lines_per_poll=lambda _pressure_state: 2000,
+        get_monitor_sleep_seconds=lambda _pressure_state, _has_more_pending: 0.05,
     )
-
-    app.dps_panel = Mock()
-    app.debug_panel = Mock()
-    app.debug_panel.get_debug_enabled.return_value = False
-    app.log_debug = Mock()
-    app.window_icon_path = None
-
-    return app
+    controller._captured_switch_states = switch_states
+    controller._captured_active_file_names = active_file_names
+    return controller, root
 
 
-@pytest.mark.skipif(not _TK_AVAILABLE, reason="Tkinter display not available")
 class TestMonitoringSwitch:
-    """Test suite for monitoring switch text/state and behavior mapping."""
-
-    def test_switch_label_tracks_state(self, app_shell):
-        app_shell._set_monitoring_switch_ui(True)
-        assert app_shell.monitoring_var.get() is True
-        assert app_shell.monitoring_text.get() == "Monitoring"
-
-        app_shell._set_monitoring_switch_ui(False)
-        assert app_shell.monitoring_var.get() is False
-        assert app_shell.monitoring_text.get() == "Paused"
-
-    def test_toggle_routes_to_start_and_pause(self, app_shell, monkeypatch):
-        start_mock = Mock()
-        pause_mock = Mock()
-        monkeypatch.setattr(app_shell, "start_monitoring", start_mock)
-        monkeypatch.setattr(app_shell, "pause_monitoring", pause_mock)
-
-        app_shell.monitoring_var.set(True)
-        app_shell._on_monitoring_switch_toggle()
-        start_mock.assert_called_once()
-        pause_mock.assert_not_called()
-
-        start_mock.reset_mock()
-        app_shell.monitoring_var.set(False)
-        app_shell._on_monitoring_switch_toggle()
-        pause_mock.assert_called_once()
-        start_mock.assert_not_called()
-
-    def test_start_monitoring_turns_switch_on_and_starts_polling(self, app_shell, monkeypatch):
+    def test_start_monitoring_turns_switch_on_and_starts_polling(self, monkeypatch) -> None:
         class FakeMonitor:
             def __init__(self, directory):
                 self.directory = directory
@@ -119,94 +53,127 @@ class TestMonitoringSwitch:
                 self.started = True
 
             def read_new_lines(self, *args, **kwargs):
-                return None
+                return False
 
-            def get_active_log_file(self):
-                return None
+        monkeypatch.setattr(monitor_module, "LogDirectoryMonitor", FakeMonitor)
+        controller, root = _make_controller()
+        controller.start_monitor_thread = Mock(return_value=True)
 
-        monkeypatch.setattr(main_window_module, "LogDirectoryMonitor", FakeMonitor)
+        controller.start()
 
-        app_shell.start_monitoring()
+        assert controller.is_monitoring is True
+        assert controller.directory_monitor is not None
+        assert controller.directory_monitor.started is True
+        assert controller._captured_switch_states[-1] is True
+        assert controller.dps_panel.refresh.call_count == 1
+        controller.start_monitor_thread.assert_called_once_with()
+        root.after.assert_called_once_with(250, controller.poll_ui_tick)
+        assert controller.polling_job == "poll-job-id"
+        assert controller._captured_active_file_names[-1] == "N/A"
 
-        assert app_shell.is_monitoring is True
-        assert app_shell.monitoring_var.get() is True
-        assert app_shell.monitoring_text.get() == "Monitoring"
-        assert app_shell.directory_monitor is not None
-        assert app_shell.directory_monitor.started is True
-        app_shell.dps_panel.refresh.assert_called_once()
-        app_shell._start_monitor_thread.assert_called_once()
-        app_shell.root.after.assert_called_once()
-        assert app_shell.polling_job == "poll-job-id"
-        assert app_shell.active_file_text.get() == "N/A"
+    def test_pause_monitoring_turns_switch_off_and_cancels_jobs(self) -> None:
+        controller, root = _make_controller()
+        controller.is_monitoring = True
+        controller.polling_job = "poll-job-id"
+        controller._monitor_restart_job = "restart-job-id"
+        controller.stop_monitor_thread = Mock()
 
-    def test_pause_monitoring_turns_switch_off_and_cancels_jobs(self, app_shell):
-        app_shell.is_monitoring = True
-        app_shell.monitoring_var.set(True)
-        app_shell.monitoring_text.set("Monitoring")
-        app_shell.polling_job = "poll-job-id"
-        app_shell.dps_refresh_job = "dps-job-id"
+        controller.pause()
 
-        app_shell.pause_monitoring()
+        assert controller.is_monitoring is False
+        assert controller._captured_switch_states[-1] is False
+        controller.stop_monitor_thread.assert_called_once_with()
+        root.after_cancel.assert_any_call("poll-job-id")
+        root.after_cancel.assert_any_call("restart-job-id")
+        assert controller.polling_job is None
+        assert controller._monitor_restart_job is None
 
-        assert app_shell.is_monitoring is False
-        assert app_shell.monitoring_var.get() is False
-        assert app_shell.monitoring_text.get() == "Paused"
-        assert app_shell.polling_job is None
-        assert app_shell.dps_refresh_job is None
-        app_shell._stop_monitor_thread.assert_called_once()
-        app_shell.root.after_cancel.assert_any_call("poll-job-id")
-        app_shell.root.after_cancel.assert_any_call("dps-job-id")
+    def test_stop_monitor_thread_preserves_last_known_active_filename(self) -> None:
+        controller, _root = _make_controller()
+        controller._monitor_active_file_name = "nwclientLog2.txt"
+        controller.monitor_thread = None
 
-    def test_stop_monitor_thread_preserves_last_known_active_filename(self, app_shell):
-        app_shell._stop_monitor_thread = WoosNwnParserApp._stop_monitor_thread.__get__(app_shell, WoosNwnParserApp)
-        app_shell.update_active_file_label = WoosNwnParserApp.update_active_file_label.__get__(app_shell, WoosNwnParserApp)
-        app_shell._monitor_active_file_name = "nwclientLog2.txt"
-        app_shell.monitor_thread = None
+        controller.stop_monitor_thread()
 
-        app_shell._stop_monitor_thread()
+        assert controller._monitor_active_file_name == "nwclientLog2.txt"
+        assert controller._captured_active_file_names[-1] == "nwclientLog2.txt"
 
-        assert app_shell._monitor_active_file_name == "nwclientLog2.txt"
-        assert app_shell.active_file_text.get() == "nwclientLog2.txt"
+    def test_start_monitoring_without_directory_reverts_switch_off(self, monkeypatch) -> None:
+        warning_mock = Mock()
+        monkeypatch.setattr(monitor_module, "show_warning_dialog", warning_mock)
+        controller, _root = _make_controller(log_directory=None)
 
-    def test_start_monitoring_without_directory_reverts_switch_off(self, app_shell, monkeypatch):
-        app_shell.log_directory = None
-        app_shell.monitoring_var.set(True)
-        app_shell.monitoring_text.set("Monitoring")
-        showwarning_mock = Mock()
-        monkeypatch.setattr(main_window_module, "show_warning_dialog", showwarning_mock)
+        controller.start()
 
-        app_shell.start_monitoring()
-
-        showwarning_mock.assert_called_once_with(
-            app_shell.root,
+        warning_mock.assert_called_once_with(
+            controller.root,
             "No Directory",
             "Please select a log directory first.",
             icon_path=None,
         )
-        assert app_shell.is_monitoring is False
-        assert app_shell.monitoring_var.get() is False
-        assert app_shell.monitoring_text.get() == "Paused"
-        assert app_shell.directory_monitor is None
+        assert controller.is_monitoring is False
+        assert controller._captured_switch_states[-1] is False
+        assert controller.directory_monitor is None
 
-    def test_start_monitoring_sets_active_filename_from_monitor(self, app_shell, monkeypatch):
+    def test_start_monitoring_sets_active_filename_from_monitor(self, monkeypatch) -> None:
         class FakeMonitor:
             def __init__(self, directory):
                 self.directory = directory
-                self.started = False
-                self.current_log_file = main_window_module.Path(r"C:\logs\nwclientLog3.txt")
+                self.current_log_file = Path(r"C:\logs\nwclientLog3.txt")
 
             def start_monitoring(self):
-                self.started = True
-
-            def read_new_lines(self, *args, **kwargs):
                 return None
 
-            def get_active_log_file(self):
-                return self.current_log_file
+            def read_new_lines(self, *args, **kwargs):
+                return False
 
-        monkeypatch.setattr(main_window_module, "LogDirectoryMonitor", FakeMonitor)
+        monkeypatch.setattr(monitor_module, "LogDirectoryMonitor", FakeMonitor)
+        controller, _root = _make_controller()
+        controller.start_monitor_thread = Mock(return_value=True)
 
-        app_shell.start_monitoring()
+        controller.start()
 
-        assert app_shell._monitor_active_file_name == "nwclientLog3.txt"
-        assert app_shell.active_file_text.get() == "nwclientLog3.txt"
+        assert controller._monitor_active_file_name == "nwclientLog3.txt"
+        assert controller._captured_active_file_names[-1] == "nwclientLog3.txt"
+
+    def test_start_monitoring_defers_when_previous_thread_is_alive(self, monkeypatch) -> None:
+        monkeypatch.setattr(monitor_module, "LogDirectoryMonitor", lambda _directory: Mock(
+            start_monitoring=Mock(),
+            current_log_file=None,
+        ))
+        controller, root = _make_controller()
+        controller.start_monitor_thread = Mock(return_value=False)
+        controller.schedule_monitor_restart = Mock()
+
+        controller.start()
+
+        controller.schedule_monitor_restart.assert_called_once_with()
+        assert controller.is_monitoring is True
+        root.after.assert_called_once_with(250, controller.poll_ui_tick)
+
+    def test_retry_monitor_restart_waits_for_shutdown_completion(self) -> None:
+        controller, root = _make_controller()
+        controller.is_monitoring = True
+        controller.start_monitor_thread = Mock(side_effect=[False, True])
+
+        controller.schedule_monitor_restart()
+        assert controller._monitor_restart_job == "poll-job-id"
+
+        controller.retry_monitor_restart()
+        assert controller.start_monitor_thread.call_count == 1
+
+        controller.retry_monitor_restart()
+        assert controller.start_monitor_thread.call_count == 2
+        assert root.after.call_count == 2
+
+    def test_stop_monitor_thread_joins_live_thread(self) -> None:
+        controller, _root = _make_controller()
+
+        thread = Mock(spec=threading.Thread)
+        thread.is_alive.side_effect = [True, False]
+        controller.monitor_thread = thread
+
+        controller.stop_monitor_thread()
+
+        thread.join.assert_called_once_with(timeout=1.0)
+        assert controller.monitor_thread is None
