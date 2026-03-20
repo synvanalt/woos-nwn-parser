@@ -5,14 +5,13 @@ application window, UI components, and event processing.
 """
 
 import queue
-import threading
 import multiprocessing as mp
 import time
 from datetime import datetime
 from time import perf_counter
 from collections import deque
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional
 
 import tkinter as tk
 from tkinter import ttk, filedialog, font
@@ -21,13 +20,19 @@ from ..parser import LogParser
 from ..parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
 from ..storage import DataStore
 from ..monitor import LogDirectoryMonitor
-from ..settings import AppSettings, load_app_settings, save_app_settings
+from ..settings import load_app_settings, save_app_settings
 from ..utils import IMPORT_RESULT_QUEUE_MAXSIZE, import_worker_process
 from ..services import QueueProcessor, DPSCalculationService
 from .formatters import get_default_log_directory
 from .message_dialogs import show_warning_dialog
 from .tooltips import TooltipManager
 from .window_style import apply_dark_title_bar
+from .controllers import (
+    ImportController,
+    MonitorController,
+    RefreshCoordinator,
+    SessionSettingsController,
+)
 from .widgets import DPSPanel, TargetStatsPanel, ImmunityPanel, DeathSnippetPanel, DebugConsolePanel
 
 
@@ -57,6 +62,448 @@ class WoosNwnParserApp:
     IMPORT_APPLY_FRAME_BUDGET_MS = 6.0
     IMPORT_APPLY_MUTATION_BATCH_SIZE = 384
 
+    @property
+    def is_monitoring(self) -> bool:
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            return bool(self.__dict__.get("_legacy_is_monitoring", False))
+        return bool(controller.is_monitoring)
+
+    @is_monitoring.setter
+    def is_monitoring(self, value: bool) -> None:
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_is_monitoring"] = bool(value)
+            return
+        controller.is_monitoring = bool(value)
+
+    @property
+    def directory_monitor(self):
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_directory_monitor")
+        return controller.directory_monitor
+
+    @directory_monitor.setter
+    def directory_monitor(self, value) -> None:
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_directory_monitor"] = value
+            return
+        controller.directory_monitor = value
+
+    @property
+    def polling_job(self):
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_polling_job")
+        return controller.polling_job
+
+    @polling_job.setter
+    def polling_job(self, value) -> None:
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_polling_job"] = value
+            return
+        controller.polling_job = value
+
+    @property
+    def monitor_thread(self):
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_monitor_thread")
+        return controller.monitor_thread
+
+    @monitor_thread.setter
+    def monitor_thread(self, value) -> None:
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_monitor_thread"] = value
+            return
+        controller.monitor_thread = value
+
+    @property
+    def monitor_stop_event(self):
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_monitor_stop_event")
+        return controller.monitor_stop_event
+
+    @monitor_stop_event.setter
+    def monitor_stop_event(self, value) -> None:
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_monitor_stop_event"] = value
+            return
+        controller.monitor_stop_event = value
+
+    @property
+    def _monitor_active_file_name(self):
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_monitor_active_file_name", "N/A")
+        return controller.active_file_name
+
+    @_monitor_active_file_name.setter
+    def _monitor_active_file_name(self, value: str) -> None:
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_monitor_active_file_name"] = value
+            return
+        controller._monitor_active_file_name = value
+
+    @property
+    def _monitor_log_queue(self):
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_monitor_log_queue")
+        return controller._monitor_log_queue
+
+    @_monitor_log_queue.setter
+    def _monitor_log_queue(self, value) -> None:
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_monitor_log_queue"] = value
+            return
+        controller._monitor_log_queue = value
+
+    @property
+    def _debug_monitor_enabled(self):
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_debug_monitor_enabled", False)
+        return controller._debug_monitor_enabled
+
+    @_debug_monitor_enabled.setter
+    def _debug_monitor_enabled(self, value: bool) -> None:
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_debug_monitor_enabled"] = bool(value)
+            return
+        controller._debug_monitor_enabled = bool(value)
+
+    @property
+    def is_importing(self) -> bool:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return bool(self.__dict__.get("_legacy_is_importing", False))
+        return bool(controller.is_importing)
+
+    @is_importing.setter
+    def is_importing(self, value: bool) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_is_importing"] = bool(value)
+            return
+        controller.is_importing = bool(value)
+
+    @property
+    def import_abort_event(self):
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_import_abort_event")
+        return controller.import_abort_event
+
+    @import_abort_event.setter
+    def import_abort_event(self, value) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_import_abort_event"] = value
+            return
+        controller.import_abort_event = value
+
+    @property
+    def import_process(self):
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_import_process")
+        return controller.import_process
+
+    @import_process.setter
+    def import_process(self, value) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_import_process"] = value
+            return
+        controller.import_process = value
+
+    @property
+    def import_abort_flag(self):
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_import_abort_flag")
+        return controller.import_abort_flag
+
+    @import_abort_flag.setter
+    def import_abort_flag(self, value) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_import_abort_flag"] = value
+            return
+        controller.import_abort_flag = value
+
+    @property
+    def import_result_queue(self):
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_import_result_queue")
+        return controller.import_result_queue
+
+    @import_result_queue.setter
+    def import_result_queue(self, value) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_import_result_queue"] = value
+            return
+        controller.import_result_queue = value
+
+    @property
+    def import_poll_job(self):
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_import_poll_job")
+        return controller.import_poll_job
+
+    @import_poll_job.setter
+    def import_poll_job(self, value) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_import_poll_job"] = value
+            return
+        controller.import_poll_job = value
+
+    @property
+    def import_modal(self):
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_import_modal")
+        return controller.import_modal
+
+    @import_modal.setter
+    def import_modal(self, value) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_import_modal"] = value
+            return
+        controller.import_modal = value
+
+    @property
+    def import_status_text(self):
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_import_status_text")
+        return controller.import_status_text
+
+    @import_status_text.setter
+    def import_status_text(self, value) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_import_status_text"] = value
+            return
+        controller.import_status_text = value
+
+    @property
+    def import_progress_text(self):
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_import_progress_text")
+        return controller.import_progress_text
+
+    @import_progress_text.setter
+    def import_progress_text(self, value) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_import_progress_text"] = value
+            return
+        controller.import_progress_text = value
+
+    @property
+    def import_abort_button(self):
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_import_abort_button")
+        return controller.import_abort_button
+
+    @import_abort_button.setter
+    def import_abort_button(self, value) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_import_abort_button"] = value
+            return
+        controller.import_abort_button = value
+
+    @property
+    def _import_status(self):
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_import_status", {})
+        return controller._import_status
+
+    @_import_status.setter
+    def _import_status(self, value) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_import_status"] = value
+            return
+        controller._import_status = value
+
+    @property
+    def _pending_file_payloads(self):
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_pending_file_payloads")
+        return controller._pending_file_payloads
+
+    @_pending_file_payloads.setter
+    def _pending_file_payloads(self, value) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_pending_file_payloads"] = value
+            return
+        controller._pending_file_payloads = value
+
+    @property
+    def _is_applying_payload(self):
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return bool(self.__dict__.get("_legacy_is_applying_payload", False))
+        return bool(controller._is_applying_payload)
+
+    @_is_applying_payload.setter
+    def _is_applying_payload(self, value: bool) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_is_applying_payload"] = bool(value)
+            return
+        controller._is_applying_payload = bool(value)
+
+    @property
+    def _refresh_job(self):
+        coordinator = getattr(self, "refresh_coordinator", None)
+        if coordinator is None:
+            return self.__dict__.get("_legacy_refresh_job")
+        return coordinator.refresh_job
+
+    @_refresh_job.setter
+    def _refresh_job(self, value) -> None:
+        self.__dict__["_legacy_refresh_job"] = value
+
+    @property
+    def _dps_dirty(self) -> bool:
+        coordinator = getattr(self, "refresh_coordinator", None)
+        if coordinator is None:
+            return bool(self.__dict__.get("_legacy_dps_dirty", False))
+        return coordinator.dps_dirty
+
+    @_dps_dirty.setter
+    def _dps_dirty(self, value: bool) -> None:
+        coordinator = getattr(self, "refresh_coordinator", None)
+        if coordinator is None:
+            self.__dict__["_legacy_dps_dirty"] = bool(value)
+            return
+        coordinator._dps_dirty = bool(value)
+
+    @property
+    def _targets_dirty(self) -> bool:
+        coordinator = getattr(self, "refresh_coordinator", None)
+        if coordinator is None:
+            return bool(self.__dict__.get("_legacy_targets_dirty", False))
+        return coordinator.targets_dirty
+
+    @_targets_dirty.setter
+    def _targets_dirty(self, value: bool) -> None:
+        coordinator = getattr(self, "refresh_coordinator", None)
+        if coordinator is None:
+            self.__dict__["_legacy_targets_dirty"] = bool(value)
+            return
+        coordinator._targets_dirty = bool(value)
+
+    @property
+    def _immunity_dirty_targets(self) -> set[str]:
+        coordinator = getattr(self, "refresh_coordinator", None)
+        if coordinator is None:
+            return self.__dict__.get("_legacy_immunity_dirty_targets", set())
+        return coordinator.immunity_dirty_targets
+
+    @_immunity_dirty_targets.setter
+    def _immunity_dirty_targets(self, value: set[str]) -> None:
+        coordinator = getattr(self, "refresh_coordinator", None)
+        if coordinator is None:
+            self.__dict__["_legacy_immunity_dirty_targets"] = value
+            return
+        coordinator._immunity_dirty_targets = value
+
+    @property
+    def _settings_save_job(self):
+        controller = getattr(self, "settings_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_settings_save_job")
+        return controller.settings_save_job
+
+    @_settings_save_job.setter
+    def _settings_save_job(self, value) -> None:
+        self.__dict__["_legacy_settings_save_job"] = value
+
+    @property
+    def monitoring_was_active_before_import(self) -> bool:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return bool(self.__dict__.get("_legacy_monitoring_was_active_before_import", False))
+        return bool(controller.monitoring_was_active_before_import)
+
+    @monitoring_was_active_before_import.setter
+    def monitoring_was_active_before_import(self, value: bool) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_monitoring_was_active_before_import"] = bool(value)
+            return
+        controller.monitoring_was_active_before_import = bool(value)
+
+    @property
+    def _import_status_lock(self):
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return self.__dict__.get("_legacy_import_status_lock")
+        return controller._import_status_lock
+
+    @_import_status_lock.setter
+    def _import_status_lock(self, value) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_import_status_lock"] = value
+            return
+        controller._import_status_lock = value
+
+    @property
+    def _last_modal_file(self) -> str:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return str(self.__dict__.get("_legacy_last_modal_file", ""))
+        return str(controller._last_modal_file)
+
+    @_last_modal_file.setter
+    def _last_modal_file(self, value: str) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_last_modal_file"] = str(value)
+            return
+        controller._last_modal_file = str(value)
+
+    @property
+    def _last_modal_files_completed(self) -> int:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            return int(self.__dict__.get("_legacy_last_modal_files_completed", -1))
+        return int(controller._last_modal_files_completed)
+
+    @_last_modal_files_completed.setter
+    def _last_modal_files_completed(self, value: int) -> None:
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            self.__dict__["_legacy_last_modal_files_completed"] = int(value)
+            return
+        controller._last_modal_files_completed = int(value)
+
     def __init__(self, root: tk.Tk) -> None:
         """Initialize the application.
 
@@ -68,82 +515,103 @@ class WoosNwnParserApp:
         self.root.geometry("730x550")
 
         # Core services
-        self._settings = load_app_settings()
-        parse_immunity_enabled = self._settings.parse_immunity
-        if parse_immunity_enabled is None:
-            parse_immunity_enabled = True
-        self.parser = LogParser(parse_immunity=parse_immunity_enabled)
+        self.log_directory = ""
+        self.window_icon_path: Optional[str] = None
+        self.notebook: Optional[ttk.Notebook] = None
+        self._is_closing = False
+
+        self.parser = LogParser(parse_immunity=True)
         self.data_store = DataStore()
         self.queue_processor = QueueProcessor(self.data_store, self.parser)
         self.dps_service = DPSCalculationService(self.data_store)
+        self.settings_controller = SessionSettingsController(
+            root=self.root,
+            parser=self.parser,
+            dps_service=self.dps_service,
+            get_log_directory=lambda: self.log_directory,
+            get_death_fallback_line=self._get_death_fallback_line_for_settings,
+            get_first_timestamp_mode=self._get_current_first_timestamp_mode,
+            load_settings=load_app_settings,
+            save_settings=save_app_settings,
+        )
+        self._settings = self.settings_controller.load_initial_settings()
+        parse_immunity_enabled = self._settings.parse_immunity
+        if parse_immunity_enabled is None:
+            parse_immunity_enabled = True
+        self.parser.parse_immunity = parse_immunity_enabled
         persisted_first_timestamp_mode = self._settings.first_timestamp_mode
         if persisted_first_timestamp_mode is not None:
             self.dps_service.set_time_tracking_mode(persisted_first_timestamp_mode)
 
-        # Queue and monitoring
+        # Queue and scheduling
         self.data_queue = queue.Queue(maxsize=self.DATA_QUEUE_MAXSIZE)
-        self.directory_monitor: Optional[LogDirectoryMonitor] = None
-        self.is_monitoring = False
-        self._settings_save_job = None
-        self._settings_save_delay_ms = 400
         configured_log_directory = (self._settings.log_directory or "").strip()
         self.log_directory = configured_log_directory or get_default_log_directory()
         configured_fallback_line = (self._settings.death_fallback_line or "").strip()
         self._initial_death_fallback_line = configured_fallback_line or LogParser.DEFAULT_DEATH_FALLBACK_LINE
-        self.monitor_thread: Optional[threading.Thread] = None
-        self.monitor_stop_event = threading.Event()
-        self._monitor_restart_job = None
-        self._monitor_active_file_name = "N/A"
-        self._monitor_log_queue: queue.SimpleQueue[tuple[str, str]] = queue.SimpleQueue()
-        self._debug_monitor_enabled = False
-
-        # Polling and refresh jobs
-        self.polling_job = None
         self.dps_refresh_job = None
-        self._refresh_job = None
-
-        # Version tracking for dirty checking (avoids redundant refreshes)
-        self._last_refresh_version: int = 0
-        self._dps_dirty = False
-        self._targets_dirty = False
-        self._immunity_dirty_targets: set[str] = set()
         self._queue_tick_ms = self.QUEUE_TICK_MS_NORMAL
         self._queue_pressure_state = "normal"
 
         # Debug mode
         self.debug_mode = False
-        self.is_importing = False
-        self.import_abort_event = threading.Event()
-        self.import_thread: Optional[threading.Thread] = None
-        self.import_process = None
-        self.import_abort_flag = None
-        self.import_result_queue = None
-        self.import_poll_job = None
-        self.import_modal: Optional[tk.Toplevel] = None
-        self.import_status_text: Optional[tk.StringVar] = None
-        self.import_progress_text: Optional[tk.StringVar] = None
-        self.import_abort_button: Optional[ttk.Button] = None
-        self.monitoring_was_active_before_import = False
-        self._import_status_lock = threading.Lock()
-        self._import_status: Dict[str, Any] = {}
-        self._pending_file_payloads = deque()
-        self._is_applying_payload = False
-        self._last_modal_file: str = ""
-        self._last_modal_files_completed: int = -1
-        self.window_icon_path: Optional[str] = None
-        self.notebook: Optional[ttk.Notebook] = None
         self._debug_tab_visible = False
         self._dps_tab_click_times: deque[float] = deque()
         self._debug_unlock_click_target = 7
         self._debug_unlock_window_seconds = 3.0
         self._dps_tab_text = "Damage Per Second"
-        self._is_closing = False
 
         # Get the font object defined by the Sun Valley theme to use inside tk non-themed widgets (e.g., tk.Text)
         self.theme_font = font.nametofont("SunValleyBodyFont")
         self.tooltip_manager = TooltipManager(self.root)
 
         self.setup_ui()
+        if hasattr(self, "dps_panel") and hasattr(self, "stats_panel") and hasattr(self, "immunity_panel"):
+            self.refresh_coordinator = RefreshCoordinator(
+                root=self.root,
+                dps_panel=self.dps_panel,
+                stats_panel=self.stats_panel,
+                immunity_panel=self.immunity_panel,
+                refresh_targets=self.refresh_targets,
+                on_death_snippet=self._on_death_snippet,
+                on_character_identified=self._on_death_character_identified,
+            )
+        if hasattr(self, "debug_panel") and hasattr(self, "dps_panel"):
+            self.monitor_controller = MonitorController(
+                root=self.root,
+                parser=self.parser,
+                data_queue=self.data_queue,
+                debug_panel=self.debug_panel,
+                dps_panel=self.dps_panel,
+                get_log_directory=lambda: self.log_directory,
+                set_log_directory=self._set_log_directory,
+                set_monitoring_switch_ui=self._set_monitoring_switch_ui,
+                set_active_file_name=self._set_active_file_name,
+                log_debug=self.log_debug,
+                persist_settings_now=self._persist_session_settings,
+                get_window_icon_path=lambda: self.window_icon_path,
+                get_queue_pressure_state=self._get_queue_pressure_state,
+                get_monitor_max_lines_per_poll=self._get_monitor_max_lines_per_poll,
+                get_monitor_sleep_seconds=self._get_monitor_sleep_seconds,
+            )
+        if hasattr(self, "dps_panel") and hasattr(self, "death_snippet_panel"):
+            self.import_controller = ImportController(
+                root=self.root,
+                parser=self.parser,
+                data_store=self.data_store,
+                dps_panel=self.dps_panel,
+                death_snippet_panel=self.death_snippet_panel,
+                pause_monitoring=self.pause_monitoring,
+                refresh_targets=self.refresh_targets,
+                set_controls_busy=self._set_import_ui_busy,
+                log_debug=self.log_debug,
+                get_window_icon_path=lambda: self.window_icon_path,
+                center_window_on_parent=self._center_window_on_parent,
+                apply_modal_icon=self._apply_modal_icon,
+                on_character_identified=self._on_death_character_identified,
+                import_apply_frame_budget_ms=self.IMPORT_APPLY_FRAME_BUDGET_MS,
+                import_apply_mutation_batch_size=self.IMPORT_APPLY_MUTATION_BATCH_SIZE,
+            )
         self.process_queue()
 
         # Auto-start monitoring if default log directory is valid.
@@ -279,91 +747,236 @@ class WoosNwnParserApp:
             "Select one or more existing log files and parse them on demand",
         )
 
+    def _set_log_directory(self, directory: str) -> None:
+        """Update stored and displayed log directory."""
+        self.log_directory = directory
+        self.dir_text.set(value=directory.replace("/", "\\"))
+
+    def _set_active_file_name(self, file_name: str) -> None:
+        """Update stored and displayed active file name."""
+        self.active_file_text.set(value=file_name or "N/A")
+
+    def _get_death_fallback_line_for_settings(self) -> str:
+        """Read the fallback death line from the UI when available."""
+        death_panel = getattr(self, "death_snippet_panel", None)
+        if death_panel is not None:
+            return death_panel.get_fallback_death_line()
+        return str(getattr(self.parser, "death_fallback_line", "")).strip()
+
+    def _ensure_refresh_coordinator(self) -> RefreshCoordinator:
+        """Build a refresh coordinator lazily for test shells created via __new__."""
+        controller = getattr(self, "refresh_coordinator", None)
+        if controller is None:
+            controller = RefreshCoordinator(
+                root=self.root,
+                dps_panel=self.dps_panel,
+                stats_panel=self.stats_panel,
+                immunity_panel=self.immunity_panel,
+                refresh_targets=self.refresh_targets,
+                on_death_snippet=self._on_death_snippet,
+                on_character_identified=self._on_death_character_identified,
+            )
+            controller._refresh_job = self.__dict__.get("_legacy_refresh_job")
+            controller._dps_dirty = bool(self.__dict__.get("_legacy_dps_dirty", False))
+            controller._targets_dirty = bool(self.__dict__.get("_legacy_targets_dirty", False))
+            controller._immunity_dirty_targets = self.__dict__.get(
+                "_legacy_immunity_dirty_targets",
+                set(),
+            )
+            self.refresh_coordinator = controller
+        return controller
+
+    def _ensure_settings_controller(self) -> SessionSettingsController:
+        """Build a settings controller lazily for test shells created via __new__."""
+        controller = getattr(self, "settings_controller", None)
+        if controller is None:
+            controller = SessionSettingsController(
+                root=getattr(self, "root", None),
+                parser=self.parser,
+                dps_service=getattr(self, "dps_service", None),
+                get_log_directory=lambda: getattr(self, "log_directory", ""),
+                get_death_fallback_line=self._get_death_fallback_line_for_settings,
+                get_first_timestamp_mode=self._get_current_first_timestamp_mode,
+                load_settings=load_app_settings,
+                save_settings=save_app_settings,
+            )
+            controller._settings_save_job = self.__dict__.get("_legacy_settings_save_job")
+            self.settings_controller = controller
+        return controller
+
+    def _ensure_monitor_controller(self) -> MonitorController:
+        """Build a monitor controller lazily for test shells created via __new__."""
+        controller = getattr(self, "monitor_controller", None)
+        if controller is None:
+            controller = MonitorController(
+                root=getattr(self, "root", None),
+                parser=self.parser,
+                data_queue=self.data_queue,
+                debug_panel=self.debug_panel,
+                dps_panel=self.dps_panel,
+                get_log_directory=lambda: getattr(self, "log_directory", ""),
+                set_log_directory=self._set_log_directory,
+                set_monitoring_switch_ui=self._set_monitoring_switch_ui,
+                set_active_file_name=self._set_active_file_name,
+                log_debug=self.log_debug,
+                persist_settings_now=self._persist_session_settings,
+                get_window_icon_path=lambda: getattr(self, "window_icon_path", None),
+                get_queue_pressure_state=self._get_queue_pressure_state,
+                get_monitor_max_lines_per_poll=self._get_monitor_max_lines_per_poll,
+                get_monitor_sleep_seconds=self._get_monitor_sleep_seconds,
+            )
+            controller.directory_monitor = self.__dict__.get("_legacy_directory_monitor")
+            controller.is_monitoring = bool(self.__dict__.get("_legacy_is_monitoring", False))
+            controller.monitor_thread = self.__dict__.get("_legacy_monitor_thread")
+            controller.monitor_stop_event = self.__dict__.get("_legacy_monitor_stop_event", controller.monitor_stop_event)
+            controller._monitor_active_file_name = self.__dict__.get("_legacy_monitor_active_file_name", "N/A")
+            monitor_log_queue = self.__dict__.get("_legacy_monitor_log_queue")
+            if monitor_log_queue is not None:
+                controller._monitor_log_queue = monitor_log_queue
+            controller._debug_monitor_enabled = bool(
+                self.__dict__.get("_legacy_debug_monitor_enabled", False)
+            )
+            controller.polling_job = self.__dict__.get("_legacy_polling_job")
+            self.monitor_controller = controller
+        return controller
+
+    def _ensure_import_controller(self) -> ImportController:
+        """Build an import controller lazily for test shells created via __new__."""
+        controller = getattr(self, "import_controller", None)
+        if controller is None:
+            controller = ImportController(
+                root=getattr(self, "root", None),
+                parser=self.parser,
+                data_store=getattr(self, "data_store", None),
+                dps_panel=getattr(self, "dps_panel", None),
+                death_snippet_panel=getattr(self, "death_snippet_panel", None),
+                pause_monitoring=self.pause_monitoring,
+                refresh_targets=self.refresh_targets,
+                set_controls_busy=self._set_import_ui_busy,
+                log_debug=self.log_debug,
+                get_window_icon_path=lambda: getattr(self, "window_icon_path", None),
+                center_window_on_parent=self._center_window_on_parent,
+                apply_modal_icon=self._apply_modal_icon,
+                on_character_identified=self._on_death_character_identified,
+                import_apply_frame_budget_ms=self.IMPORT_APPLY_FRAME_BUDGET_MS,
+                import_apply_mutation_batch_size=self.IMPORT_APPLY_MUTATION_BATCH_SIZE,
+            )
+            controller.is_importing = bool(self.__dict__.get("_legacy_is_importing", False))
+            controller.monitoring_was_active_before_import = bool(
+                self.__dict__.get("_legacy_monitoring_was_active_before_import", False)
+            )
+            controller.import_abort_event = self.__dict__.get(
+                "_legacy_import_abort_event",
+                controller.import_abort_event,
+            )
+            controller.import_process = self.__dict__.get("_legacy_import_process")
+            controller.import_abort_flag = self.__dict__.get("_legacy_import_abort_flag")
+            controller.import_result_queue = self.__dict__.get("_legacy_import_result_queue")
+            controller.import_poll_job = self.__dict__.get("_legacy_import_poll_job")
+            controller.import_modal = self.__dict__.get("_legacy_import_modal")
+            controller.import_status_text = self.__dict__.get("_legacy_import_status_text")
+            controller.import_progress_text = self.__dict__.get("_legacy_import_progress_text")
+            controller.import_abort_button = self.__dict__.get("_legacy_import_abort_button")
+            controller._import_status = self.__dict__.get("_legacy_import_status", {})
+            controller._import_status_lock = self.__dict__.get(
+                "_legacy_import_status_lock",
+                controller._import_status_lock,
+            )
+            pending_file_payloads = self.__dict__.get("_legacy_pending_file_payloads")
+            if pending_file_payloads is not None:
+                controller._pending_file_payloads = pending_file_payloads
+            controller._is_applying_payload = bool(
+                self.__dict__.get("_legacy_is_applying_payload", False)
+            )
+            controller._last_modal_file = str(self.__dict__.get("_legacy_last_modal_file", ""))
+            controller._last_modal_files_completed = int(
+                self.__dict__.get("_legacy_last_modal_files_completed", -1)
+            )
+            self.import_controller = controller
+        return controller
+
     def browse_directory(self) -> None:
         """Open directory dialog to select log directory."""
-        directory = filedialog.askdirectory(
-            title="Select Log Directory (contains nwclientLog*.txt files)",
-            parent=self.root,
-        )
-        if directory:
-            had_log_files = self._select_log_directory(directory)
-            if not had_log_files:
-                show_warning_dialog(
-                    self.root,
-                    "No Log Files",
-                    "No nwclientLog*.txt files found in this directory.\n"
-                    "Monitoring will wait for log files to appear.",
-                    icon_path=getattr(self, "window_icon_path", None),
-                )
+        if not hasattr(self, "monitor_controller"):
+            directory = filedialog.askdirectory(
+                title="Select Log Directory (contains nwclientLog*.txt files)",
+                parent=self.root,
+            )
+            if directory:
+                had_log_files = self._select_log_directory(directory)
+                if not had_log_files:
+                    show_warning_dialog(
+                        self.root,
+                        "No Log Files",
+                        "No nwclientLog*.txt files found in this directory.\n"
+                        "Monitoring will wait for log files to appear.",
+                        icon_path=getattr(self, "window_icon_path", None),
+                    )
+            return
+        self._ensure_monitor_controller().browse_for_directory()
 
     def _select_log_directory(self, directory: str) -> bool:
         """Apply a selected log directory and refresh monitor/file state."""
-        self.log_directory = directory
-        dir_display = directory.replace("/", "\\")
-        self.dir_text.set(value=dir_display)
-
-        temp_monitor = LogDirectoryMonitor(directory)
-        active_file = temp_monitor.find_active_log_file()
-        self._monitor_active_file_name = active_file.name if active_file is not None else "N/A"
-        self.update_active_file_label()
-
-        if active_file is None:
-            self.log_debug("No matching log files found; monitoring will wait for one to appear.")
-        else:
-            self.log_debug(f"Selected active log file: {active_file.name}")
-
-        if self.is_monitoring:
-            self.pause_monitoring()
-            self.start_monitoring()
-        else:
-            self._set_monitoring_switch_ui(False)
-
-        self._persist_session_settings()
-        return active_file is not None
+        if not hasattr(self, "monitor_controller"):
+            self.log_directory = directory
+            self.dir_text.set(value=directory.replace("/", "\\"))
+            temp_monitor = LogDirectoryMonitor(directory)
+            active_file = temp_monitor.find_active_log_file()
+            self._monitor_active_file_name = active_file.name if active_file is not None else "N/A"
+            self.update_active_file_label()
+            if active_file is None:
+                self.log_debug("No matching log files found; monitoring will wait for one to appear.")
+            else:
+                self.log_debug(f"Selected active log file: {active_file.name}")
+            if self.is_monitoring:
+                self.pause_monitoring()
+                self.start_monitoring()
+            else:
+                self._set_monitoring_switch_ui(False)
+            self._persist_session_settings()
+            return active_file is not None
+        return self._ensure_monitor_controller().select_log_directory(directory)
 
     def load_and_parse_selected_files(self) -> None:
         """Open file picker and parse selected .txt logs in a background worker."""
-        if self.is_importing:
+        if not hasattr(self, "import_controller"):
+            if self.is_importing:
+                return
+            selected_paths = filedialog.askopenfilenames(
+                title="Select one or more NWN log files",
+                filetypes=[("Text Files", "*.txt")],
+                parent=getattr(self, "root", None),
+            )
+            if not selected_paths:
+                return
+            selected_files = sorted(
+                [Path(path) for path in selected_paths],
+                key=lambda p: (p.name.lower(), str(p).lower()),
+            )
+            self.monitoring_was_active_before_import = self.is_monitoring
+            if self.monitoring_was_active_before_import:
+                self.pause_monitoring()
+            self.is_importing = True
+            self._import_status = {
+                "files": selected_files,
+                "total_files": len(selected_files),
+                "files_completed": 0,
+                "current_file": "",
+                "errors": [],
+                "aborted": False,
+                "success": False,
+                "worker_done": False,
+            }
+            self._last_modal_file = ""
+            self._last_modal_files_completed = -1
+            self._pending_file_payloads.clear()
+            self._is_applying_payload = False
+            self._set_import_ui_busy(True)
+            self._show_import_modal()
+            self._start_import_worker(selected_files)
+            self._poll_import_progress()
             return
-
-        selected_paths = filedialog.askopenfilenames(
-            title="Select one or more NWN log files",
-            filetypes=[("Text Files", "*.txt")],
-            parent=getattr(self, "root", None),
-        )
-        if not selected_paths:
-            return
-
-        selected_files = sorted(
-            [Path(path) for path in selected_paths],
-            key=lambda p: (p.name.lower(), str(p).lower()),
-        )
-
-        self.monitoring_was_active_before_import = self.is_monitoring
-        if self.monitoring_was_active_before_import:
-            self.pause_monitoring()
-
-        self.import_abort_event = threading.Event()
-        self.is_importing = True
-        self._import_status = {
-            'files': selected_files,
-            'total_files': len(selected_files),
-            'files_completed': 0,
-            'current_file': '',
-            'errors': [],
-            'aborted': False,
-            'success': False,
-            'worker_done': False,
-        }
-        self._last_modal_file = ""
-        self._last_modal_files_completed = -1
-        self._pending_file_payloads.clear()
-        self._is_applying_payload = False
-
-        self._set_import_ui_busy(True)
-        self._show_import_modal()
-        self._start_import_worker(selected_files)
-        self._poll_import_progress()
+        self._ensure_import_controller().start_from_dialog(is_monitoring=self.is_monitoring)
 
     def _set_import_ui_busy(self, is_busy: bool) -> None:
         """Disable/enable controls while import is running."""
@@ -375,261 +988,233 @@ class WoosNwnParserApp:
 
     def _show_import_modal(self) -> None:
         """Show a modal with import progress and abort button."""
-        self.import_modal = tk.Toplevel(self.root)
-        self.import_modal.withdraw()
-        self.import_modal.configure(bg="#1c1c1c")
-        self.import_modal.title("Parsing Logs")
-        self.import_modal.resizable(False, False)
-        self.import_modal.transient(self.root)
-        self._center_window_on_parent(self.import_modal, 480, 140)
-        self._apply_modal_icon(self.import_modal)
-        try:
-            apply_dark_title_bar(self.import_modal)
-        except Exception:
-            pass
+        if not hasattr(self, "import_controller"):
+            self.import_modal = tk.Toplevel(self.root)
+            self.import_modal.withdraw()
+            self.import_modal.configure(bg="#1c1c1c")
+            self.import_modal.title("Parsing Logs")
+            self.import_modal.resizable(False, False)
+            self.import_modal.transient(self.root)
+            self._center_window_on_parent(self.import_modal, 480, 140)
+            self._apply_modal_icon(self.import_modal)
+            try:
+                apply_dark_title_bar(self.import_modal)
+            except Exception:
+                pass
 
-        container = ttk.Frame(self.import_modal, padding=14)
-        container.pack(fill="both", expand=True)
+            container = ttk.Frame(self.import_modal, padding=14)
+            container.pack(fill="both", expand=True)
+            self.import_status_text = tk.StringVar(value="Preparing selected files...")
+            self.import_progress_text = tk.StringVar(value="0 files completed")
+            ttk.Label(container, textvariable=self.import_status_text).pack(anchor="w")
+            ttk.Label(container, textvariable=self.import_progress_text).pack(anchor="w", pady=(8, 8))
+            progress = ttk.Progressbar(container, mode="indeterminate")
+            progress.pack(fill="x")
+            progress.start(8)
+            self.import_modal._progressbar = progress
+            actions = ttk.Frame(container)
+            actions.pack(side="bottom", fill="x")
+            self.import_abort_button = ttk.Button(actions, text="Abort", command=self.abort_load_parse)
+            self.import_abort_button.pack(anchor="e")
+            self.import_modal.protocol("WM_DELETE_WINDOW", self.abort_load_parse)
+            try:
+                self.import_modal.attributes("-alpha", 0.0)
+            except tk.TclError:
+                pass
 
-        self.import_status_text = tk.StringVar(value="Preparing selected files...")
-        self.import_progress_text = tk.StringVar(value="0 files completed")
-        ttk.Label(container, textvariable=self.import_status_text).pack(anchor="w")
-        ttk.Label(container, textvariable=self.import_progress_text).pack(anchor="w", pady=(8, 8))
-
-        progress = ttk.Progressbar(container, mode="indeterminate")
-        progress.pack(fill="x")
-        progress.start(8)
-        self.import_modal._progressbar = progress
-
-        actions = ttk.Frame(container)
-        actions.pack(side="bottom", fill="x")
-
-        self.import_abort_button = ttk.Button(actions, text="Abort", command=self.abort_load_parse)
-        self.import_abort_button.pack(anchor="e")
-
-        self.import_modal.protocol("WM_DELETE_WINDOW", self.abort_load_parse)
-
-        try:
-            self.import_modal.attributes("-alpha", 0.0)
-        except tk.TclError:
-            pass
-
-        def _show_modal_when_ready() -> None:
-            self.import_modal.update_idletasks()
-            self.import_modal.deiconify()
-            self.import_modal.lift()
-
-            def _reveal_modal_after_hidden_render(remaining_repaints: int = 4) -> None:
+            def _show_modal_when_ready() -> None:
                 self.import_modal.update_idletasks()
-                if remaining_repaints > 0:
-                    self.import_modal.after(16, lambda: _reveal_modal_after_hidden_render(remaining_repaints - 1))
-                    return
-                try:
-                    self.import_modal.attributes("-alpha", 1.0)
-                except tk.TclError:
-                    pass
-                self.import_modal.grab_set()
+                self.import_modal.deiconify()
+                self.import_modal.lift()
 
-            self.import_modal.after_idle(_reveal_modal_after_hidden_render)
+                def _reveal_modal_after_hidden_render(remaining_repaints: int = 4) -> None:
+                    self.import_modal.update_idletasks()
+                    if remaining_repaints > 0:
+                        self.import_modal.after(16, lambda: _reveal_modal_after_hidden_render(remaining_repaints - 1))
+                        return
+                    try:
+                        self.import_modal.attributes("-alpha", 1.0)
+                    except tk.TclError:
+                        pass
+                    self.import_modal.grab_set()
 
-        # Reveal only after pending idle layout/styling tasks have run.
-        self.import_modal.after_idle(_show_modal_when_ready)
+                self.import_modal.after_idle(_reveal_modal_after_hidden_render)
 
-    def _start_import_worker(self, selected_files: List[Path]) -> None:
+            self.import_modal.after_idle(_show_modal_when_ready)
+            return
+        self._ensure_import_controller().show_modal()
+
+    def _start_import_worker(self, selected_files: list[Path]) -> None:
         """Start worker process for import operation."""
-        file_paths = [str(path) for path in selected_files]
-        ctx = mp.get_context("spawn")
-        self.import_abort_flag = ctx.Event()
-        self.import_result_queue = ctx.Queue(maxsize=IMPORT_RESULT_QUEUE_MAXSIZE)
-        self.import_process = ctx.Process(
-            target=import_worker_process,
-            args=(
-                file_paths,
-                bool(self.parser.parse_immunity),
-                self.import_abort_flag,
-                self.import_result_queue,
-                self.parser.death_character_name,
-                self.parser.death_fallback_line,
-            ),
-            daemon=True,
-        )
-        self.import_process.start()
+        if not hasattr(self, "import_controller"):
+            file_paths = [str(path) for path in selected_files]
+            ctx = mp.get_context("spawn")
+            self.import_abort_flag = ctx.Event()
+            self.import_result_queue = ctx.Queue(maxsize=IMPORT_RESULT_QUEUE_MAXSIZE)
+            self.import_process = ctx.Process(
+                target=import_worker_process,
+                args=(
+                    file_paths,
+                    bool(self.parser.parse_immunity),
+                    self.import_abort_flag,
+                    self.import_result_queue,
+                    self.parser.death_character_name,
+                    self.parser.death_fallback_line,
+                ),
+                daemon=True,
+            )
+            self.import_process.start()
+            return
+        self._ensure_import_controller().start_worker(selected_files)
 
     def _drain_import_events(self) -> None:
         """Drain events from the import worker process queue."""
-        if self.import_result_queue is None:
+        if not hasattr(self, "import_controller"):
+            controller = self._ensure_import_controller()
+            controller.root = getattr(self, "root", None)
+            controller.data_store = getattr(self, "data_store", None)
+            controller.dps_panel = getattr(self, "dps_panel", None)
+            controller.death_snippet_panel = getattr(self, "death_snippet_panel", None)
+            controller.import_result_queue = self.import_result_queue
+            controller._import_status = self._import_status
+            controller._pending_file_payloads = self._pending_file_payloads
+            controller._is_applying_payload = self._is_applying_payload
+            controller._import_status_lock = self._import_status_lock
+            controller.drain_events()
+            self._import_status = controller._import_status
+            self._pending_file_payloads = controller._pending_file_payloads
+            self._is_applying_payload = controller._is_applying_payload
             return
-        while True:
-            try:
-                event = self.import_result_queue.get_nowait()
-            except queue.Empty:
-                break
-
-            event_type = event.get('event')
-            if event_type == 'file_started':
-                with self._import_status_lock:
-                    self._import_status['current_file'] = event.get('file_name', '')
-            elif event_type == 'ops_chunk':
-                ops = event.get('ops', {})
-                self._pending_file_payloads.append({
-                    'mutations': ops.get('mutations', []),
-                    'death_snippets': ops.get('death_snippets', []),
-                    'death_character_identified': ops.get('death_character_identified', []),
-                    'index': event.get('index', 0),
-                    'mutation_idx': 0,
-                })
-                if not self._is_applying_payload:
-                    self._is_applying_payload = True
-                    self.root.after(1, self._apply_pending_payloads_incremental)
-            elif event_type == 'file_completed':
-                with self._import_status_lock:
-                    # UX: advance file counter immediately when parsing of a file finishes.
-                    self._import_status['files_completed'] = event.get('index', 0)
-            elif event_type == 'file_error':
-                with self._import_status_lock:
-                    errors = self._import_status.setdefault('errors', [])
-                    errors.append(f"{event.get('file_name')}: {event.get('error')}")
-            elif event_type == 'aborted':
-                with self._import_status_lock:
-                    self._import_status['aborted'] = True
-                    self._import_status['worker_done'] = True
-            elif event_type == 'done':
-                with self._import_status_lock:
-                    self._import_status['worker_done'] = True
+        self._ensure_import_controller().drain_events()
 
     def _apply_pending_payloads_incremental(self) -> None:
         """Apply completed-file payloads in small slices on the Tk thread."""
-        budget_ms = self.IMPORT_APPLY_FRAME_BUDGET_MS
-        mutation_batch_size = max(1, int(self.IMPORT_APPLY_MUTATION_BATCH_SIZE))
-        deadline = perf_counter() + (budget_ms / 1000.0)
-        while perf_counter() < deadline and self._pending_file_payloads:
-            item = self._pending_file_payloads[0]
-            mutation_idx = item['mutation_idx']
-            mutations = item['mutations']
-            if mutation_idx < len(mutations):
-                batch_end = min(mutation_idx + mutation_batch_size, len(mutations))
-                self.data_store.apply_mutations(mutations[mutation_idx:batch_end])
-                item['mutation_idx'] = batch_end
-                continue
-
-            death_snippets = item['death_snippets']
-            if death_snippets:
-                self.death_snippet_panel.add_death_events(
-                    [self._death_snippet_from_payload(event) for event in death_snippets]
-                )
-                item['death_snippets'] = []
-
-            identity_events = item['death_character_identified']
-            if identity_events:
-                for identity_event in identity_events:
-                    self._on_death_character_identified(
-                        self._death_character_identified_from_payload(identity_event)
+        if not hasattr(self, "import_controller") or not hasattr(self, "data_store"):
+            budget_ms = self.IMPORT_APPLY_FRAME_BUDGET_MS
+            mutation_batch_size = max(1, int(self.IMPORT_APPLY_MUTATION_BATCH_SIZE))
+            deadline = perf_counter() + (budget_ms / 1000.0)
+            while perf_counter() < deadline and self._pending_file_payloads:
+                item = self._pending_file_payloads[0]
+                mutation_idx = item["mutation_idx"]
+                mutations = item["mutations"]
+                if mutation_idx < len(mutations):
+                    batch_end = min(mutation_idx + mutation_batch_size, len(mutations))
+                    self.data_store.apply_mutations(mutations[mutation_idx:batch_end])
+                    item["mutation_idx"] = batch_end
+                    continue
+                death_snippets = item["death_snippets"]
+                if death_snippets:
+                    self.death_snippet_panel.add_death_events(
+                        [self._death_snippet_from_payload(event) for event in death_snippets]
                     )
-                item['death_character_identified'] = []
-
-            self._pending_file_payloads.popleft()
-
-        if self._pending_file_payloads:
-            self.root.after(1, self._apply_pending_payloads_incremental)
+                    item["death_snippets"] = []
+                identity_events = item["death_character_identified"]
+                if identity_events:
+                    for identity_event in identity_events:
+                        self._on_death_character_identified(
+                            self._death_character_identified_from_payload(identity_event)
+                        )
+                    item["death_character_identified"] = []
+                self._pending_file_payloads.popleft()
+            if self._pending_file_payloads:
+                self.root.after(1, self._apply_pending_payloads_incremental)
+                return
+            self._is_applying_payload = False
             return
-
-        self._is_applying_payload = False
+        self._ensure_import_controller().apply_pending_payloads_incremental()
 
     def _poll_import_progress(self) -> None:
         """Update modal with latest import status."""
-        if not self.is_importing:
+        if not hasattr(self, "import_controller") or not hasattr(self, "immunity_panel"):
+            if not self.is_importing:
+                return
+            self._drain_import_events()
+            with self._import_status_lock:
+                status = dict(self._import_status)
+            if self.import_status_text is not None:
+                current_file = status.get("current_file") or "Preparing selected files..."
+                if self._last_modal_file != current_file:
+                    self.import_status_text.set(f"Parsing: {current_file}")
+                    self._last_modal_file = current_file
+            if self.import_progress_text is not None:
+                files_completed = status.get("files_completed", 0)
+                total_files = status.get("total_files", 0)
+                if self._last_modal_files_completed != files_completed:
+                    self.import_progress_text.set(f"{files_completed}/{total_files} files completed")
+                    self._last_modal_files_completed = files_completed
+            worker_done = bool(status.get("worker_done"))
+            has_pending = bool(self._pending_file_payloads) or self._is_applying_payload
+            if not worker_done or has_pending:
+                self.import_poll_job = self.root.after(200, self._poll_import_progress)
+                return
+            self._finalize_import()
             return
-
-        self._drain_import_events()
-
-        with self._import_status_lock:
-            status = dict(self._import_status)
-
-        if self.import_status_text is not None:
-            current_file = status.get('current_file') or "Preparing selected files..."
-            files_completed = status.get('files_completed', 0)
-            if self._last_modal_file != current_file:
-                self.import_status_text.set(f"Parsing: {current_file}")
-                self._last_modal_file = current_file
-        if self.import_progress_text is not None:
-            files_completed = status.get('files_completed', 0)
-            total_files = status.get('total_files', 0)
-            if self._last_modal_files_completed != files_completed:
-                self.import_progress_text.set(f"{files_completed}/{total_files} files completed")
-                self._last_modal_files_completed = files_completed
-
-        worker_done = bool(status.get('worker_done'))
-        has_pending = bool(self._pending_file_payloads) or self._is_applying_payload
-        if not worker_done or has_pending:
-            self.import_poll_job = self.root.after(200, self._poll_import_progress)
-            return
-
-        self._finalize_import()
+        self._ensure_import_controller().poll_progress()
 
     def abort_load_parse(self) -> None:
         """Request abort for ongoing import."""
-        if not self.is_importing:
+        if not hasattr(self, "import_controller"):
+            if not self.is_importing:
+                return
+            self.import_abort_event.set()
+            if self.import_abort_flag is not None:
+                self.import_abort_flag.set()
+            if self.import_abort_button is not None:
+                self.import_abort_button.config(state=tk.DISABLED)
+            if self.import_status_text is not None:
+                self.import_status_text.set("Aborting...")
             return
-        self.import_abort_event.set()
-        if self.import_abort_flag is not None:
-            self.import_abort_flag.set()
-        if self.import_abort_button is not None:
-            self.import_abort_button.config(state=tk.DISABLED)
-        if self.import_status_text is not None:
-            self.import_status_text.set("Aborting...")
+        self._ensure_import_controller().abort()
 
     def _finalize_import(self) -> None:
         """Finalize import and refresh UI."""
-        if self.import_poll_job is not None:
-            self.root.after_cancel(self.import_poll_job)
-            self.import_poll_job = None
-
-        self.is_importing = False
-        self._set_import_ui_busy(False)
-        self._is_applying_payload = False
-        self._pending_file_payloads.clear()
-
-        if self.import_process is not None:
-            if self.import_process.is_alive():
-                self.import_process.join(timeout=0.2)
+        if not hasattr(self, "import_controller"):
+            if self.import_poll_job is not None:
+                self.root.after_cancel(self.import_poll_job)
+                self.import_poll_job = None
+            self.is_importing = False
+            self._set_import_ui_busy(False)
+            self._is_applying_payload = False
+            self._pending_file_payloads.clear()
+            if self.import_process is not None:
                 if self.import_process.is_alive():
-                    self.import_process.terminate()
-            self.import_process = None
-        self.import_result_queue = None
-        self.import_abort_flag = None
-
-        if self.import_modal is not None:
-            progress = getattr(self.import_modal, "_progressbar", None)
-            if progress is not None:
-                progress.stop()
-            self.import_modal.grab_release()
-            self.import_modal.destroy()
-            self.import_modal = None
-
-        with self._import_status_lock:
-            status = dict(self._import_status)
-
-        self.refresh_targets()
-        self.dps_panel.refresh()
-
-        if status.get('aborted'):
-            self.log_debug(
-                f"Load & Parse aborted. Imported {status.get('files_completed', 0)} files before stop.",
-                msg_type='warning'
-            )
-        elif status.get('errors'):
-            show_warning_dialog(
-                self.root,
-                "Load & Parse Completed with Errors",
-                "\n".join(status['errors']),
-                icon_path=getattr(self, "window_icon_path", None),
-            )
-            self.log_debug("Load & Parse completed with file errors.", msg_type='warning')
-        else:
-            self.log_debug(
-                f"Load & Parse completed: {status.get('total_files', 0)} files.",
-                msg_type='info'
-            )
+                    self.import_process.join(timeout=0.2)
+                    if self.import_process.is_alive():
+                        self.import_process.terminate()
+                self.import_process = None
+            self.import_result_queue = None
+            self.import_abort_flag = None
+            if self.import_modal is not None:
+                progress = getattr(self.import_modal, "_progressbar", None)
+                if progress is not None:
+                    progress.stop()
+                self.import_modal.grab_release()
+                self.import_modal.destroy()
+                self.import_modal = None
+            with self._import_status_lock:
+                status = dict(self._import_status)
+            self.refresh_targets()
+            self.dps_panel.refresh()
+            if status.get("aborted"):
+                self.log_debug(
+                    f"Load & Parse aborted. Imported {status.get('files_completed', 0)} files before stop.",
+                    msg_type="warning",
+                )
+            elif status.get("errors"):
+                show_warning_dialog(
+                    self.root,
+                    "Load & Parse Completed with Errors",
+                    "\n".join(status["errors"]),
+                    icon_path=getattr(self, "window_icon_path", None),
+                )
+                self.log_debug("Load & Parse completed with file errors.", msg_type="warning")
+            else:
+                self.log_debug(
+                    f"Load & Parse completed: {status.get('total_files', 0)} files.",
+                    msg_type="info",
+                )
+            return
+        self._ensure_import_controller().finalize()
 
     def _center_window_on_parent(self, window: tk.Toplevel, width: int, height: int) -> None:
         """Center a child window relative to the main application window."""
@@ -665,74 +1250,15 @@ class WoosNwnParserApp:
 
     def start_monitoring(self) -> None:
         """Start monitoring the log directory for new log files."""
-        if self.is_monitoring:
-            return
-        if not self.log_directory:
-            show_warning_dialog(
-                self.root,
-                "No Directory",
-                "Please select a log directory first.",
-                icon_path=getattr(self, "window_icon_path", None),
-            )
-            self._set_monitoring_switch_ui(False)
-            return
-
-        self.is_monitoring = True
-        self._set_monitoring_switch_ui(True)
-        self.dps_panel.refresh()
-
-        self.log_debug(f"Starting monitoring of directory: {self.log_directory}")
-
-        # Setup directory monitor for polling
-        self.directory_monitor = LogDirectoryMonitor(self.log_directory)
-        self.directory_monitor.start_monitoring()
-        current_log_file = getattr(self.directory_monitor, "current_log_file", None)
-        self._monitor_active_file_name = (
-            current_log_file.name
-            if current_log_file is not None
-            else "N/A"
-        )
-        self.update_active_file_label()
-        self._debug_monitor_enabled = bool(self.debug_panel.get_debug_enabled())
-        started = self._start_monitor_thread()
-        if not started:
-            self.log_debug(
-                "Previous monitor thread is still shutting down; retrying start shortly",
-                "warning",
-            )
-            self._schedule_monitor_restart()
-
-        # Keep a lightweight UI ticker for status labels and queued debug logs.
-        self.log_debug("Using background monitor thread with bounded line processing")
-        self.poll_log_file()
-
-        self.log_debug("Monitoring started successfully")
+        self._ensure_monitor_controller().start()
 
     def pause_monitoring(self) -> None:
         """Pause monitoring the log directory."""
-        self.is_monitoring = False
-        self._set_monitoring_switch_ui(False)
-        self._stop_monitor_thread()
-        restart_job = getattr(self, "_monitor_restart_job", None)
-        if restart_job is not None:
-            self.root.after_cancel(restart_job)
-            self._monitor_restart_job = None
-
-        # Cancel polling if active
-        if self.polling_job:
-            self.root.after_cancel(self.polling_job)
-            self.polling_job = None
-
-        # Cancel DPS auto-refresh if in Global mode
+        self._ensure_monitor_controller().pause()
         if self.dps_refresh_job is not None:
             self.root.after_cancel(self.dps_refresh_job)
             self.dps_refresh_job = None
-        if hasattr(self, "_refresh_job") and self._refresh_job is not None:
-            self.root.after_cancel(self._refresh_job)
-            self._refresh_job = None
-
-
-        self.log_debug("Monitoring paused")
+        self._ensure_refresh_coordinator().cancel()
 
     def _set_monitoring_switch_ui(self, is_on: bool) -> None:
         """Synchronize monitoring switch state and label with monitoring status."""
@@ -749,11 +1275,9 @@ class WoosNwnParserApp:
     def _configure_monitoring_switch_style(self) -> None:
         """Add monitoring label colors on top of the existing Switch style."""
         style = ttk.Style(self.root)
-        # Reuse Switch layout/elements and only customize the text color mapping.
         try:
             style.layout("Monitoring.Switch.TCheckbutton", style.layout("Switch.TCheckbutton"))
         except tk.TclError:
-            # If already defined, keep existing layout.
             pass
         style.map(
             "Monitoring.Switch.TCheckbutton",
@@ -766,116 +1290,48 @@ class WoosNwnParserApp:
 
     def _enqueue_monitor_log(self, message: str, msg_type: str = "debug") -> None:
         """Queue background-monitor log messages for UI-thread rendering."""
-        self._monitor_log_queue.put((str(message), str(msg_type)))
+        self._ensure_monitor_controller().enqueue_monitor_log(message, msg_type)
 
     def _drain_monitor_logs(self, max_messages: int = 200) -> None:
         """Flush queued monitor logs on Tk thread."""
-        drained = 0
-        while drained < max_messages:
-            try:
-                message, msg_type = self._monitor_log_queue.get_nowait()
-            except queue.Empty:
-                break
-            self.log_debug(message, msg_type)
-            drained += 1
+        self._ensure_monitor_controller().drain_monitor_logs(max_messages=max_messages)
 
     def _start_monitor_thread(self) -> bool:
         """Start background thread that performs file I/O and parsing."""
-        thread = self.monitor_thread
-        if thread is not None and thread.is_alive():
-            # If stop is already requested, wait for the shutdown path to finish.
-            return False
-        self.monitor_stop_event.clear()
-        self.monitor_thread = threading.Thread(
-            target=self._monitor_loop,
-            name="nwn-log-monitor",
-            daemon=True,
-        )
-        self.monitor_thread.start()
-        return True
+        return self._ensure_monitor_controller().start_monitor_thread()
 
     def _stop_monitor_thread(self) -> None:
         """Signal monitor thread to stop and join it quickly."""
-        self.monitor_stop_event.set()
-        thread = self.monitor_thread
-        if thread is not None and thread.is_alive():
-            thread.join(timeout=1.0)
-        if thread is not None and thread.is_alive():
-            # Keep a reference while shutdown is still in progress to prevent a second worker.
-            self.log_debug("Monitor thread is still shutting down; restart deferred", "warning")
-        else:
-            self.monitor_thread = None
-        self.update_active_file_label()
+        self._ensure_monitor_controller().stop_monitor_thread()
 
     def _schedule_monitor_restart(self) -> None:
         """Retry starting monitoring thread after prior worker shutdown completes."""
-        if getattr(self, "_monitor_restart_job", None) is not None:
-            return
-        self._monitor_restart_job = self.root.after(100, self._retry_monitor_restart)
+        self._ensure_monitor_controller().schedule_monitor_restart()
 
     def _retry_monitor_restart(self) -> None:
         """Attempt deferred monitor thread start if app is still monitoring."""
-        self._monitor_restart_job = None
-        if not self.is_monitoring:
-            return
-        if self._start_monitor_thread():
-            self.log_debug("Monitor thread restarted after shutdown")
-            return
-        self._schedule_monitor_restart()
+        self._ensure_monitor_controller().retry_monitor_restart()
 
     def _monitor_loop(self) -> None:
         """Worker loop that polls the active log file and parses new lines."""
-        current_thread = threading.current_thread()
-        try:
-            while not self.monitor_stop_event.is_set():
-                directory_monitor = self.directory_monitor
-                if directory_monitor is None:
-                    break
-                pressure_state = self._get_queue_pressure_state()
-                has_more_pending = False
-
-                if pressure_state != "saturated":
-                    try:
-                        has_more_pending = directory_monitor.read_new_lines(
-                            self.parser,
-                            self.data_queue,
-                            on_log_message=self._enqueue_monitor_log,
-                            debug_enabled=bool(self._debug_monitor_enabled),
-                            max_lines_per_poll=self._get_monitor_max_lines_per_poll(
-                                pressure_state
-                            ),
-                        )
-                    except Exception as exc:
-                        self._enqueue_monitor_log(f"I/O Error: {exc}", "error")
-                        has_more_pending = False
-
-                sleep_pressure_state = self._get_queue_pressure_state()
-
-                current_file = directory_monitor.current_log_file
-                self._monitor_active_file_name = current_file.name if current_file is not None else "N/A"
-
-                if self.monitor_stop_event.is_set():
-                    break
-                time.sleep(
-                    self._get_monitor_sleep_seconds(
-                        pressure_state=sleep_pressure_state,
-                        has_more_pending=has_more_pending,
-                    )
-                )
-        finally:
-            if self.monitor_thread is current_thread:
-                self.monitor_thread = None
+        self._ensure_monitor_controller().monitor_loop()
 
     def poll_log_file(self) -> None:
         """Lightweight UI tick for monitor status updates."""
-        if self.is_monitoring:
-            self._drain_monitor_logs()
-            self.update_active_file_label()
-            self.polling_job = self.root.after(250, self.poll_log_file)
+        if not hasattr(self, "monitor_controller"):
+            if self.is_monitoring:
+                self._drain_monitor_logs()
+                self.update_active_file_label()
+                self.polling_job = self.root.after(250, self.poll_log_file)
+            return
+        self._ensure_monitor_controller().poll_ui_tick()
 
     def update_active_file_label(self) -> None:
         """Update the active file label to show which log file is being monitored."""
-        self.active_file_text.set(value=self._monitor_active_file_name or "N/A")
+        if not hasattr(self, "monitor_controller"):
+            self.active_file_text.set(value=self._monitor_active_file_name or "N/A")
+            return
+        self._ensure_monitor_controller().update_active_file_label()
 
     def clear_data(self) -> None:
         """Clear all collected data."""
@@ -883,15 +1339,8 @@ class WoosNwnParserApp:
         if self.dps_refresh_job is not None:
             self.root.after_cancel(self.dps_refresh_job)
             self.dps_refresh_job = None
-        if hasattr(self, "_refresh_job") and self._refresh_job is not None:
-            self.root.after_cancel(self._refresh_job)
-            self._refresh_job = None
-        if hasattr(self, "_dps_dirty"):
-            self._dps_dirty = False
-        if hasattr(self, "_targets_dirty"):
-            self._targets_dirty = False
-        if hasattr(self, "_immunity_dirty_targets"):
-            self._immunity_dirty_targets.clear()
+        self._ensure_refresh_coordinator().cancel()
+        self._ensure_refresh_coordinator().clear_dirty_state()
 
         self.data_store.clear_all_data()
 
@@ -1022,8 +1471,7 @@ class WoosNwnParserApp:
             "max_time_ms": max_time_ms,
         }
         process_fn = self.queue_processor.process_queue
-        if hasattr(process_fn, "mock_calls"):
-            # Test harness compatibility only.
+        if not hasattr(self, "refresh_coordinator") and hasattr(process_fn, "mock_calls"):
             process_kwargs.update({
                 "on_dps_updated": self.refresh_dps,
                 "on_target_selected": self._on_target_details_needed,
@@ -1032,16 +1480,6 @@ class WoosNwnParserApp:
                 "on_death_snippet": self._on_death_snippet,
                 "on_character_identified": self._on_death_character_identified,
             })
-        else:
-            for key in (
-                "on_dps_updated",
-                "on_target_selected",
-                "on_immunity_changed",
-                "on_damage_dealt",
-                "on_death_snippet",
-                "on_character_identified",
-            ):
-                process_kwargs.pop(key, None)
         result = self.queue_processor.process_queue(
             self.data_queue,
             **process_kwargs,
@@ -1053,50 +1491,51 @@ class WoosNwnParserApp:
             else "normal"
         )
         self._queue_pressure_state = pressure_state
+        if hasattr(self, "refresh_coordinator"):
+            self._ensure_refresh_coordinator().handle_queue_result(result)
+        else:
+            death_events = result.death_events if isinstance(getattr(result, "death_events", None), list) else []
+            identity_events = (
+                result.character_identity_events
+                if isinstance(getattr(result, "character_identity_events", None), list)
+                else []
+            )
+            targets_to_refresh = (
+                result.targets_to_refresh
+                if isinstance(getattr(result, "targets_to_refresh", None), set)
+                else set()
+            )
+            immunity_targets = (
+                result.immunity_targets
+                if isinstance(getattr(result, "immunity_targets", None), set)
+                else set()
+            )
+            damage_targets = (
+                result.damage_targets
+                if isinstance(getattr(result, "damage_targets", None), set)
+                else set()
+            )
 
-        # Apply non-tree events immediately.
-        death_events = result.death_events if isinstance(getattr(result, "death_events", None), list) else []
-        identity_events = (
-            result.character_identity_events
-            if isinstance(getattr(result, "character_identity_events", None), list)
-            else []
-        )
-        targets_to_refresh = (
-            result.targets_to_refresh
-            if isinstance(getattr(result, "targets_to_refresh", None), set)
-            else set()
-        )
-        immunity_targets = (
-            result.immunity_targets
-            if isinstance(getattr(result, "immunity_targets", None), set)
-            else set()
-        )
-        damage_targets = (
-            result.damage_targets
-            if isinstance(getattr(result, "damage_targets", None), set)
-            else set()
-        )
+            for death_event in death_events:
+                self._on_death_snippet(death_event)
+            for identity_event in identity_events:
+                self._on_death_character_identified(identity_event)
 
-        for death_event in death_events:
-            self._on_death_snippet(death_event)
-        for identity_event in identity_events:
-            self._on_death_character_identified(identity_event)
+            if bool(getattr(result, "dps_updated", False)):
+                self._dps_dirty = True
+            if targets_to_refresh:
+                self._targets_dirty = True
 
-        # Coalesce expensive tree refreshes.
-        if bool(getattr(result, "dps_updated", False)):
-            self._dps_dirty = True
-        if targets_to_refresh:
-            self._targets_dirty = True
-
-        selected_target = ""
-        if hasattr(self, "immunity_panel") and hasattr(self.immunity_panel, "target_combo"):
-            selected_target = self.immunity_panel.target_combo.get()
-        if selected_target:
-            if selected_target in immunity_targets or selected_target in damage_targets:
+            selected_target = ""
+            if hasattr(self, "immunity_panel") and hasattr(self.immunity_panel, "target_combo"):
+                selected_target = self.immunity_panel.target_combo.get()
+            if selected_target and (
+                selected_target in immunity_targets or selected_target in damage_targets
+            ):
                 self._immunity_dirty_targets.add(selected_target)
 
-        if self._dps_dirty or self._targets_dirty or self._immunity_dirty_targets:
-            self._schedule_coalesced_refresh()
+            if self._dps_dirty or self._targets_dirty or self._immunity_dirty_targets:
+                self._schedule_coalesced_refresh()
 
         # Schedule next check
         next_tick = self._get_next_queue_tick_ms(pressure_state)
@@ -1160,33 +1599,36 @@ class WoosNwnParserApp:
 
     def _schedule_coalesced_refresh(self) -> None:
         """Schedule a batched UI refresh for heavy panels."""
-        if getattr(self, "_refresh_job", None) is not None:
+        if not hasattr(self, "refresh_coordinator"):
+            if getattr(self, "_refresh_job", None) is not None:
+                return
+            self._refresh_job = self.root.after(180, self._run_coalesced_refresh)
             return
-        self._refresh_job = self.root.after(180, self._run_coalesced_refresh)
+        self._ensure_refresh_coordinator().schedule()
 
     def _run_coalesced_refresh(self) -> None:
         """Execute one coalesced refresh pass for expensive widgets."""
-        self._refresh_job = None
-        selected_target = ""
-        if hasattr(self, "immunity_panel") and hasattr(self.immunity_panel, "target_combo"):
-            selected_target = self.immunity_panel.target_combo.get()
-
-        if self._targets_dirty:
-            self.refresh_targets()
-            self._targets_dirty = False
-            selected_target = self.immunity_panel.target_combo.get()
-
-        if self._dps_dirty:
-            self.dps_panel.refresh()
-            self._dps_dirty = False
-
-        if (
-            selected_target
-            and selected_target in self._immunity_dirty_targets
-            and hasattr(self, "immunity_panel")
-        ):
-            self.immunity_panel.refresh_target_details(selected_target)
-        self._immunity_dirty_targets.clear()
+        if not hasattr(self, "refresh_coordinator"):
+            self._refresh_job = None
+            selected_target = ""
+            if hasattr(self, "immunity_panel") and hasattr(self.immunity_panel, "target_combo"):
+                selected_target = self.immunity_panel.target_combo.get()
+            if self._targets_dirty:
+                self.refresh_targets()
+                self._targets_dirty = False
+                selected_target = self.immunity_panel.target_combo.get()
+            if self._dps_dirty:
+                self.dps_panel.refresh()
+                self._dps_dirty = False
+            if (
+                selected_target
+                and selected_target in self._immunity_dirty_targets
+                and hasattr(self, "immunity_panel")
+            ):
+                self.immunity_panel.refresh_target_details(selected_target)
+            self._immunity_dirty_targets.clear()
+            return
+        self._ensure_refresh_coordinator().run()
 
     def _on_target_details_needed(self, target: str) -> None:
         """Callback from queue processor when target details need refresh.
@@ -1218,30 +1660,16 @@ class WoosNwnParserApp:
             self.immunity_panel.refresh_display()
 
     @staticmethod
-    def _death_snippet_from_payload(payload: Dict[str, Any]) -> DeathSnippetEvent:
+    def _death_snippet_from_payload(payload: dict[str, object]) -> DeathSnippetEvent:
         """Build a typed death-snippet event from import payload data."""
-        timestamp = payload.get("timestamp")
-        if not isinstance(timestamp, datetime):
-            timestamp = datetime.min
-        return DeathSnippetEvent(
-            target=str(payload.get("target", "")),
-            killer=str(payload.get("killer", "")),
-            lines=list(payload.get("lines", []) or []),
-            timestamp=timestamp,
-            line_number=None,
-        )
+        return ImportController.death_snippet_from_payload(payload)
 
     @staticmethod
-    def _death_character_identified_from_payload(payload: Dict[str, Any]) -> DeathCharacterIdentifiedEvent:
+    def _death_character_identified_from_payload(
+        payload: dict[str, object],
+    ) -> DeathCharacterIdentifiedEvent:
         """Build a typed identity event from import payload data."""
-        timestamp = payload.get("timestamp")
-        if not isinstance(timestamp, datetime):
-            timestamp = datetime.min
-        return DeathCharacterIdentifiedEvent(
-            character_name=str(payload.get("character_name", "")),
-            timestamp=timestamp,
-            line_number=None,
-        )
+        return ImportController.death_character_identified_from_payload(payload)
 
     def _on_death_snippet(self, event: DeathSnippetEvent) -> None:
         """Callback from queue processor when a death snippet is produced."""
@@ -1276,37 +1704,39 @@ class WoosNwnParserApp:
             return
         self._is_closing = True
         self._flush_pending_session_settings_save()
-        if self.is_importing:
-            self.import_abort_event.set()
-            if self.import_abort_flag is not None:
-                self.import_abort_flag.set()
-            if self.import_process is not None and self.import_process.is_alive():
-                self.import_process.terminate()
-        self.pause_monitoring()
+        if not hasattr(self, "import_controller") and not hasattr(self, "monitor_controller"):
+            if self.is_importing:
+                self.import_abort_event.set()
+                if self.import_abort_flag is not None:
+                    self.import_abort_flag.set()
+                if self.import_process is not None and self.import_process.is_alive():
+                    self.import_process.terminate()
+            self.pause_monitoring()
+            self.data_store.close()
+            if hasattr(self, "tooltip_manager"):
+                self.tooltip_manager.destroy()
+            self.root.destroy()
+            return
+        self._ensure_import_controller().shutdown()
+        self._ensure_monitor_controller().shutdown()
         self.data_store.close()
         if hasattr(self, "tooltip_manager"):
             self.tooltip_manager.destroy()
         self.root.destroy()
 
-    def _build_session_settings(self) -> AppSettings:
+    def _build_session_settings(self):
         """Build serializable user session settings from current UI state."""
-        log_directory = str(getattr(self, "log_directory", "")).strip() or None
-        death_fallback_line = None
-
-        death_panel = getattr(self, "death_snippet_panel", None)
-        if death_panel is not None:
-            death_fallback_line = death_panel.get_fallback_death_line()
-        else:
-            parser = getattr(self, "parser", None)
-            if parser is not None:
-                death_fallback_line = str(getattr(parser, "death_fallback_line", "")).strip()
-
-        return AppSettings(
-            log_directory=log_directory,
-            death_fallback_line=(death_fallback_line or "").strip() or None,
-            parse_immunity=bool(getattr(getattr(self, "parser", None), "parse_immunity", True)),
-            first_timestamp_mode=self._get_current_first_timestamp_mode(),
-        )
+        if not hasattr(self, "settings_controller"):
+            death_fallback_line = None
+            death_panel = getattr(self, "death_snippet_panel", None)
+            if death_panel is not None:
+                death_fallback_line = death_panel.get_fallback_death_line()
+            else:
+                parser = getattr(self, "parser", None)
+                if parser is not None:
+                    death_fallback_line = str(getattr(parser, "death_fallback_line", "")).strip()
+            return self._ensure_settings_controller().build_settings()
+        return self._ensure_settings_controller().build_settings()
 
     def _restore_persisted_dps_panel_state(self) -> None:
         """Apply persisted DPS panel state to UI controls after widget creation."""
@@ -1342,35 +1772,37 @@ class WoosNwnParserApp:
 
     def _persist_session_settings(self) -> None:
         """Persist current session settings."""
-        settings = self._build_session_settings()
-        self._settings = settings
-        try:
-            save_app_settings(settings)
-        except OSError:
-            # Settings persistence must never break runtime behavior.
-            return
+        controller = self._ensure_settings_controller()
+        controller.persist_now()
+        self._settings = controller.settings
 
     def _schedule_session_settings_save(self) -> None:
         """Debounce session settings persistence for frequently edited fields."""
-        root = getattr(self, "root", None)
-        if root is None:
-            self._persist_session_settings()
+        if not hasattr(self, "settings_controller"):
+            root = getattr(self, "root", None)
+            if root is None:
+                self._persist_session_settings()
+                return
+            existing_job = getattr(self, "_settings_save_job", None)
+            if existing_job is not None:
+                try:
+                    root.after_cancel(existing_job)
+                except tk.TclError:
+                    pass
+            delay_ms = int(getattr(self, "_settings_save_delay_ms", 400))
+            self._settings_save_job = root.after(delay_ms, self._flush_pending_session_settings_save)
             return
-
-        existing_job = getattr(self, "_settings_save_job", None)
-        if existing_job is not None:
-            try:
-                root.after_cancel(existing_job)
-            except tk.TclError:
-                pass
-
-        delay_ms = int(getattr(self, "_settings_save_delay_ms", 400))
-        self._settings_save_job = root.after(delay_ms, self._flush_pending_session_settings_save)
+        self._ensure_settings_controller().schedule_save()
 
     def _flush_pending_session_settings_save(self) -> None:
         """Immediately persist settings and clear any scheduled save handle."""
-        self._settings_save_job = None
-        self._persist_session_settings()
+        if not hasattr(self, "settings_controller"):
+            self._settings_save_job = None
+            self._persist_session_settings()
+            return
+        controller = self._ensure_settings_controller()
+        controller.flush_pending_save()
+        self._settings = controller.settings
 
     def clear_debug(self) -> None:
         """Clear the debug console."""
@@ -1390,7 +1822,7 @@ class WoosNwnParserApp:
     def _on_debug_toggle(self, *args) -> None:
         """Handle debug mode toggle from the debug panel."""
         self.debug_mode = bool(self.debug_panel.debug_mode_var.get())
-        self._debug_monitor_enabled = self.debug_mode
+        self._ensure_monitor_controller()._debug_monitor_enabled = self.debug_mode
         self.log_debug(f"Debug output {'enabled' if self.debug_mode else 'disabled'}")
 
     def _on_notebook_click(self, event: tk.Event) -> None:
