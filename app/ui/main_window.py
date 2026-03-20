@@ -13,7 +13,8 @@ from tkinter import filedialog, font, ttk
 
 from ..parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
 from ..parser import LogParser
-from ..services import DPSCalculationService, QueueProcessor
+from ..services import QueueProcessor
+from ..services.queries import DpsQueryService, ImmunityQueryService, TargetSummaryQueryService
 from ..settings import load_app_settings, save_app_settings
 from ..storage import DataStore
 from .controllers import (
@@ -67,7 +68,9 @@ class WoosNwnParserApp:
         self.parser = LogParser(parse_immunity=True)
         self.data_store = DataStore()
         self.queue_processor = QueueProcessor(self.data_store, self.parser)
-        self.dps_service = DPSCalculationService(self.data_store)
+        self.dps_service = DpsQueryService(self.data_store)
+        self.target_summary_query_service = TargetSummaryQueryService(self.data_store)
+        self.immunity_query_service = ImmunityQueryService(self.data_store)
         self.data_queue: queue.Queue = queue.Queue(maxsize=self.DATA_QUEUE_MAXSIZE)
         self.dps_refresh_job = None
 
@@ -270,13 +273,19 @@ class WoosNwnParserApp:
         self.dps_panel.time_tracking_combo.bind("<<ComboboxSelected>>", self._on_time_tracking_mode_changed)
         self.dps_panel.target_filter_combo.bind("<<ComboboxSelected>>", self._on_target_filter_changed)
 
-        self.stats_panel = TargetStatsPanel(self.notebook, self.data_store, tooltip_manager=self.tooltip_manager)
+        self.stats_panel = TargetStatsPanel(
+            self.notebook,
+            self.data_store,
+            self.target_summary_query_service,
+            tooltip_manager=self.tooltip_manager,
+        )
         self.notebook.add(self.stats_panel, text="Target Stats")
 
         self.immunity_panel = ImmunityPanel(
             self.notebook,
             self.data_store,
             self.parser,
+            self.immunity_query_service,
             tooltip_manager=self.tooltip_manager,
             on_parse_immunity_changed=self._on_parse_immunity_changed,
         )

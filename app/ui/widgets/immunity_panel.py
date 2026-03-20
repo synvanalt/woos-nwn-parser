@@ -10,6 +10,7 @@ from tkinter import ttk
 from typing import Any, Callable, Dict, Optional
 
 from ...storage import DataStore
+from ...services.queries import ImmunityQueryService
 from ...parser import LogParser
 from ...utils import calculate_immunity_percentage
 from ..formatters import damage_type_to_color, apply_tag_to_tree
@@ -43,6 +44,7 @@ class ImmunityPanel(ttk.Frame):
         parent: ttk.Notebook,
         data_store: DataStore,
         parser: LogParser,
+        immunity_query_service: Optional[ImmunityQueryService] = None,
         tooltip_manager: Optional[TooltipManager] = None,
         on_parse_immunity_changed: Optional[Callable[[bool], None]] = None,
     ) -> None:
@@ -56,6 +58,7 @@ class ImmunityPanel(ttk.Frame):
         super().__init__(parent, padding="10")
         self.data_store = data_store
         self.parser = parser
+        self.immunity_query_service = immunity_query_service or ImmunityQueryService(data_store)
         self.tooltip_manager = tooltip_manager
         self.on_parse_immunity_changed = on_parse_immunity_changed
         self.immunity_pct_cache: Dict[str, Dict[str, Optional[int]]] = {}
@@ -186,7 +189,7 @@ class ImmunityPanel(ttk.Frame):
         if target not in self.immunity_pct_cache:
             self.immunity_pct_cache[target] = {}
 
-        summaries = self.data_store.get_target_damage_type_summary(target)
+        summaries = self.immunity_query_service.get_target_damage_type_summary(target)
         natural_order = self._is_natural_order_active()
         order_token = tuple(str(summary["damage_type"]) for summary in summaries)
         new_rows = {}
@@ -302,6 +305,13 @@ class ImmunityPanel(ttk.Frame):
 
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether refresh data is sourced from the live store method."""
+        service_method = getattr(self.immunity_query_service, "get_target_damage_type_summary", None)
+        if not (
+            getattr(service_method, "__self__", None) is self.immunity_query_service
+            and getattr(service_method, "__func__", None)
+            is ImmunityQueryService.get_target_damage_type_summary
+        ):
+            return False
         store_method = getattr(self.data_store, "get_target_damage_type_summary", None)
         if getattr(store_method, "mock_calls", None) is not None:
             return True
