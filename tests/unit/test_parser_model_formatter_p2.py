@@ -2,6 +2,7 @@
 
 from app.models import EnemyAC, EnemySaves
 from app.parser import LogParser
+from app.parsed_events import AttackMissEvent
 from app.ui.formatters import get_default_log_directory
 import app.ui.formatters as formatters_module
 
@@ -35,8 +36,9 @@ def test_parser_attacker_miss_chance_emits_miss_without_ac_tracking() -> None:
     event = parser.parse_line(line)
 
     assert event is not None
-    assert event["type"] == "attack_miss"
-    assert event["is_concealment"] is True
+    assert isinstance(event, AttackMissEvent)
+    assert event.type == "attack_miss"
+    assert event.is_concealment is True
 
 
 def test_get_default_log_directory_returns_existing_nwn_logs_path(monkeypatch) -> None:

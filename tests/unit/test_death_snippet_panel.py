@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from app.parsed_events import DeathSnippetEvent
 from app.ui.widgets.death_snippet_panel import DeathSnippetPanel
 
 
@@ -188,6 +189,22 @@ class TestDeathSnippetPanel:
         return panel
 
     @staticmethod
+    def _event(
+        *,
+        timestamp: datetime,
+        killer: str,
+        lines: list[str],
+        target: str,
+    ) -> DeathSnippetEvent:
+        return DeathSnippetEvent(
+            timestamp=timestamp,
+            killer=killer,
+            lines=lines,
+            target=target,
+            line_number=None,
+        )
+
+    @staticmethod
     def _make_fake_font(char_px: int = 8) -> object:
         class _FakeFont:
             def __init__(self, px: int) -> None:
@@ -211,18 +228,18 @@ class TestDeathSnippetPanel:
     def test_add_death_event_auto_selects_newest_and_preserves_killer_case(self) -> None:
         panel = self._make_panel()
 
-        older = {
-            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
-            "killer": "hydroXis",
-            "lines": ["[CHAT WINDOW TEXT] [t] hydroXis killed Woo Wildrock"],
-            "target": "Woo Wildrock",
-        }
-        newer = {
-            "timestamp": datetime(2026, 1, 9, 14, 55, 23),
-            "killer": "HYDROXIS",
-            "lines": ["[CHAT WINDOW TEXT] [t] HYDROXIS killed Woo Wildrock"],
-            "target": "Woo Wildrock",
-        }
+        older = self._event(
+            timestamp=datetime(2026, 1, 9, 14, 30, 0),
+            killer="hydroXis",
+            lines=["[CHAT WINDOW TEXT] [t] hydroXis killed Woo Wildrock"],
+            target="Woo Wildrock",
+        )
+        newer = self._event(
+            timestamp=datetime(2026, 1, 9, 14, 55, 23),
+            killer="HYDROXIS",
+            lines=["[CHAT WINDOW TEXT] [t] HYDROXIS killed Woo Wildrock"],
+            target="Woo Wildrock",
+        )
 
         panel.add_death_event(older)
         panel.add_death_event(newer)
@@ -237,18 +254,18 @@ class TestDeathSnippetPanel:
 
     def test_render_selected_event_switches_textbox_content(self) -> None:
         panel = self._make_panel()
-        panel.add_death_event({
-            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
-            "killer": "A",
-            "lines": ["[CHAT WINDOW TEXT] [t] A killed Woo Wildrock"],
-            "target": "Woo Wildrock",
-        })
-        panel.add_death_event({
-            "timestamp": datetime(2026, 1, 9, 14, 31, 0),
-            "killer": "B",
-            "lines": ["[CHAT WINDOW TEXT] [t] B killed Woo Wildrock"],
-            "target": "Woo Wildrock",
-        })
+        panel.add_death_event(self._event(
+            timestamp=datetime(2026, 1, 9, 14, 30, 0),
+            killer="A",
+            lines=["[CHAT WINDOW TEXT] [t] A killed Woo Wildrock"],
+            target="Woo Wildrock",
+        ))
+        panel.add_death_event(self._event(
+            timestamp=datetime(2026, 1, 9, 14, 31, 0),
+            killer="B",
+            lines=["[CHAT WINDOW TEXT] [t] B killed Woo Wildrock"],
+            target="Woo Wildrock",
+        ))
 
         panel.killed_by_combo.current(1)
         panel.render_selected_event()
@@ -258,12 +275,12 @@ class TestDeathSnippetPanel:
 
     def test_clear_resets_dropdown_and_placeholder(self) -> None:
         panel = self._make_panel()
-        panel.add_death_event({
-            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
-            "killer": "HYDROXIS",
-            "lines": ["[CHAT WINDOW TEXT] [t] HYDROXIS killed Woo Wildrock"],
-            "target": "Woo Wildrock",
-        })
+        panel.add_death_event(self._event(
+            timestamp=datetime(2026, 1, 9, 14, 30, 0),
+            killer="HYDROXIS",
+            lines=["[CHAT WINDOW TEXT] [t] HYDROXIS killed Woo Wildrock"],
+            target="Woo Wildrock",
+        ))
 
         panel.clear()
 
@@ -312,12 +329,12 @@ class TestDeathSnippetPanel:
 
     def test_render_selected_event_uses_tags_for_colored_tokens(self) -> None:
         panel = self._make_panel()
-        panel.add_death_event({
-            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
-            "killer": "HYDROXIS",
-            "lines": ["[CHAT WINDOW TEXT] [t] test damages target: 27 (27 Fire)"],
-            "target": "Woo Wildrock",
-        })
+        panel.add_death_event(self._event(
+            timestamp=datetime(2026, 1, 9, 14, 30, 0),
+            killer="HYDROXIS",
+            lines=["[CHAT WINDOW TEXT] [t] test damages target: 27 (27 Fire)"],
+            target="Woo Wildrock",
+        ))
 
         tagged_text = [text for _idx, text, tag in panel.text.inserts if tag is not None]
         assert "27" in tagged_text
@@ -325,12 +342,12 @@ class TestDeathSnippetPanel:
 
     def test_render_selected_event_skips_unchanged_selection(self) -> None:
         panel = self._make_panel()
-        panel.add_death_event({
-            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
-            "killer": "HYDROXIS",
-            "lines": ["[CHAT WINDOW TEXT] [t] test damages target: 27 Fire"],
-            "target": "Woo Wildrock",
-        })
+        panel.add_death_event(self._event(
+            timestamp=datetime(2026, 1, 9, 14, 30, 0),
+            killer="HYDROXIS",
+            lines=["[CHAT WINDOW TEXT] [t] test damages target: 27 Fire"],
+            target="Woo Wildrock",
+        ))
         first_insert_count = len(panel.text.inserts)
 
         panel.render_selected_event()
@@ -365,15 +382,15 @@ class TestDeathSnippetPanel:
 
     def test_render_colors_killed_name_in_save_and_spell_resist_lines(self) -> None:
         panel = self._make_panel()
-        panel.add_death_event({
-            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
-            "killer": "HYDROXIS",
-            "target": "Woo Whirlwind",
-            "lines": [
+        panel.add_death_event(self._event(
+            timestamp=datetime(2026, 1, 9, 14, 30, 0),
+            killer="HYDROXIS",
+            target="Woo Whirlwind",
+            lines=[
                 "[CHAT WINDOW TEXT] [t] Woo Whirlwind : Fortitude Save vs. Poison : *success* : (8 + 50 = 58 vs. DC: 55)",
                 "[CHAT WINDOW TEXT] [t] SPELL RESIST: Woo Whirlwind attempts to resist: Acid Fog - Result: FAILED",
             ],
-        })
+        ))
 
         killed_tag = next(
             tag for tag, conf in panel.text.tag_configs.items()
@@ -386,16 +403,16 @@ class TestDeathSnippetPanel:
 
     def test_render_colors_opponents_from_attacks_and_damages_against_killed(self) -> None:
         panel = self._make_panel()
-        panel.add_death_event({
-            "timestamp": datetime(2026, 1, 9, 14, 30, 0),
-            "killer": "HYDROXIS",
-            "target": "Woo Whirlwind",
-            "lines": [
+        panel.add_death_event(self._event(
+            timestamp=datetime(2026, 1, 9, 14, 30, 0),
+            killer="HYDROXIS",
+            target="Woo Whirlwind",
+            lines=[
                 "[CHAT WINDOW TEXT] [t] Ash-Tusk Clan Sniper attacks Woo Whirlwind : *hit* : (12 + 56 = 68)",
                 "[CHAT WINDOW TEXT] [t] GENERAL KORGAN damages Woo Whirlwind: 40 (0 Physical 4 Divine 36 Electrical 0 Fire)",
                 "[CHAT WINDOW TEXT] [t] HYDROXIS killed Woo Whirlwind",
             ],
-        })
+        ))
 
         opponent_tag = next(
             tag for tag, conf in panel.text.tag_configs.items()

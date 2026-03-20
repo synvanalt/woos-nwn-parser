@@ -1,12 +1,14 @@
 """Death snippet panel widget for Woo's NWN Parser UI."""
 
 import re
+from dataclasses import dataclass
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, font
-from typing import Any, Callable, Dict, Optional
+from typing import Callable, Optional
 
 from ...constants import DAMAGE_TYPE_PALETTE
+from ...parsed_events import DeathSnippetEvent
 from ..formatters import damage_type_to_color
 from ..tooltips import TooltipManager
 
@@ -32,6 +34,12 @@ def _compile_damage_patterns() -> tuple[tuple[str, ...], tuple[tuple[str, re.Pat
         for key in keys
     )
     return keys, pair_patterns, type_patterns
+
+
+@dataclass(slots=True)
+class _DeathEventEntry:
+    event: DeathSnippetEvent
+    seq: int
 
 
 class DeathSnippetPanel(ttk.Frame):
@@ -71,7 +79,7 @@ class DeathSnippetPanel(ttk.Frame):
         super().__init__(parent, padding="10")
         self._notebook = parent
         self.tooltip_manager = tooltip_manager
-        self.death_events: list[Dict[str, Any]] = []
+        self.death_events: list[_DeathEventEntry] = []
         self._event_sequence: int = 0
         self.killed_by_var = tk.StringVar(value=self.EMPTY_DROPDOWN_PLACEHOLDER)
         self.character_name_var = tk.StringVar(value="")
@@ -441,18 +449,16 @@ class DeathSnippetPanel(ttk.Frame):
         self._last_render_key = None
 
     @staticmethod
-    def _event_sort_timestamp(event: Dict[str, Any]) -> datetime:
+    def _event_sort_timestamp(entry: _DeathEventEntry) -> datetime:
         """Return event timestamp for sorting, with safe fallback."""
-        timestamp = event.get("timestamp")
-        if isinstance(timestamp, datetime):
-            return timestamp
-        return datetime.min
+        timestamp = entry.event.timestamp
+        return timestamp if isinstance(timestamp, datetime) else datetime.min
 
     @staticmethod
-    def _format_dropdown_value(event: Dict[str, Any]) -> str:
+    def _format_dropdown_value(entry: _DeathEventEntry) -> str:
         """Build dropdown value text as HH:MM:SS plus original killer name."""
-        timestamp = event.get("timestamp")
-        killer = str(event.get("killer", "")).strip()
+        timestamp = entry.event.timestamp
+        killer = entry.event.killer.strip()
 
         if isinstance(timestamp, datetime):
             timestamp_text = timestamp.strftime("%H:%M:%S")
@@ -466,7 +472,7 @@ class DeathSnippetPanel(ttk.Frame):
 
     def _set_combo_values(self) -> None:
         """Refresh combobox values from current death events."""
-        values = [self._format_dropdown_value(event) for event in self.death_events]
+        values = [self._format_dropdown_value(entry) for entry in self.death_events]
         self.killed_by_combo["values"] = values
         if values:
             self._set_combo_text_foreground("")
@@ -478,7 +484,7 @@ class DeathSnippetPanel(ttk.Frame):
             self.killed_by_var.set(self.EMPTY_DROPDOWN_PLACEHOLDER)
             self.killed_by_combo.configure(state="disabled")
 
-    def _get_selected_event(self) -> Optional[Dict[str, Any]]:
+    def _get_selected_event(self) -> Optional[_DeathEventEntry]:
         """Return selected death event or None if no valid selection exists."""
         if not self.death_events:
             return None
@@ -723,15 +729,16 @@ class DeathSnippetPanel(ttk.Frame):
             return
 
         selected_index = self.killed_by_combo.current()
-        selected_seq = selected_event.get("_seq")
+        selected_seq = selected_event.seq
         render_key = (selected_index, selected_seq)
         if render_key == self._last_render_key:
             return
 
-        lines = [self._sanitize_display_line(str(line)) for line in selected_event.get("lines", [])]
+        event = selected_event.event
+        lines = [self._sanitize_display_line(str(line)) for line in (event.lines or [])]
         display_lines = self._prepare_display_lines_for_wrap_mode(lines)
-        killed_name = self._normalize_name(str(selected_event.get("target", "")))
-        killer_name = self._normalize_name(str(selected_event.get("killer", "")))
+        killed_name = self._normalize_name(event.target)
+        killer_name = self._normalize_name(event.killer)
         opponent_names = self._extract_opponent_names(lines, killed_name, killer_name)
 
         self.text.delete("1.0", tk.END)
@@ -740,29 +747,27 @@ class DeathSnippetPanel(ttk.Frame):
         self.text.see(tk.END)
         self._last_render_key = render_key
 
-    def add_death_event(self, event: Dict[str, Any]) -> None:
+    def add_death_event(self, event: DeathSnippetEvent) -> None:
         """Add a death snippet event and select newest entry."""
         self.add_death_events([event])
 
-    def add_death_events(self, events: list[Dict[str, Any]]) -> None:
+    def add_death_events(self, events: list[DeathSnippetEvent]) -> None:
         """Add one or more death snippet events and select the newest entry."""
         added = False
         for event in events:
-            lines = event.get("lines", [])
+            lines = event.lines or []
             if not lines:
                 continue
 
-            event_copy = dict(event)
-            event_copy["_seq"] = self._event_sequence
+            self.death_events.append(_DeathEventEntry(event=event, seq=self._event_sequence))
             self._event_sequence += 1
-            self.death_events.append(event_copy)
             added = True
 
         if not added:
             return
 
         self.death_events.sort(
-            key=lambda item: (self._event_sort_timestamp(item), int(item.get("_seq", 0))),
+            key=lambda item: (self._event_sort_timestamp(item), item.seq),
             reverse=True,
         )
 

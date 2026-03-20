@@ -11,6 +11,12 @@ from queue import Queue
 from app.services.queue_processor import QueueProcessor
 from app.storage import DataStore
 from app.parser import LogParser
+from tests.helpers.parsed_event_factories import (
+    attack_hit_event,
+    critical_hit_event,
+    damage_event,
+    immunity_event,
+)
 
 
 class TestQueueProcessor(unittest.TestCase):
@@ -38,22 +44,20 @@ class TestQueueProcessor(unittest.TestCase):
         on_log_message = Mock()
         result = self.processor.process_queue(self.queue, on_log_message)
 
-        # No callbacks should be called for empty queue
         on_log_message.assert_not_called()
         self.assertEqual(result.events_processed, 0)
 
     def test_damage_dealt_event_processing(self) -> None:
         """Test processing damage_dealt event."""
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'TestCharacter',
-            'target': 'TestTarget',
-            'total_damage': 50,
-            'timestamp': datetime.now(),
-            'damage_types': {'Piercing': 50},
-        }
-
-        self.queue.put(damage_event)
+        self.queue.put(
+            damage_event(
+                attacker='TestCharacter',
+                target='TestTarget',
+                total_damage=50,
+                timestamp=datetime.now(),
+                damage_types={'Piercing': 50},
+            )
+        )
 
         result = self.processor.process_queue(self.queue, Mock())
         self.assertTrue(result.dps_updated)
@@ -64,19 +68,17 @@ class TestQueueProcessor(unittest.TestCase):
         """Test queuing immunity event when no recent damage exists."""
         self.parser.parse_immunity = True
 
-        immunity_event = {
-            'type': 'immunity',
-            'target': 'TestTarget',
-            'damage_type': 'Fire',
-            'immunity_points': 20,
-            'timestamp': datetime.now(),
-        }
-
-        self.queue.put(immunity_event)
+        self.queue.put(
+            immunity_event(
+                target='TestTarget',
+                damage_type='Fire',
+                immunity_points=20,
+                timestamp=datetime.now(),
+            )
+        )
 
         self.processor.process_queue(self.queue, Mock())
 
-        # Immunity should be queued
         self.assertIn('TestTarget', self.processor.pending_immunity_queue)
         self.assertIn('Fire', self.processor.pending_immunity_queue['TestTarget'])
 
@@ -86,45 +88,40 @@ class TestQueueProcessor(unittest.TestCase):
 
         now = datetime.now()
 
-        # First add damage event
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'TestCharacter',
-            'target': 'TestTarget',
-            'total_damage': 50,
-            'timestamp': now,
-            'damage_types': {'Fire': 50},
-        }
-
-        self.queue.put(damage_event)
+        self.queue.put(
+            damage_event(
+                attacker='TestCharacter',
+                target='TestTarget',
+                total_damage=50,
+                timestamp=now,
+                damage_types={'Fire': 50},
+            )
+        )
         self.processor.process_queue(self.queue, Mock())
 
-        # Then add matching immunity event
-        immunity_event = {
-            'type': 'immunity',
-            'target': 'TestTarget',
-            'damage_type': 'Fire',
-            'immunity_points': 20,
-            'timestamp': now,
-        }
-
-        self.queue.put(immunity_event)
+        self.queue.put(
+            immunity_event(
+                target='TestTarget',
+                damage_type='Fire',
+                immunity_points=20,
+                timestamp=now,
+            )
+        )
         self.processor.process_queue(self.queue, Mock())
 
         self.data_store.apply_mutations.assert_called()
 
     def test_attack_hit_event(self) -> None:
         """Test processing attack_hit event."""
-        attack_event = {
-            'type': 'attack_hit',
-            'attacker': 'TestCharacter',
-            'target': 'TestTarget',
-            'roll': 10,
-            'bonus': 5,
-            'total': 15,
-        }
-
-        self.queue.put(attack_event)
+        self.queue.put(
+            attack_hit_event(
+                attacker='TestCharacter',
+                target='TestTarget',
+                roll=10,
+                bonus=5,
+                total=15,
+            )
+        )
         self.processor.process_queue(self.queue, Mock())
 
         self.data_store.apply_mutations.assert_called_once()
@@ -149,27 +146,22 @@ class TestQueueProcessor(unittest.TestCase):
             line_number=2,
         )
 
-        # Clean up entries older than 5 seconds
         self.processor.cleanup_stale_immunities(max_age_seconds=5.0)
 
-        # Old target should be removed
         self.assertNotIn('OldTarget', self.processor.pending_immunity_queue)
-
-        # New target should remain
         self.assertIn('NewTarget', self.processor.pending_immunity_queue)
 
     def test_critical_hit_event(self) -> None:
         """Test processing critical_hit event."""
-        crit_event = {
-            'type': 'critical_hit',
-            'attacker': 'TestCharacter',
-            'target': 'TestTarget',
-            'roll': 20,
-            'bonus': 5,
-            'total': 25,
-        }
-
-        self.queue.put(crit_event)
+        self.queue.put(
+            critical_hit_event(
+                attacker='TestCharacter',
+                target='TestTarget',
+                roll=20,
+                bonus=5,
+                total=25,
+            )
+        )
         self.processor.process_queue(self.queue, Mock())
 
         self.data_store.apply_mutations.assert_called_once()
@@ -177,23 +169,21 @@ class TestQueueProcessor(unittest.TestCase):
     def test_damage_buffer_state(self) -> None:
         """Test damage buffer maintains state correctly."""
         self.parser.parse_immunity = True
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'TestCharacter',
-            'target': 'TestTarget',
-            'total_damage': 100,
-            'timestamp': datetime.now(),
-            'damage_types': {'Piercing': 50, 'Fire': 50},
-        }
-
-        self.queue.put(damage_event)
+        self.queue.put(
+            damage_event(
+                attacker='TestCharacter',
+                target='TestTarget',
+                total_damage=100,
+                timestamp=datetime.now(),
+                damage_types={'Piercing': 50, 'Fire': 50},
+            )
+        )
         self.processor.process_queue(self.queue, Mock())
 
-        # Verify damage buffer contains the damage data
         self.assertIn('TestTarget', self.processor.damage_buffer)
         self.assertEqual(
             self.processor.damage_buffer['TestTarget']['damage_types'],
-            {'Piercing': 50, 'Fire': 50}
+            {'Piercing': 50, 'Fire': 50},
         )
 
 
@@ -217,36 +207,30 @@ class TestQueueProcessorIntegration(unittest.TestCase):
         """Test complete flow of damage event followed by immunity event."""
         now = datetime.now()
 
-        # Process damage event
-        damage_event = {
-            'type': 'damage_dealt',
-            'attacker': 'Rogue',
-            'target': 'Dragon',
-            'total_damage': 100,
-            'timestamp': now,
-            'damage_types': {'Fire': 100},
-        }
-
-        self.queue.put(damage_event)
+        self.queue.put(
+            damage_event(
+                attacker='Rogue',
+                target='Dragon',
+                total_damage=100,
+                timestamp=now,
+                damage_types={'Fire': 100},
+            )
+        )
         self.processor.process_queue(self.queue, Mock())
 
-        # Process immunity event
-        immunity_event = {
-            'type': 'immunity',
-            'target': 'Dragon',
-            'damage_type': 'Fire',
-            'immunity_points': 30,
-            'timestamp': now,
-        }
-
-        self.queue.put(immunity_event)
+        self.queue.put(
+            immunity_event(
+                target='Dragon',
+                damage_type='Fire',
+                immunity_points=30,
+                timestamp=now,
+            )
+        )
         self.processor.process_queue(self.queue, Mock())
 
-        # Verify data was recorded
         dps_data = self.data_store.get_dps_data()
         self.assertTrue(any(d['character'] == 'Rogue' for d in dps_data))
 
 
 if __name__ == '__main__':
     unittest.main()
-
