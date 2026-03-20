@@ -185,7 +185,7 @@ class WoosNwnParserApp:
             )
 
         if hasattr(self, "queue_drain_controller"):
-            self.queue_drain_controller.start()
+            self.process_queue()
 
         if hasattr(self, "monitor_controller") and self.log_directory and Path(self.log_directory).is_dir():
             self.root.after(100, self.start_monitoring)
@@ -365,6 +365,9 @@ class WoosNwnParserApp:
 
     def browse_directory(self) -> None:
         self.monitor_controller.browse_for_directory()
+
+    def process_queue(self) -> None:
+        self.queue_drain_controller.start()
 
     def load_and_parse_selected_files(self) -> None:
         self.import_controller.start_from_dialog(is_monitoring=self.monitor_controller.is_monitoring)
