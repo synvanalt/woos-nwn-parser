@@ -154,7 +154,9 @@ woos-nwn-parser/
 │   ├── services/
 │   │   ├── __init__.py
 │   │   ├── dps_service.py         # DPS calculations
-│   │   └── queue_processor.py     # Event processing
+│   │   ├── event_ingestion.py     # Shared parsed-event normalization
+│   │   ├── immunity_matcher.py    # Shared damage/immunity correlation
+│   │   └── queue_processor.py     # Live queue draining and batching
 │   └── ui/
 │       ├── __init__.py
 │       ├── main_window.py         # Main application window
@@ -207,15 +209,20 @@ woos-nwn-parser/
 - Settings are saved at `%LOCALAPPDATA%\WoosNwnParser\settings.json`
 
 **QueueProcessor** (`services/queue_processor.py`)
-- Routes parsed events to batched handlers and deduplicated UI refresh callbacks
-- Buffers damage for immunity matching
-- Manages cleanup of stale immunity queue entries
-- Carries death snippet and character-identification events in the drain result
+- Drains the live parser queue in bounded batches
+- Delegates parsed-event normalization to the shared ingestion engine
+- Aggregates deduplicated UI refresh targets and side events into the drain result
+- Manages periodic cleanup of stale immunity queue entries
 
 **ImmunityMatcher** (`services/immunity_matcher.py`)
 - Shares immunity matching logic between live monitoring and file import paths
 - Conservatively pairs immunity lines with nearby damage observations by target, damage type, timestamp, and line number
 - Keeps unmatched damage/immunity observations in bounded queues and prunes stale entries
+
+**EventIngestionEngine** (`services/event_ingestion.py`)
+- Converts parsed damage, attack, save, immunity, and death-related events into normalized store mutations and side events
+- Owns the transient immunity-matching state used by both live monitoring and historic import
+- Keeps live queue processing and import payload generation aligned through one shared normalization path
 
 **DPSCalculationService** (`services/dps_service.py`)
 - Calculates DPS with configurable time tracking modes
