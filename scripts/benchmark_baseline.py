@@ -232,6 +232,12 @@ def parse_args() -> argparse.Namespace:
         default=9,
         help="Measured runs for large fixtures; use 0 to disable adaptive scaling.",
     )
+    parser.add_argument(
+        "--parse-immunity-mode",
+        choices=("off", "on", "both"),
+        default="both",
+        help="Select which parse_immunity mode(s) to benchmark.",
+    )
     return parser.parse_args()
 
 
@@ -243,6 +249,11 @@ def main() -> None:
         raise RuntimeError(f"repo root not found: {repo_root}")
     runtime = load_runtime(repo_root)
     fixture_infos = [build_fixture_info((repo_root / Path(path)).resolve()) for path in args.fixtures]
+    parse_immunity_modes = {
+        "off": (False,),
+        "on": (True,),
+        "both": (False, True),
+    }[args.parse_immunity_mode]
 
     rows: list[dict[str, object]] = []
     for fixture in fixture_infos:
@@ -252,7 +263,7 @@ def main() -> None:
             and fixture.line_count >= args.large_fixture_line_threshold
         ):
             iterations = args.large_fixture_iterations
-        for parse_immunity in (False, True):
+        for parse_immunity in parse_immunity_modes:
             rows.append(
                 run_case(
                     runtime,
@@ -323,6 +334,7 @@ def main() -> None:
         f" ({args.large_fixture_iterations} measured for fixtures with "
         f"{args.large_fixture_line_threshold}+ lines)"
     )
+    print(f"Parse immunity mode: {args.parse_immunity_mode}")
     print()
     print(" ".join(header.ljust(widths[header]) for header in headers))
     print(" ".join("-" * widths[header] for header in headers))
