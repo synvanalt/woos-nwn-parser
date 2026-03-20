@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import statistics
 import sys
 import tracemalloc
@@ -12,9 +13,6 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-
-from app.parser import LogParser
-
 
 DEFAULT_FIXTURES = (
     Path("tests/fixtures/real_flurry_conceal_epicdodge.txt"),
@@ -37,20 +35,42 @@ def _normalize_damage_types(raw_damage_types: dict[str, Any]) -> dict[str, int]:
     return {key: int(value or 0) for key, value in raw_damage_types.items()}
 
 
+def _clear_app_modules() -> None:
+    for name in list(sys.modules):
+        if name == "app" or name.startswith("app."):
+            sys.modules.pop(name, None)
+
+
+def _load_parser_cls(repo_root: Path) -> type:
+    _clear_app_modules()
+    repo_root_str = str(repo_root)
+    if repo_root_str in sys.path:
+        sys.path.remove(repo_root_str)
+    sys.path.insert(0, repo_root_str)
+    parser_mod = importlib.import_module("app.parser")
+    return getattr(parser_mod, "LogParser")
+
+
+def _event_get(parsed_data: Any, key: str, default: Any = None) -> Any:
+    if isinstance(parsed_data, dict):
+        return parsed_data.get(key, default)
+    return getattr(parsed_data, key, default)
+
+
 def _append_parsed_op(
-    parsed_data: dict[str, Any],
+    parsed_data: Any,
     mutations: list[dict[str, Any]],
     death_snippets: list[dict[str, Any]],
     last_damage_dealt: dict[str, dict[str, dict[str, int]]],
 ) -> None:
-    event_type = parsed_data["type"]
+    event_type = _event_get(parsed_data, "type")
 
     if event_type == "damage_dealt":
-        target = parsed_data["target"]
-        attacker = parsed_data["attacker"]
-        timestamp = parsed_data["timestamp"]
-        total_damage = int(parsed_data["total_damage"] or 0)
-        damage_types = _normalize_damage_types(parsed_data.get("damage_types", {}))
+        target = _event_get(parsed_data, "target")
+        attacker = _event_get(parsed_data, "attacker")
+        timestamp = _event_get(parsed_data, "timestamp")
+        total_damage = int(_event_get(parsed_data, "total_damage", 0) or 0)
+        damage_types = _normalize_damage_types(dict(_event_get(parsed_data, "damage_types", {}) or {}))
 
         mutations.append(
             {
@@ -80,15 +100,15 @@ def _append_parsed_op(
         return
 
     if event_type == "immunity":
-        target = parsed_data["target"]
-        damage_type = parsed_data["damage_type"]
+        target = _event_get(parsed_data, "target")
+        damage_type = _event_get(parsed_data, "damage_type")
         if target in last_damage_dealt and damage_type in last_damage_dealt[target]["damage_types"]:
             mutations.append(
                 {
                     "kind": "immunity",
                     "target": target,
                     "damage_type": damage_type,
-                    "immunity_points": int(parsed_data["immunity_points"] or 0),
+                    "immunity_points": int(_event_get(parsed_data, "immunity_points", 0) or 0),
                     "damage_dealt": last_damage_dealt[target]["damage_types"][damage_type],
                 }
             )
@@ -98,19 +118,19 @@ def _append_parsed_op(
         mutations.append(
             {
                 "kind": "attack",
-                "attacker": parsed_data["attacker"],
-                "target": parsed_data["target"],
+                "attacker": _event_get(parsed_data, "attacker"),
+                "target": _event_get(parsed_data, "target"),
                 "outcome": (
                     "critical_hit"
                     if event_type == "attack_hit_critical"
                     else ("hit" if event_type == "attack_hit" else "miss")
                 ),
-                "roll": parsed_data.get("roll"),
-                "bonus": parsed_data.get("bonus"),
-                "total": parsed_data.get("total"),
-                "was_nat1": bool(parsed_data.get("was_nat1", False)),
-                "was_nat20": bool(parsed_data.get("was_nat20", False)),
-                "is_concealment": bool(parsed_data.get("is_concealment", False)),
+                "roll": _event_get(parsed_data, "roll"),
+                "bonus": _event_get(parsed_data, "bonus"),
+                "total": _event_get(parsed_data, "total"),
+                "was_nat1": bool(_event_get(parsed_data, "was_nat1", False)),
+                "was_nat20": bool(_event_get(parsed_data, "was_nat20", False)),
+                "is_concealment": bool(_event_get(parsed_data, "is_concealment", False)),
             }
         )
         return
@@ -119,31 +139,31 @@ def _append_parsed_op(
         mutations.append(
             {
                 "kind": "save",
-                "target": parsed_data.get("target"),
-                "save_key": parsed_data.get("save_type"),
-                "bonus": int(parsed_data.get("bonus") or 0),
+                "target": _event_get(parsed_data, "target"),
+                "save_key": _event_get(parsed_data, "save_type"),
+                "bonus": int(_event_get(parsed_data, "bonus", 0) or 0),
             }
         )
         return
 
     if event_type == "epic_dodge":
-        mutations.append({"kind": "epic_dodge", "target": parsed_data.get("target")})
+        mutations.append({"kind": "epic_dodge", "target": _event_get(parsed_data, "target")})
         return
 
     if event_type == "death_snippet":
         death_snippets.append(
             {
                 "type": "death_snippet",
-                "target": parsed_data.get("target", ""),
-                "killer": parsed_data.get("killer", ""),
-                "lines": parsed_data.get("lines", []),
-                "timestamp": parsed_data.get("timestamp"),
+                "target": _event_get(parsed_data, "target", ""),
+                "killer": _event_get(parsed_data, "killer", ""),
+                "lines": list(_event_get(parsed_data, "lines", []) or []),
+                "timestamp": _event_get(parsed_data, "timestamp"),
             }
         )
 
 
-def _iter_file_ops_chunks(path: str | Path, parse_immunity: bool, chunk_size: int) -> Any:
-    parser = LogParser(parse_immunity=parse_immunity)
+def _iter_file_ops_chunks(path: str | Path, parse_immunity: bool, chunk_size: int, parser_cls: type) -> Any:
+    parser = parser_cls(parse_immunity=parse_immunity)
     path = Path(path)
     chunk_size = max(1, int(chunk_size))
     pending_mutations: list[dict[str, Any]] = []
@@ -175,24 +195,26 @@ def _iter_file_ops_chunks(path: str | Path, parse_immunity: bool, chunk_size: in
     yield from flush_pending(force=True)
 
 
-def _consume_streaming(path: Path, parse_immunity: bool, chunk_size: int) -> int:
+def _consume_streaming(path: Path, parse_immunity: bool, chunk_size: int, parser_cls: type) -> int:
     consumed = 0
     for chunk in _iter_file_ops_chunks(
         str(path),
         parse_immunity=parse_immunity,
         chunk_size=chunk_size,
+        parser_cls=parser_cls,
     ):
         for key in OPS_KEYS:
             consumed += len(chunk.get(key, []))
     return consumed
 
 
-def _consume_materialized(path: Path, parse_immunity: bool, chunk_size: int) -> int:
+def _consume_materialized(path: Path, parse_immunity: bool, chunk_size: int, parser_cls: type) -> int:
     all_ops = {key: [] for key in OPS_KEYS}
     for chunk in _iter_file_ops_chunks(
         str(path),
         parse_immunity=parse_immunity,
         chunk_size=10**9,
+        parser_cls=parser_cls,
     ):
         for key in OPS_KEYS:
             all_ops[key].extend(chunk.get(key, []))
@@ -208,6 +230,12 @@ def _consume_materialized(path: Path, parse_immunity: bool, chunk_size: int) -> 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Benchmark import ops peak memory for materialized and streaming strategies."
+    )
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path("."),
+        help="Repo root to benchmark.",
     )
     parser.add_argument(
         "--iterations",
@@ -232,7 +260,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    fixtures = [Path(path) for path in args.fixtures]
+    repo_root = args.repo_root.resolve()
+    parser_cls = _load_parser_cls(repo_root)
+    fixtures = [(repo_root / Path(path)).resolve() for path in args.fixtures]
 
     headers = (
         "file",
@@ -247,11 +277,21 @@ def main() -> None:
     for fixture in fixtures:
         for parse_immunity in (False, True):
             stream_values = [
-                _peak_mib(lambda: _consume_streaming(fixture, parse_immunity, args.chunk_size))
+                _peak_mib(lambda fixture=fixture, parse_immunity=parse_immunity: _consume_streaming(
+                    fixture,
+                    parse_immunity,
+                    args.chunk_size,
+                    parser_cls,
+                ))
                 for _ in range(args.iterations)
             ]
             materialized_values = [
-                _peak_mib(lambda: _consume_materialized(fixture, parse_immunity, args.chunk_size))
+                _peak_mib(lambda fixture=fixture, parse_immunity=parse_immunity: _consume_materialized(
+                    fixture,
+                    parse_immunity,
+                    args.chunk_size,
+                    parser_cls,
+                ))
                 for _ in range(args.iterations)
             ]
 

@@ -230,10 +230,16 @@ woos-nwn-parser/
 - Provides damage type breakdowns
 
 **WoosNwnParserApp** (`ui/main_window.py`)
-- Orchestrates parser, storage, monitor, and queue processor wiring
-- Keeps live monitoring responsive by running log read/parse work in a background worker thread
-- Runs "Load & Parse Logs" background import workflow with modal progress + abort
+- Wires together parser, storage, widgets, and UI controllers
+- Owns high-level Tk callbacks such as target selection, settings-triggered refreshes, and shutdown
 - Keeps debug console hidden by default and reveals it through the DPS-tab click gesture
+
+**UI Controllers** (`ui/controllers/`)
+- `MonitorController` owns live monitor start/pause, background file polling, and active-file status updates
+- `ImportController` owns the `Load & Parse Logs` workflow, modal progress UI, worker process, and incremental payload application
+- `QueueDrainController` owns bounded queue draining, pressure-based scheduling, and monitor backpressure policy
+- `RefreshCoordinator` owns coalesced heavy-panel refreshes after queue drains
+- `SessionSettingsController` owns loading, building, debouncing, and persisting session settings
 
 **DeathSnippetPanel** (`ui/widgets/death_snippet_panel.py`)
 - Displays death-context snippets with a `Killed by:` dropdown (newest first)
