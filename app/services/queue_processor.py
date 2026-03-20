@@ -12,6 +12,19 @@ from typing import Any, Callable, Dict, List, Set
 
 from ..models import StoreMutation
 from ..parser import LogParser
+from ..parsed_events import (
+    AttackCriticalHitEvent,
+    AttackHitEvent,
+    AttackMissEvent,
+    coerce_parsed_event,
+    DamageDealtEvent,
+    DeathCharacterIdentifiedEvent,
+    DeathSnippetEvent,
+    EpicDodgeEvent,
+    ImmunityObservedEvent,
+    ParsedEvent,
+    SaveObservedEvent,
+)
 from ..storage import DataStore
 from .event_ingestion import EventIngestionEngine, IngestionResult
 from .immunity_matcher import ImmunityMatcher
@@ -26,8 +39,8 @@ class QueueDrainResult:
     targets_to_refresh: Set[str] = field(default_factory=set)
     immunity_targets: Set[str] = field(default_factory=set)
     damage_targets: Set[str] = field(default_factory=set)
-    death_events: List[Dict[str, Any]] = field(default_factory=list)
-    character_identity_events: List[Dict[str, Any]] = field(default_factory=list)
+    death_events: List[DeathSnippetEvent] = field(default_factory=list)
+    character_identity_events: List[DeathCharacterIdentifiedEvent] = field(default_factory=list)
     has_backlog: bool = False
     backlog_count: int = 0
     pressure_state: str = "normal"
@@ -82,6 +95,7 @@ class QueueProcessor:
                         break
 
                 data = data_queue.get_nowait()
+                data = coerce_parsed_event(data)
                 result.events_processed += 1
 
                 event_result = self._handle_event_batched(
@@ -164,7 +178,7 @@ class QueueProcessor:
 
     def _handle_event_batched(
         self,
-        data: Dict[str, Any],
+        data: ParsedEvent | dict[str, Any],
         pending_mutations: List[StoreMutation],
         on_log_message: Callable[[str, str], None],
         debug_enabled: bool,
@@ -173,12 +187,12 @@ class QueueProcessor:
         had_pending_immunity_types: set[str] = set()
         if (
             debug_enabled
-            and data.get("type") == "damage_dealt"
+            and isinstance(data, DamageDealtEvent)
             and self.parser.parse_immunity
             and self.immunity_matcher is not None
         ):
-            target = data.get("target")
-            for damage_type in data.get("damage_types", {}):
+            target = data.target
+            for damage_type in data.damage_types or {}:
                 if self.immunity_matcher.has_pending_immunity(
                     target=str(target),
                     damage_type=str(damage_type),
@@ -195,7 +209,7 @@ class QueueProcessor:
         )
 
         if not event_result.handled:
-            event_type = data.get("type")
+            event_type = data.type if isinstance(data, ParsedEvent) else str(data.get("type", "unknown"))
             message = data.get("message", "")
             if not message:
                 message = f"Event: {event_type} - {data}"
@@ -219,7 +233,7 @@ class QueueProcessor:
     def _log_debug_event(
         self,
         *,
-        data: Dict[str, Any],
+        data: ParsedEvent | dict[str, Any],
         event_result: IngestionResult,
         had_pending_immunity_types: set[str],
         on_log_message: Callable[[str, str], None],
@@ -228,11 +242,13 @@ class QueueProcessor:
         if not debug_enabled:
             return
 
-        event_type = data.get("type")
-        if event_type == "damage_dealt":
-            attacker = data.get("attacker", "")
-            target = data.get("target")
-            total_damage = int(data.get("total_damage", 0) or 0)
+        if isinstance(data, dict):
+            return
+
+        if isinstance(data, DamageDealtEvent):
+            attacker = data.attacker
+            target = data.target
+            total_damage = int(data.total_damage)
             if attacker:
                 on_log_message(
                     f"DAMAGE: {attacker} vs {target} ({total_damage} damage)",
@@ -248,42 +264,42 @@ class QueueProcessor:
                     on_log_message(f"Queue mismatched {target}/{damage_type}", "debug")
             return
 
-        if event_type == "immunity":
+        if isinstance(data, ImmunityObservedEvent):
             if not self.parser.parse_immunity:
                 on_log_message(
-                    f"Skipping dmg_absorbed event for {data.get('target')}/{data.get('damage_type')} "
+                    f"Skipping dmg_absorbed event for {data.target}/{data.damage_type} "
                     "(parsing disabled)",
                     "debug",
                 )
                 return
-            target = data.get("target")
-            damage_type = data.get("damage_type")
+            target = data.target
+            damage_type = data.damage_type
             if any(mutation.kind == "immunity" for mutation in event_result.mutations):
                 on_log_message(f"IMMUNITY: matched {target}/{damage_type}", "debug")
             else:
                 on_log_message(f"IMMUNITY: queued {target}/{damage_type}", "debug")
             return
 
-        if event_type in ("attack_hit", "attack_miss", "attack_hit_critical", "critical_hit"):
-            attacker = data.get("attacker")
-            target = data.get("target")
-            if event_type in ("attack_hit_critical", "critical_hit"):
+        if isinstance(data, (AttackHitEvent, AttackMissEvent, AttackCriticalHitEvent)):
+            attacker = data.attacker
+            target = data.target
+            if isinstance(data, AttackCriticalHitEvent):
                 outcome = "critical_hit"
-            elif event_type == "attack_hit":
+            elif isinstance(data, AttackHitEvent):
                 outcome = "hit"
             else:
                 outcome = "miss"
             on_log_message(f"ATTACK: {attacker} vs {target} ({outcome})", "debug")
             return
 
-        if event_type == "epic_dodge":
-            on_log_message(f"EPIC DODGE: {data.get('target')}", "debug")
+        if isinstance(data, EpicDodgeEvent):
+            on_log_message(f"EPIC DODGE: {data.target}", "debug")
             return
 
-        if event_type == "save":
-            target = data.get("target")
-            save_type = data.get("save_type")
-            bonus = data.get("bonus")
+        if isinstance(data, SaveObservedEvent):
+            target = data.target
+            save_type = data.save_type
+            bonus = data.bonus
             on_log_message(
                 f"SAVE: {target or 'Unknown'} ({str(save_type or 'Unknown').title()} {bonus or 0})",
                 "debug",

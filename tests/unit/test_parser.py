@@ -8,6 +8,11 @@ from datetime import datetime
 
 import app.parser as parser_module
 from app.parser import LogParser
+from app.parsed_events import (
+    AttackCriticalHitEvent,
+    AttackHitEvent,
+    DamageDealtEvent,
+)
 
 
 class TestLogParserInitialization:
@@ -197,17 +202,17 @@ class TestDamageDealtParsing:
         result = parser_with_player.parse_line(line)
 
         assert result is not None
+        assert isinstance(result, DamageDealtEvent)
         assert result['attacker'] == 'TestPlayer'
-        assert result['filtered_for_player'] is False
 
     def test_parse_damage_player_filter_no_match(self, parser_with_player: LogParser) -> None:
-        """Test parsing damage when player doesn't match filter."""
+        """Damage events still emit normally even when player_name differs."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] OtherPlayer damages Goblin: 50 (50 Physical)"
         result = parser_with_player.parse_line(line)
 
-        # Parser still returns the data but marks it as filtered
         assert result is not None
-        assert result['filtered_for_player'] is True
+        assert isinstance(result, DamageDealtEvent)
+        assert result["attacker"] == "OtherPlayer"
 
 
 class TestImmunityParsing:
@@ -257,11 +262,12 @@ class TestAttackParsing:
         result = parser.parse_line(line)
 
         assert result is not None
+        assert isinstance(result, AttackHitEvent)
         assert result['type'] == 'attack_hit'
         assert result['attacker'] == 'Woo'
         assert result['target'] == 'Goblin'
         assert result['roll'] == 14
-        assert result['bonus'] == '5'
+        assert result['bonus'] == 5
         assert result['total'] == 19
 
     def test_parse_attack_miss(self, parser: LogParser) -> None:
@@ -325,7 +331,7 @@ class TestAttackParsing:
 
         assert result is not None
         assert result['attacker'] == 'Goblin'
-        assert result['bonus'] == '8'
+        assert result['bonus'] == 8
 
     def test_parse_concealment_miss_excluded_from_ac(self, parser: LogParser) -> None:
         """Test that concealment misses are excluded from AC estimation.
@@ -413,11 +419,12 @@ class TestAttackParsing:
         result = parser.parse_line(line)
 
         assert result is not None
+        assert isinstance(result, AttackCriticalHitEvent)
         assert result['type'] == 'attack_hit_critical'
         assert result['attacker'] == 'Woo Whirlwind'
         assert result['target'] == 'Cerberus'
         assert result['roll'] == 19
-        assert result['bonus'] == '17'
+        assert result['bonus'] == 17
         assert result['total'] == 36
 
     def test_parse_target_concealed_malformed_roll_falls_back_cleanly(self, parser: LogParser) -> None:
@@ -504,7 +511,7 @@ class TestAttackPrefixCombinations:
         assert result['attacker'] == 'Woo Whirlwind'
         assert result['target'] == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
         assert result['roll'] == 5
-        assert result['bonus'] == '66'
+        assert result['bonus'] == 66
         assert result['total'] == 71
 
     def test_parse_attack_with_two_abilities(self, parser: LogParser) -> None:
@@ -517,7 +524,7 @@ class TestAttackPrefixCombinations:
         assert result['attacker'] == 'Woo Whirlwind'
         assert result['target'] == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
         assert result['roll'] == 5
-        assert result['bonus'] == '57'
+        assert result['bonus'] == 57
         assert result['total'] == 62
 
     def test_parse_attack_off_hand_only(self, parser: LogParser) -> None:
@@ -530,7 +537,7 @@ class TestAttackPrefixCombinations:
         assert result['attacker'] == 'Woo Wildrock'
         assert result['target'] == 'Ash-Tusk Clan High Priest'
         assert result['roll'] == 6
-        assert result['bonus'] == '66'
+        assert result['bonus'] == 66
         assert result['total'] == 72
 
     def test_parse_attack_off_hand_with_single_ability(self, parser: LogParser) -> None:
@@ -543,7 +550,7 @@ class TestAttackPrefixCombinations:
         assert result['attacker'] == 'GENERAL KORGAN'
         assert result['target'] == 'Woo Wildrock'
         assert result['roll'] == 18
-        assert result['bonus'] == '65'
+        assert result['bonus'] == 65
         assert result['total'] == 83
 
     def test_parse_attack_with_threat_roll_hit(self, parser: LogParser) -> None:
@@ -559,7 +566,7 @@ class TestAttackPrefixCombinations:
         assert result["attacker"] == "Tyrmon's Fighter"
         assert result["target"] == "Cerberus"
         assert result["roll"] == 20
-        assert result["bonus"] == "50"
+        assert result["bonus"] == 50
         assert result["total"] == 70
 
     def test_parse_attack_off_hand_with_two_abilities(self, parser: LogParser) -> None:
@@ -572,7 +579,7 @@ class TestAttackPrefixCombinations:
         assert result['attacker'] == 'Woo Whirlwind'
         assert result['target'] == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
         assert result['roll'] == 9
-        assert result['bonus'] == '45'
+        assert result['bonus'] == 45
         assert result['total'] == 54
 
     def test_parse_attack_of_opportunity_only(self, parser: LogParser) -> None:
@@ -585,7 +592,7 @@ class TestAttackPrefixCombinations:
         assert result['attacker'] == 'Woo Whirlwind'
         assert result['target'] == '10 AC DUMMY'
         assert result['roll'] == 5
-        assert result['bonus'] == '66'
+        assert result['bonus'] == 66
         assert result['total'] == 71
 
     def test_parse_attack_no_prefix(self, parser: LogParser) -> None:
@@ -598,7 +605,7 @@ class TestAttackPrefixCombinations:
         assert result['attacker'] == 'Woo Whirlwind'
         assert result['target'] == '10 AC DUMMY - Chaotic Evil - Boss Damage Reduction'
         assert result['roll'] == 10
-        assert result['bonus'] == '61'
+        assert result['bonus'] == 61
         assert result['total'] == 71
 
     def test_parse_attack_with_ability_miss(self, parser: LogParser) -> None:
@@ -651,7 +658,7 @@ class TestAttackPrefixCombinations:
         assert result["attacker"] == "SpecialistBuby"
         assert result["target"] == "Cursed Beholder Tyrant"
         assert result["roll"] == 12
-        assert result["bonus"] == "62"
+        assert result["bonus"] == 62
         assert result["total"] == 74
 
 

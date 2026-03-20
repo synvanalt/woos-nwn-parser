@@ -9,6 +9,19 @@ from collections import deque
 from datetime import datetime
 from typing import Any, Deque, Dict, Iterable, Iterator, Optional, Pattern
 
+from .parsed_events import (
+    AttackCriticalHitEvent,
+    AttackHitEvent,
+    AttackMissEvent,
+    DamageDealtEvent,
+    DeathCharacterIdentifiedEvent,
+    DeathSnippetEvent,
+    EpicDodgeEvent,
+    ImmunityObservedEvent,
+    ParsedEvent,
+    SaveObservedEvent,
+)
+
 
 MONTHS = {
     'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
@@ -206,7 +219,8 @@ class LogParser:
         self,
         fallback_line: str,
         timestamp: datetime,
-    ) -> Optional[Dict[str, Any]]:
+        line_number: int,
+    ) -> Optional[DeathSnippetEvent]:
         """Build a death snippet event by scanning backward from the prayer line."""
         if len(self.recent_log_lines) < 2:
             return None
@@ -239,13 +253,13 @@ class LogParser:
         if not snippet_lines:
             return None
 
-        return {
-            'type': 'death_snippet',
-            'target': dead_target,
-            'killer': killer,
-            'lines': snippet_lines,
-            'timestamp': timestamp,
-        }
+        return DeathSnippetEvent(
+            target=dead_target,
+            killer=killer,
+            lines=snippet_lines,
+            timestamp=timestamp,
+            line_number=line_number,
+        )
 
     def _build_death_snippet_event_from_killed_match(
         self,
@@ -253,7 +267,8 @@ class LogParser:
         killer: str,
         target: str,
         timestamp: datetime,
-    ) -> Optional[Dict[str, Any]]:
+        line_number: int,
+    ) -> Optional[DeathSnippetEvent]:
         """Build death snippet event using current killed line as trigger."""
         snippet_lines = self._collect_death_snippet_lines(
             candidates_reversed=reversed(self.recent_log_lines),
@@ -262,13 +277,13 @@ class LogParser:
         if not snippet_lines:
             return None
 
-        return {
-            'type': 'death_snippet',
-            'target': target,
-            'killer': killer,
-            'lines': snippet_lines,
-            'timestamp': timestamp,
-        }
+        return DeathSnippetEvent(
+            target=target,
+            killer=killer,
+            lines=snippet_lines,
+            timestamp=timestamp,
+            line_number=line_number,
+        )
 
     def extract_timestamp_from_line(self, line: str) -> Optional[datetime]:
         """Extract timestamp from a log line.
@@ -558,7 +573,7 @@ class LogParser:
         except ValueError:
             return None, True
 
-    def parse_line(self, line: str) -> Optional[Dict]:
+    def parse_line(self, line: str) -> Optional[ParsedEvent]:
         """Parse a single log line and extract relevant data.
 
         Args:
@@ -595,12 +610,11 @@ class LogParser:
                     speaker = self._normalize_name(str(whisper_match.group("speaker")))
                     if speaker:
                         self.set_death_character_name(speaker)
-                        return {
-                            'type': 'death_character_identified',
-                            'character_name': speaker,
-                            'timestamp': get_timestamp(),
-                            'line_number': line_number,
-                        }
+                        return DeathCharacterIdentifiedEvent(
+                            character_name=speaker,
+                            timestamp=get_timestamp(),
+                            line_number=line_number,
+                        )
 
         if self._killed_marker in raw_line and self._death_character_name_normalized:
             killed_match = patterns['killed'].search(raw_line)
@@ -612,6 +626,7 @@ class LogParser:
                         killer=killer,
                         target=dead_target,
                         timestamp=get_timestamp(),
+                        line_number=line_number,
                     )
                     if death_event:
                         return death_event
@@ -620,7 +635,11 @@ class LogParser:
         if (not self._death_character_name_normalized) and self._death_fallback_pattern:
             fallback_match = self._death_fallback_pattern.search(raw_line)
             if fallback_match:
-                death_event = self._build_death_snippet_event_from_fallback(raw_line, get_timestamp())
+                death_event = self._build_death_snippet_event_from_fallback(
+                    raw_line,
+                    get_timestamp(),
+                    line_number,
+                )
                 if death_event:
                     return death_event
 
@@ -634,16 +653,14 @@ class LogParser:
             breakdown_str = damage_match.group(4)
             damage_types = self.parse_damage_breakdown(breakdown_str)
 
-            return {
-                'type': 'damage_dealt',
-                'attacker': attacker,
-                'target': target,
-                'total_damage': total_damage,
-                'damage_types': damage_types,
-                'timestamp': get_timestamp(),
-                'line_number': line_number,
-                'filtered_for_player': self.player_name and attacker != self.player_name
-            }
+            return DamageDealtEvent(
+                attacker=attacker,
+                target=target,
+                total_damage=total_damage,
+                damage_types=damage_types,
+                timestamp=get_timestamp(),
+                line_number=line_number,
+            )
 
         # Damage immunity lines are common enough to warrant a fast substring gate.
         # When immunity parsing is disabled, exit early instead of paying for the
@@ -661,15 +678,14 @@ class LogParser:
             damage_type = immunity_match.group(3).strip()
 
             # Return parsed immunity data (use raw points for immunity_points)
-            return {
-                'type': 'immunity',
-                'target': target,
-                'damage_type': damage_type,
-                'immunity_points': immunity_points,
-                'dmg_reduced': immunity_points,
-                'timestamp': get_timestamp(),
-                'line_number': line_number,
-            }
+            return ImmunityObservedEvent(
+                target=target,
+                damage_type=damage_type,
+                immunity_points=immunity_points,
+                dmg_reduced=immunity_points,
+                timestamp=get_timestamp(),
+                line_number=line_number,
+            )
 
         # Strip [CHAT WINDOW TEXT] prefix for attack and save patterns.
         stripped_line = raw_line
@@ -691,12 +707,11 @@ class LogParser:
             epic_dodge_match = patterns['epic_dodge'].search(stripped_line)
             if epic_dodge_match:
                 target = epic_dodge_match.group('target').strip()
-                return {
-                    'type': 'epic_dodge',
-                    'target': target,
-                    'timestamp': get_timestamp(),
-                    'line_number': line_number,
-                }
+                return EpicDodgeEvent(
+                    target=target,
+                    timestamp=get_timestamp(),
+                    line_number=line_number,
+                )
 
         # Check for attack rolls to estimate AC. Most lines are plain hit/miss entries,
         # so route to the narrowest plausible regex first.
@@ -755,31 +770,31 @@ class LogParser:
 
                 # Track all attacks for hit rate calculation (all characters)
                 if is_hit:
-                    return {
-                        'type': 'attack_hit_critical' if is_crit else 'attack_hit',
-                        'attacker': attacker,
-                        'target': target,
-                        'roll': roll,
-                        'bonus': bonus_str,
-                        'total': total,
-                        'was_nat20': was_nat20,
-                        'is_concealment': is_concealment,
-                        'timestamp': get_timestamp(),
-                        'line_number': line_number,
-                    }
+                    bonus = int(bonus_str) if bonus_str else None
+                    event_cls = AttackCriticalHitEvent if is_crit else AttackHitEvent
+                    return event_cls(
+                        attacker=attacker,
+                        target=target,
+                        roll=roll,
+                        bonus=bonus,
+                        total=total,
+                        was_nat20=was_nat20,
+                        is_concealment=is_concealment,
+                        timestamp=get_timestamp(),
+                        line_number=line_number,
+                    )
                 elif is_miss:
-                    return {
-                        'type': 'attack_miss',
-                        'attacker': attacker,
-                        'target': target,
-                        'roll': roll,
-                        'bonus': bonus_str,
-                        'total': total,
-                        'was_nat1': was_nat1,
-                        'is_concealment': is_concealment,
-                        'timestamp': get_timestamp(),
-                        'line_number': line_number,
-                    }
+                    return AttackMissEvent(
+                        attacker=attacker,
+                        target=target,
+                        roll=roll,
+                        bonus=bonus,
+                        total=total,
+                        was_nat1=was_nat1,
+                        is_concealment=is_concealment,
+                        timestamp=get_timestamp(),
+                        line_number=line_number,
+                    )
 
         # Check for save rolls to estimate saves
         save_match = None
@@ -801,14 +816,13 @@ class LogParser:
                 else:
                     save_key = 'will'
 
-                return {
-                    'type': 'save',
-                    'target': target,
-                    'save_type': save_key,
-                    'bonus': bonus,
-                    'timestamp': get_timestamp(),
-                    'line_number': line_number,
-                }
+                return SaveObservedEvent(
+                    target=target,
+                    save_type=save_key,
+                    bonus=bonus,
+                    timestamp=get_timestamp(),
+                    line_number=line_number,
+                )
 
         return None
 

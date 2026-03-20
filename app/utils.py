@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional
 
 from .models import StoreMutation
 from .parser import LogParser
+from .parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
 from .services.event_ingestion import EventIngestionEngine, IngestionResult
 from .services.immunity_matcher import ImmunityMatcher
 
@@ -339,18 +340,20 @@ def _append_ingestion_result(
     mutations.extend(ingestion_result.mutations)
 
     if ingestion_result.death_event:
+        death_event = ingestion_result.death_event
         death_snippets.append({
-            'target': ingestion_result.death_event.get('target', ''),
-            'killer': ingestion_result.death_event.get('killer', ''),
-            'lines': ingestion_result.death_event.get('lines', []),
-            'timestamp': ingestion_result.death_event.get('timestamp'),
+            'target': death_event.target,
+            'killer': death_event.killer,
+            'lines': death_event.lines or [],
+            'timestamp': death_event.timestamp,
             'type': 'death_snippet',
         })
 
     if ingestion_result.character_identified:
+        identity_event = ingestion_result.character_identified
         death_character_identified.append({
             'type': 'death_character_identified',
-            'character_name': ingestion_result.character_identified.get('character_name', ''),
+            'character_name': identity_event.character_name,
         })
 
 
