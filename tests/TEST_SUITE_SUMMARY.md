@@ -1,25 +1,25 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 20, 2026 (typed parsed-event fixture cleanup refresh)
+**Last Updated:** March 20, 2026 (controller-first UI test and architecture refresh)
 
 ## Overview
-This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
+This document reflects the current state of the `tests/` directory after the UI-controller test migration and current suite recollection.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **669 tests collected**
+- Result: **657 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 38 modules, 620 tests
-- `tests/integration/`: 7 modules, 42 tests
+- `tests/unit/`: 40 modules, 606 tests
+- `tests/integration/`: 7 modules, 44 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 46 test modules, 669 tests
+- Total: 48 test modules, 657 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
 - `tests/demo_game_restart.py` remains a helper/demo script and is not collected as a test module.
-- Main-window monitoring tests now validate the background monitor thread flow and lightweight UI tick behavior.
+- Main-window UI workflow tests now target controllers directly where practical, with a smaller app-shell orchestration layer.
 
 ## Module Inventory
 
@@ -48,12 +48,12 @@ Notes:
 - `test_ui_optimizations.py` (19)
 - `test_death_snippet_panel.py` (26)
 - `test_debug_console_panel.py` (6)
-- `test_main_window_load_parse.py` (23)
+- `test_main_window_load_parse.py` (21)
 - `test_message_dialogs.py` (3)
 - `test_settings.py` (9)
-- `test_main_window_monitoring_switch.py` (7)
+- `test_main_window_monitoring_switch.py` (8)
 - `test_main_window_debug_tab_unlock.py` (5)
-- `test_main_window_orchestration.py` (25)
+- `test_main_window_orchestration.py` (10)
 - `test_monitor_edge_cases.py` (4)
 - `test_queue_processor_resilience.py` (5)
 - `test_realtime_backpressure.py` (2)
@@ -98,11 +98,11 @@ Notes:
 - UI widget/main-window behavior and refresh optimizations:
   - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_message_dialogs.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
   - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, tree-sort scan bypass when callers already control order, and Target Stats staying empty after Clear Data-style store clears
-  - Includes main-window orchestration coverage for single-read target-list fanout and panel refresh coordination, plus regression coverage that full tree rebuilds do not reapply sort more than necessary
-  - Includes browse-directory coverage for `File` label fallback to `N/A`, active-file selection from the newest NWN log, monitor rebinding when the user changes directories mid-session, and retention of the last known filename when monitoring is paused
+  - Includes main-window orchestration coverage for target-list fanout, app-level delegation into controllers, and shutdown ordering across settings, import, monitor, storage, and tooltip teardown
+  - Includes controller-first monitoring coverage for switch state, active-file label updates, deferred restart behavior, and retention of the last known filename when monitoring is paused
   - Includes dark modal dialog coverage for app-owned warning popups and bottom-right action-row alignment shared by warning and import-progress modals
   - Includes shared tooltip-manager coverage for delayed show/hide behavior, popup reuse, overwrite-safe registration, and first-pass tooltip wiring on the main window plus DPS, Target Immunities, Death Snippets, and Debug controls
-  - Includes import payload application coverage for batched mutation submission on the Tk thread while preserving death-snippet delivery, death-character auto-identification, and queue-drain lifecycle behavior
+  - Includes controller-first import coverage for modal layout, worker startup, incremental payload application, and preserved death-snippet / death-character side-event delivery
   - Includes Death Snippets coverage for guarded `wooparseme` auto-identification and one-click character-name clearing back to the hint state
   - Includes dedicated realtime backlog coverage for bounded queue saturation, post-read monitor backpressure pacing, pressure-banded Tk drain budgets, and coalesced refresh behavior under producer-faster-than-consumer load
   - Includes Target Immunities coverage for zero-damage matched samples, absorbed-value tie-breaking, suppression of invalidated temporary full-immunity rows back to real max-damage display, best-effort immunity % display when exact reverse inference fails, and persisted/default-on Parse Immunities toggle behavior
@@ -111,7 +111,7 @@ Notes:
   - Includes persisted `Parse Immunities` and `First Timestamp` coverage, including missing-key and invalid-value fallback behavior for older settings files
 - Main-window persistence orchestration:
   - `test_main_window_load_parse.py`, `test_main_window_orchestration.py`
-  - Includes startup restoration of persisted `First Timestamp` mode into the DPS service/UI, save scheduling on combobox changes, and session-settings serialization of the active timing mode
+  - Includes startup restoration of persisted `First Timestamp` mode into the DPS service/UI, app-to-settings-controller delegation, save scheduling on combobox changes, and session-settings serialization of the active timing mode
 - Import/worker pipeline behavior:
   - `test_utils.py`, `test_utils_worker_pipeline.py`
   - Includes streaming chunk payload integrity, direct parse-to-chunk worker coverage, queue-full abort responsiveness coverage, import payload coverage after removing legacy parser-state snapshots, preserved `wooparseme` identity events during manual import, shared immunity-matcher parity for both damage-before-immunity and immunity-before-damage logs, explicit disabled-mode coverage that import parsing does not construct the matcher when `Parse Immunities` is off, and direct parity coverage that shared event ingestion stays aligned across the pure engine, live queue draining, and import payload generation
