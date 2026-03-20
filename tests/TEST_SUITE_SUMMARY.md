@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 16, 2026 (tooltip coverage and dark-theme tooltip outline refresh)
+**Last Updated:** March 20, 2026 (shared ingestion pipeline parity coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after classifying former top-level tests into suite directories.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **665 tests collected**
+- Result: **669 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 38 modules, 616 tests
+- `tests/unit/`: 38 modules, 620 tests
 - `tests/integration/`: 7 modules, 42 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 46 test modules, 665 tests
+- Total: 46 test modules, 669 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -53,15 +53,15 @@ Notes:
 - `test_settings.py` (9)
 - `test_main_window_monitoring_switch.py` (7)
 - `test_main_window_debug_tab_unlock.py` (5)
-- `test_main_window_orchestration.py` (24)
+- `test_main_window_orchestration.py` (25)
 - `test_monitor_edge_cases.py` (4)
 - `test_queue_processor_resilience.py` (5)
 - `test_realtime_backpressure.py` (2)
 - `test_sorted_treeview_edge_cases.py` (7)
 - `test_storage_edge_branches.py` (8)
 - `test_tooltip_registration.py` (3)
-- `test_tooltips.py` (3)
-- `test_utils_worker_pipeline.py` (14)
+- `test_tooltips.py` (5)
+- `test_utils_worker_pipeline.py` (15)
 
 ### Integration (`tests/integration`)
 - `test_parser_storage_integration.py` (15)
@@ -114,7 +114,7 @@ Notes:
   - Includes startup restoration of persisted `First Timestamp` mode into the DPS service/UI, save scheduling on combobox changes, and session-settings serialization of the active timing mode
 - Import/worker pipeline behavior:
   - `test_utils.py`, `test_utils_worker_pipeline.py`
-  - Includes streaming chunk payload integrity, direct parse-to-chunk worker coverage, queue-full abort responsiveness coverage, import payload coverage after removing legacy parser-state snapshots, preserved `wooparseme` identity events during manual import, shared immunity-matcher parity for both damage-before-immunity and immunity-before-damage logs, and explicit disabled-mode coverage that import parsing does not construct the matcher when `Parse Immunities` is off
+  - Includes streaming chunk payload integrity, direct parse-to-chunk worker coverage, queue-full abort responsiveness coverage, import payload coverage after removing legacy parser-state snapshots, preserved `wooparseme` identity events during manual import, shared immunity-matcher parity for both damage-before-immunity and immunity-before-damage logs, explicit disabled-mode coverage that import parsing does not construct the matcher when `Parse Immunities` is off, and direct parity coverage that shared event ingestion stays aligned across the pure engine, live queue draining, and import payload generation
 - Full-session/e2e behavior:
   - `test_e2e_combat_session.py`
 
