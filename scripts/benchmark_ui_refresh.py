@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.services.queries import DpsQueryService, ImmunityQueryService, TargetSummaryQueryService
 from app.storage import DataStore
 from app.ui.widgets.dps_panel import DPSPanel
@@ -57,7 +57,7 @@ def timed_refresh(callback, root: tk.Tk) -> float:
 
 def run_panel_benchmarks(fixture: Path, parse_immunity: bool, iterations: int, warmups: int) -> list[dict[str, object]]:
     """Populate store from one fixture and benchmark panel refresh calls."""
-    parser = LogParser(parse_immunity=parse_immunity)
+    parser = ParserSession(parse_immunity=parse_immunity)
     store = DataStore()
     result = parse_and_import_file(str(fixture), parser, store)
     if not result.get("success"):

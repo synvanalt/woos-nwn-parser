@@ -48,7 +48,7 @@ def _load_parser_cls(repo_root: Path) -> type:
         sys.path.remove(repo_root_str)
     sys.path.insert(0, repo_root_str)
     parser_mod = importlib.import_module("app.parser")
-    return getattr(parser_mod, "LogParser")
+    return getattr(parser_mod, "ParserSession")
 
 
 def _event_get(parsed_data: Any, key: str, default: Any = None) -> Any:

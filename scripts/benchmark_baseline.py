@@ -68,7 +68,7 @@ def load_runtime(repo_root: Path) -> RuntimeBindings:
     storage_mod = importlib.import_module("app.storage")
     utils_mod = importlib.import_module("app.utils")
     return RuntimeBindings(
-        parser_cls=getattr(parser_mod, "LogParser"),
+        parser_cls=getattr(parser_mod, "ParserSession"),
         data_store_cls=getattr(storage_mod, "DataStore"),
         parse_and_import_file=getattr(utils_mod, "parse_and_import_file"),
     )

@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.parser import LogParser
+from app.parser import ParserSession
 
 
 DEFAULT_FIXTURES = (
@@ -76,7 +76,7 @@ def time_category(lines: list[str], parse_immunity: bool, iterations: int, warmu
         return {"median_s": 0.0, "lines_per_s": 0.0, "ns_per_line": 0.0}
 
     def run_once() -> float:
-        parser = LogParser(parse_immunity=parse_immunity)
+        parser = ParserSession(parse_immunity=parse_immunity)
         started = perf_counter()
         for line in lines:
             parser.parse_line(line)

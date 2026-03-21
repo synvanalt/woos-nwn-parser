@@ -72,7 +72,8 @@ def _benchmark_one_run(
     parser_mod = importlib.import_module("app.parser")
     import_worker_process = getattr(utils, "import_worker_process")
     queue_maxsize = int(getattr(utils, "IMPORT_RESULT_QUEUE_MAXSIZE", 0))
-    default_fallback = getattr(parser_mod.LogParser, "DEFAULT_DEATH_FALLBACK_LINE")
+    parser_cls = getattr(parser_mod, "ParserSession")
+    default_fallback = getattr(parser_cls, "DEFAULT_DEATH_FALLBACK_LINE")
 
     mp = importlib.import_module("multiprocessing")
     ctx = mp.get_context("spawn")

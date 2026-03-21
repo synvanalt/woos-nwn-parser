@@ -99,7 +99,7 @@ def _load_runtime(repo_root: Path) -> RuntimeBindings:
         dps_query_service_cls=getattr(queries_mod, "DpsQueryService"),
         target_summary_query_service_cls=getattr(queries_mod, "TargetSummaryQueryService"),
         immunity_query_service_cls=getattr(queries_mod, "ImmunityQueryService"),
-        parser_cls=getattr(parser_mod, "LogParser"),
+        parser_cls=getattr(parser_mod, "ParserSession"),
         parse_and_import_file=getattr(utils_mod, "parse_and_import_file"),
         damage_mutation_cls=getattr(models_mod, "DamageMutation"),
         attack_mutation_cls=getattr(models_mod, "AttackMutation"),
