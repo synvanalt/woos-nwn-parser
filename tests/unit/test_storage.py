@@ -10,8 +10,21 @@ from threading import Thread
 import time
 
 from app.models import AttackMutation, DamageMutation, ImmunityMutation
+from app.services.queries import DpsQueryService, ImmunityQueryService, TargetSummaryQueryService
 from app.storage import DataStore
 from tests.helpers.store_mutations import apply, attack, damage_row, dps_update, epic_dodge, immunity, save
+
+
+def _dps_query(store: DataStore) -> DpsQueryService:
+    return DpsQueryService(store)
+
+
+def _immunity_query(store: DataStore) -> ImmunityQueryService:
+    return ImmunityQueryService(store)
+
+
+def _target_summary_query(store: DataStore) -> TargetSummaryQueryService:
+    return TargetSummaryQueryService(store)
 
 
 class TestDataStoreInitialization:
@@ -231,7 +244,7 @@ class TestDPSCalculations:
         apply(data_store, dps_update(attacker="Woo", total_damage=100, timestamp=ts1))
         data_store.last_damage_timestamp = ts2
 
-        dps_list = data_store.get_dps_data(time_tracking_mode="per_character")
+        dps_list = _dps_query(data_store).get_dps_data(time_tracking_mode="per_character")
 
         assert len(dps_list) == 1
         assert dps_list[0]["character"] == "Woo"
@@ -250,7 +263,7 @@ class TestDPSCalculations:
             dps_update(attacker="Rogue", total_damage=50, timestamp=ts2, damage_types={"Cold": 50}),
         )
 
-        dps_list = data_store.get_dps_data(
+        dps_list = _dps_query(data_store).get_dps_data(
             time_tracking_mode="global",
             global_start_time=ts_start
         )
@@ -270,7 +283,7 @@ class TestDPSCalculations:
         )
         data_store.last_damage_timestamp = ts + timedelta(seconds=10)
 
-        dps_list = data_store.get_dps_data(time_tracking_mode="per_character")
+        dps_list = _dps_query(data_store).get_dps_data(time_tracking_mode="per_character")
 
         assert dps_list[0]["character"] == "Rogue"  # Highest DPS
         assert dps_list[1]["character"] == "Mage"
@@ -282,13 +295,13 @@ class TestDPSCalculations:
         apply(data_store, dps_update(attacker="Woo", total_damage=100, timestamp=ts))
         data_store.last_damage_timestamp = ts + timedelta(seconds=10)
 
-        first = data_store.get_dps_data(time_tracking_mode="per_character")
+        first = _dps_query(data_store).get_dps_data(time_tracking_mode="per_character")
         assert first[0]["total_damage"] == 100
 
         apply(data_store, dps_update(attacker="Woo", total_damage=50, timestamp=ts + timedelta(seconds=5)))
         data_store.last_damage_timestamp = ts + timedelta(seconds=15)
 
-        second = data_store.get_dps_data(time_tracking_mode="per_character")
+        second = _dps_query(data_store).get_dps_data(time_tracking_mode="per_character")
         assert second[0]["total_damage"] == 150
         assert second[0]["dps"] == 10.0
 
@@ -300,9 +313,7 @@ class TestDPSCalculations:
         apply(data_store, dps_update(attacker="Woo", total_damage=100, timestamp=ts, damage_types=damage_types))
         data_store.last_damage_timestamp = ts + timedelta(seconds=10)
 
-        breakdown = data_store.get_dps_breakdown_by_type(
-            "Woo", time_tracking_mode="per_character"
-        )
+        breakdown = _dps_query(data_store).get_damage_type_breakdown("Woo")
 
         assert len(breakdown) == 2
         assert breakdown[0]["damage_type"] == "Fire"
@@ -319,10 +330,7 @@ class TestDPSCalculations:
         )
         data_store.last_damage_timestamp = ts + timedelta(seconds=10)
 
-        breakdowns = data_store.get_dps_breakdowns_by_type(
-            ["Woo", "Rogue"],
-            time_tracking_mode="per_character",
-        )
+        breakdowns = _dps_query(data_store).get_damage_type_breakdowns(["Woo", "Rogue"])
 
         assert set(breakdowns.keys()) == {"Woo", "Rogue"}
         assert breakdowns["Woo"][0]["damage_type"] == "Fire"
@@ -337,10 +345,7 @@ class TestDPSCalculations:
         apply(data_store, dps_update(attacker="Woo", total_damage=100, timestamp=ts, damage_types={"Fire": 100}))
         data_store.last_damage_timestamp = ts + timedelta(seconds=5)
 
-        breakdowns = data_store.get_dps_breakdowns_by_type(
-            ["Woo", "Mage"],
-            time_tracking_mode="per_character",
-        )
+        breakdowns = _dps_query(data_store).get_damage_type_breakdowns(["Woo", "Mage"])
 
         assert "Woo" in breakdowns
         assert "Mage" in breakdowns
@@ -408,7 +413,7 @@ class TestTargetFiltering:
             immunity(target="Goblin", damage_type="Fire", immunity_points=10, damage_dealt=50),
         )
 
-        summary = data_store.get_target_damage_type_summary("Goblin")
+        summary = _immunity_query(data_store).get_target_damage_type_summary("Goblin")
 
         assert len(summary) == 2
         fire = next(item for item in summary if item["damage_type"] == "Fire")
@@ -437,7 +442,7 @@ class TestTargetFiltering:
             immunity(target="Goblin", damage_type="Acid", immunity_points=50, damage_dealt=0),
         )
 
-        summary = data_store.get_target_damage_type_summary("Goblin")
+        summary = _immunity_query(data_store).get_target_damage_type_summary("Goblin")
         acid = next(item for item in summary if item["damage_type"] == "Acid")
 
         assert acid["max_event_damage"] == 45
@@ -457,7 +462,7 @@ class TestTargetFiltering:
             immunity(target="Goblin", damage_type="Acid", immunity_points=50, damage_dealt=0),
         )
 
-        summary = data_store.get_target_damage_type_summary("Goblin")
+        summary = _immunity_query(data_store).get_target_damage_type_summary("Goblin")
         acid = next(item for item in summary if item["damage_type"] == "Acid")
 
         assert acid["max_event_damage"] == 0
@@ -473,11 +478,11 @@ class TestTargetFiltering:
             immunity(target="Goblin", damage_type="Fire", immunity_points=5, damage_dealt=20),
         )
 
-        first = data_store.get_target_damage_type_summary("Goblin")
+        first = _immunity_query(data_store).get_target_damage_type_summary("Goblin")
         first[0]["max_event_damage"] = 999
         first[0]["suppress_temporary_full_immunity"] = True
 
-        second = data_store.get_target_damage_type_summary("Goblin")
+        second = _immunity_query(data_store).get_target_damage_type_summary("Goblin")
         assert second[0]["max_event_damage"] == 20
         assert second[0]["suppress_temporary_full_immunity"] is False
 
@@ -492,8 +497,9 @@ class TestTargetFiltering:
             damage_row(target="Goblin", damage_type="Physical", total_damage=30, attacker="Rogue", timestamp=ts),
         )
 
-        dps_list = data_store.get_dps_data_for_target(
-            "Goblin", time_tracking_mode="per_character"
+        dps_list = _dps_query(data_store).get_dps_data(
+            target="Goblin",
+            time_tracking_mode="per_character",
         )
 
         # Should only include damage to Goblin
@@ -511,9 +517,7 @@ class TestTargetFiltering:
             damage_row(target="Orc", damage_type="Cold", total_damage=40, attacker="Woo", timestamp=ts),
         )
 
-        breakdown = data_store.get_dps_breakdown_by_type_for_target(
-            "Woo", "Goblin", time_tracking_mode="per_character"
-        )
+        breakdown = _dps_query(data_store).get_damage_type_breakdown("Woo", target_filter="Goblin")
 
         assert breakdown == [
             {'damage_type': 'Fire', 'total_damage': 50, 'dps': 50.0},
@@ -530,10 +534,9 @@ class TestTargetFiltering:
             damage_row(target="Goblin", damage_type="Cold", total_damage=40, attacker="Rogue", timestamp=ts),
         )
 
-        breakdowns = data_store.get_dps_breakdowns_by_type(
+        breakdowns = _dps_query(data_store).get_damage_type_breakdowns(
             ["Woo", "Rogue", "Mage"],
-            target="Goblin",
-            time_tracking_mode="per_character",
+            target_filter="Goblin",
         )
 
         assert breakdowns["Woo"] == [
@@ -767,7 +770,7 @@ class TestTargetSummary:
         data_store.record_target_attack_roll("Woo", "Goblin", "hit", 15, 5, 20)
         apply(data_store, save(target="Orc", save_key="fort", bonus=5))
 
-        summary = data_store.get_all_targets_summary()
+        summary = _target_summary_query(data_store).get_all_targets_summary()
 
         assert len(summary) == 2
         targets = [s["target"] for s in summary]
@@ -785,7 +788,7 @@ class TestTargetSummary:
             damage_row(target="Orc", damage_type="Fire", total_damage=100, attacker="Woo"),
         )
 
-        summary = data_store.get_all_targets_summary()
+        summary = _target_summary_query(data_store).get_all_targets_summary()
 
         # Find Goblin and Orc in the summary
         goblin_summary = next(s for s in summary if s["target"] == "Goblin")
@@ -804,7 +807,7 @@ class TestTargetSummary:
         # Manually add target via damage event with 0 damage to get it in the list
         apply(data_store, damage_row(target="Goblin", damage_type="Physical", total_damage=0, attacker="Woo"))
 
-        summary = data_store.get_all_targets_summary()
+        summary = _target_summary_query(data_store).get_all_targets_summary()
 
         goblin_summary = next(s for s in summary if s["target"] == "Goblin")
         assert goblin_summary["damage_taken"] == "0"
@@ -821,7 +824,7 @@ class TestTargetSummary:
             save(target="Goblin", save_key="fort", bonus=5),
         )
 
-        summary = data_store.get_all_targets_summary()
+        summary = _target_summary_query(data_store).get_all_targets_summary()
         goblin_summary = next(s for s in summary if s["target"] == "Goblin")
 
         assert goblin_summary["ab"] == "8"
@@ -832,10 +835,10 @@ class TestTargetSummary:
         """Mutating a returned target summary should not taint later reads."""
         apply(data_store, damage_row(target="Goblin", damage_type="Physical", total_damage=10, attacker="Woo"))
 
-        first = data_store.get_all_targets_summary()
+        first = _target_summary_query(data_store).get_all_targets_summary()
         first[0]["damage_taken"] = "999"
 
-        second = data_store.get_all_targets_summary()
+        second = _target_summary_query(data_store).get_all_targets_summary()
         assert second[0]["damage_taken"] == "10"
 
     def test_concealment_miss_does_not_affect_ac_estimate(self, data_store: DataStore) -> None:
@@ -852,7 +855,7 @@ class TestTargetSummary:
             is_concealment=True,
         )
 
-        summary = data_store.get_all_targets_summary()
+        summary = _target_summary_query(data_store).get_all_targets_summary()
         boss_summary = next(s for s in summary if s["target"] == "Boss")
         assert boss_summary["ac"] == "≤31"
 
@@ -913,7 +916,7 @@ class TestClearData:
         assert len(data_store.attacks) == 0
         assert len(data_store.dps_data) == 0
         assert len(data_store.immunity_data) == 0
-        assert data_store.get_target_damage_type_summary("Goblin") == []
+        assert _immunity_query(data_store).get_target_damage_type_summary("Goblin") == []
         assert data_store.last_damage_timestamp is None
 
     def test_clear_all_data_increments_version(self, data_store: DataStore) -> None:
@@ -929,12 +932,12 @@ class TestClearData:
         """Target summary reads should not return stale rows after a reset."""
         apply(data_store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
 
-        summary_before_clear = data_store.get_all_targets_summary()
+        summary_before_clear = _target_summary_query(data_store).get_all_targets_summary()
         assert [row["target"] for row in summary_before_clear] == ["Goblin"]
 
         data_store.clear_all_data()
 
-        assert data_store.get_all_targets_summary() == []
+        assert _target_summary_query(data_store).get_all_targets_summary() == []
 
 
 class TestUtilityMethods:

@@ -27,7 +27,7 @@ class TargetStatsPanel(ttk.Frame):
         self,
         parent: ttk.Notebook,
         data_store: DataStore,
-        target_summary_query_service: Optional[TargetSummaryQueryService] = None,
+        target_summary_query_service: TargetSummaryQueryService,
         tooltip_manager: Optional[TooltipManager] = None,
     ) -> None:
         """Initialize the target stats panel.
@@ -35,19 +35,11 @@ class TargetStatsPanel(ttk.Frame):
         Args:
             parent: Parent notebook widget
             data_store: Reference to the data store
-            target_summary_query_service: Read-side query service for target rows.
-            Legacy third-position parser arguments are ignored for compatibility.
+            target_summary_query_service: Read-side query service for target rows
         """
         super().__init__(parent, padding="10")
         self.data_store = data_store
-        if (
-            target_summary_query_service is not None
-            and not isinstance(target_summary_query_service, TargetSummaryQueryService)
-        ):
-            target_summary_query_service = None
-        self.target_summary_query_service = (
-            target_summary_query_service or TargetSummaryQueryService(data_store)
-        )
+        self.target_summary_query_service = target_summary_query_service
         self.tooltip_manager = tooltip_manager
         self._cached_rows: dict = {}
         self._item_ids: dict = {}
@@ -145,17 +137,10 @@ class TargetStatsPanel(ttk.Frame):
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether refresh data is sourced from the live store method."""
         service_method = getattr(self.target_summary_query_service, "get_all_targets_summary", None)
-        if not (
+        return (
             getattr(service_method, "__self__", None) is self.target_summary_query_service
             and getattr(service_method, "__func__", None)
             is TargetSummaryQueryService.get_all_targets_summary
-        ):
-            return False
-        store_method = getattr(self.data_store, "get_all_targets_summary", None)
-        return (
-            getattr(store_method, "__self__", None) is self.data_store
-            and getattr(store_method, "__func__", None)
-            is DataStore.get_all_targets_summary
         )
 
     def _is_natural_order_active(self) -> bool:

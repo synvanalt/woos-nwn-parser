@@ -9,7 +9,7 @@ from datetime import datetime
 
 from app.parser import LogParser
 from app.storage import DataStore
-from app.services.dps_service import DPSCalculationService
+from app.services.queries import DpsQueryService, TargetSummaryQueryService
 from app.utils import parse_and_import_file, calculate_immunity_percentage
 
 
@@ -54,7 +54,7 @@ class TestCompleteCombatSession:
         assert "Warrior" in targets
 
         # 2. DPS Calculations
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
         dps_list = dps_service.get_dps_display_data(target_filter="Goblin Chief")
 
         # Should have DPS for Warrior, Rogue, and Mage
@@ -96,7 +96,7 @@ class TestCompleteCombatSession:
         assert stats['hit_rate'] == pytest.approx(83.33, abs=0.1)  # 5 successful / 6 total
 
         # 5. AC Estimation
-        summary = database.get_all_targets_summary()
+        summary = TargetSummaryQueryService(database).get_all_targets_summary()
         goblin_summary = next((item for item in summary if item["target"] == "Goblin Chief"), None)
         assert goblin_summary is not None
         ac_estimate = goblin_summary['ac']
@@ -136,7 +136,7 @@ class TestCompleteCombatSession:
         assert acid['total_damage'] == 25  # 10 + 15
 
         # 10. Target Summary
-        summary = database.get_all_targets_summary()
+        summary = TargetSummaryQueryService(database).get_all_targets_summary()
         goblin_summary = next((s for s in summary if s['target'] == 'Goblin Chief'), None)
 
         assert goblin_summary is not None
@@ -161,7 +161,7 @@ class TestCompleteCombatSession:
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
 
         # All targets
         dps_all = dps_service.get_dps_display_data(target_filter="All")
@@ -215,7 +215,7 @@ class TestCompleteCombatSession:
         assert acid_immunity['max_immunity'] == 0
 
         # DPS should still calculate correctly
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
         dps_list = dps_service.get_dps_display_data()
 
         assert len(dps_list) == 1
@@ -235,7 +235,7 @@ class TestCompleteCombatSession:
         parse_and_import_file(str(log_file), parser, database)
 
         # Natural 1 should be ignored for AC
-        summary = database.get_all_targets_summary()
+        summary = TargetSummaryQueryService(database).get_all_targets_summary()
         dragon_summary = next((item for item in summary if item["target"] == "Dragon"), None)
         assert dragon_summary is not None
         assert dragon_summary['ac'] == "21-25"
@@ -252,7 +252,7 @@ class TestCompleteCombatSession:
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
 
         # By character mode
         dps_service.set_time_tracking_mode("per_character")
@@ -291,7 +291,7 @@ This is a completely invalid line
         assert result['success'] is True
 
         # Should still process valid lines
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
         dps_list = dps_service.get_dps_display_data()
 
         assert len(dps_list) == 1
@@ -308,7 +308,7 @@ This is a completely invalid line
 
         assert result['success'] is True
 
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
         dps_list = dps_service.get_dps_display_data()
 
         assert len(dps_list) == 0

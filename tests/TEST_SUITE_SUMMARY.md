@@ -37,7 +37,7 @@ Notes:
 - `test_queue_processor_unit.py` (36)
 - `test_queue_processor_batched.py` (10)
 - `test_queue_processor.py` (10)
-- `test_dps_service.py` (14)
+- `test_dps_query_service.py` (14)
 - `test_formatters.py` (22)
 - `test_immunity_panel_additional.py` (10)
 - `test_immunity_panel_edge_cases.py` (9)
@@ -93,8 +93,8 @@ Notes:
 - Monitor behavior (rotation/truncation/debug):
   - `test_monitor.py`, `test_monitor_debug_mode.py`, `test_monitor_edge_cases.py`, `test_log_rotation.py`, `test_file_truncation.py`, `test_monitor_parser_integration.py`, `test_integration_real_scenario.py`, `test_final_verification.py`
   - Includes steady-state active-file cache coverage, idle fallback rescans when directory metadata does not surface rotation immediately, and delayed discovery when monitoring starts before any NWN log file exists
-- DPS service/pipeline:
-  - `test_dps_service.py`, `test_dps_pipeline_integration.py`
+- DPS query service/pipeline:
+  - `test_dps_query_service.py`, `test_dps_pipeline_integration.py`
 - UI widget/main-window behavior and refresh optimizations:
   - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_message_dialogs.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
   - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, tree-sort scan bypass when callers already control order, and Target Stats staying empty after Clear Data-style store clears
@@ -129,7 +129,7 @@ Current shared fixtures include:
 - `parser_with_immunity`
 - `parser_with_player`
 - `data_store`
-- `dps_service`
+- `dps_query_service`
 - `queue_processor`
 - `temp_log_dir`
 - `sample_log_lines`

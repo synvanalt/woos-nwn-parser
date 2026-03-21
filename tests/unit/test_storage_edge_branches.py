@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from app.services.queries import DpsQueryService
 from app.storage import DataStore
 from tests.helpers.store_mutations import apply, attack, damage_row, dps_update, immunity
 
@@ -58,7 +59,7 @@ def test_get_dps_data_global_mode_without_start_time_uses_earliest(data_store: D
         dps_update(attacker="Rogue", total_damage=50, timestamp=t2, damage_types={"Cold": 50}),
     )
 
-    dps = data_store.get_dps_data(time_tracking_mode="global", global_start_time=None)
+    dps = DpsQueryService(data_store).get_dps_data(time_tracking_mode="global", global_start_time=None)
     by_character = {row["character"]: row for row in dps}
 
     assert set(by_character) == {"Woo", "Rogue"}
@@ -71,7 +72,10 @@ def test_get_dps_breakdown_global_returns_empty_when_last_timestamp_missing(data
     apply(data_store, dps_update(attacker="Woo", total_damage=100, timestamp=ts, damage_types={"Fire": 100}))
     data_store.last_damage_timestamp = None
 
-    assert data_store.get_dps_breakdown_by_type("Woo", time_tracking_mode="global", global_start_time=ts) == []
+    dps_query = DpsQueryService(data_store)
+    dps_query.set_time_tracking_mode("global")
+    dps_query.set_global_start_time(ts)
+    assert dps_query.get_damage_type_breakdown("Woo") == []
 
 
 def test_get_dps_data_for_target_global_mode_without_start_time(data_store: DataStore) -> None:
@@ -90,7 +94,11 @@ def test_get_dps_data_for_target_global_mode_without_start_time(data_store: Data
     apply(data_store, damage_row(target="Dragon", damage_type="Fire", total_damage=999, attacker="Mage", timestamp=base))
     data_store.last_damage_timestamp = t_c
 
-    dps = data_store.get_dps_data_for_target("Goblin", time_tracking_mode="global", global_start_time=None)
+    dps = DpsQueryService(data_store).get_dps_data(
+        target="Goblin",
+        time_tracking_mode="global",
+        global_start_time=None,
+    )
     by_character = {row["character"]: row for row in dps}
 
     assert set(by_character) == {"Woo", "Rogue"}

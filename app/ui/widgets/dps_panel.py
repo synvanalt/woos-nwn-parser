@@ -43,7 +43,6 @@ class DPSPanel(ttk.Frame):
         super().__init__(parent, padding="10")
         self.data_store = data_store
         self.dps_query_service = dps_query_service
-        self.dps_service = dps_query_service
         self.tooltip_manager = tooltip_manager
         # Cache for incremental updates
         self._cached_data: dict = {}  # character -> {dps, total_damage, hit_rate, time}

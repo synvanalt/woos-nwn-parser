@@ -35,16 +35,6 @@ class DpsQueryService:
         self._dps_breakdowns_cache.clear()
         self._hit_rate_cache.clear()
 
-    def _has_store_lock(self) -> bool:
-        return hasattr(self.data_store, "lock")
-
-    def _uses_store_projection_override(self, method_name: str, class_method: object) -> bool:
-        method = getattr(self.data_store, method_name, None)
-        return not (
-            getattr(method, "__self__", None) is self.data_store
-            and getattr(method, "__func__", None) is class_method
-        )
-
     def set_time_tracking_mode(self, mode: str) -> None:
         if mode not in ("per_character", "global"):
             raise ValueError(f"Invalid mode: {mode}")
@@ -191,17 +181,6 @@ class DpsQueryService:
         self._reset_caches_if_needed()
         effective_mode = time_tracking_mode or self.time_tracking_mode
         effective_start = global_start_time if global_start_time is not None else self.global_start_time
-        if not self._has_store_lock():
-            if target is None:
-                return self.data_store.get_dps_data(
-                    time_tracking_mode=effective_mode,
-                    global_start_time=effective_start,
-                )
-            return self.data_store.get_dps_data_for_target(
-                target=target,
-                time_tracking_mode=effective_mode,
-                global_start_time=effective_start,
-            )
         resolved_global_start = self._resolve_global_start_time(
             target=target,
             global_start_time=effective_start,
@@ -253,19 +232,6 @@ class DpsQueryService:
             return result
 
         target = None if target_filter == "All" else target_filter
-        if (
-            not self._has_store_lock()
-            or self._uses_store_projection_override(
-                "get_dps_breakdowns_by_type",
-                DataStore.get_dps_breakdowns_by_type,
-            )
-        ):
-            return self.data_store.get_dps_breakdowns_by_type(
-                unique_characters,
-                target=target,
-                time_tracking_mode=self.time_tracking_mode,
-                global_start_time=self.global_start_time,
-            )
         effective_start = self.global_start_time
         resolved_global_start = self._resolve_global_start_time(
             target=target,

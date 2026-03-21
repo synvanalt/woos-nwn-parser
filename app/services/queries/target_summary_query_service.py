@@ -21,13 +21,6 @@ class TargetSummaryQueryService:
         self._summary_cache = None
 
     def get_all_targets_summary(self) -> list[dict[str, str]]:
-        store_method = getattr(self.data_store, "get_all_targets_summary", None)
-        if not (
-            getattr(store_method, "__self__", None) is self.data_store
-            and getattr(store_method, "__func__", None) is DataStore.get_all_targets_summary
-        ):
-            rows = store_method()
-            return [row.copy() for row in rows]
         self._reset_caches_if_needed()
         if self._summary_cache is not None:
             return [row.copy() for row in self._summary_cache]

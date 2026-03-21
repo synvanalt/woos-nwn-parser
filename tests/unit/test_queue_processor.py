@@ -8,6 +8,7 @@ from unittest.mock import Mock
 from datetime import datetime, timedelta
 from queue import Queue
 
+from app.services.queries import DpsQueryService
 from app.services.queue_processor import QueueProcessor
 from app.storage import DataStore
 from app.parser import LogParser
@@ -228,7 +229,7 @@ class TestQueueProcessorIntegration(unittest.TestCase):
         )
         self.processor.process_queue(self.queue, Mock())
 
-        dps_data = self.data_store.get_dps_data()
+        dps_data = DpsQueryService(self.data_store).get_dps_data()
         self.assertTrue(any(d['character'] == 'Rogue' for d in dps_data))
 
 

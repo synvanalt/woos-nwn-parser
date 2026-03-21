@@ -44,7 +44,7 @@ class ImmunityPanel(ttk.Frame):
         parent: ttk.Notebook,
         data_store: DataStore,
         parser: LogParser,
-        immunity_query_service: Optional[ImmunityQueryService] = None,
+        immunity_query_service: ImmunityQueryService,
         tooltip_manager: Optional[TooltipManager] = None,
         on_parse_immunity_changed: Optional[Callable[[bool], None]] = None,
     ) -> None:
@@ -58,7 +58,7 @@ class ImmunityPanel(ttk.Frame):
         super().__init__(parent, padding="10")
         self.data_store = data_store
         self.parser = parser
-        self.immunity_query_service = immunity_query_service or ImmunityQueryService(data_store)
+        self.immunity_query_service = immunity_query_service
         self.tooltip_manager = tooltip_manager
         self.on_parse_immunity_changed = on_parse_immunity_changed
         self.immunity_pct_cache: Dict[str, Dict[str, Optional[int]]] = {}
@@ -69,6 +69,7 @@ class ImmunityPanel(ttk.Frame):
         self._cached_order_token: tuple[str, ...] = ()
         self._cached_view_key: tuple[str, bool] = ("", False)
         self._last_refresh_version: int = -1
+        self._last_refresh_used_store_query: bool = False
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -176,8 +177,9 @@ class ImmunityPanel(ttk.Frame):
         """
         view_key = (target, bool(self.parser.parse_immunity))
         current_version = self.data_store.version
+        uses_store_query = self._can_use_store_version_fast_path()
         if (
-            self._can_use_store_version_fast_path()
+            self._last_refresh_used_store_query
             and self._cached_view_key == view_key
             and self._last_refresh_version == current_version
             and self._item_ids
@@ -285,6 +287,7 @@ class ImmunityPanel(ttk.Frame):
             self._cached_row_tokens = new_row_tokens
             self._cached_order_token = order_token
             self._last_refresh_version = current_version
+            self._last_refresh_used_store_query = uses_store_query
             return
 
         if needs_full_refresh:
@@ -302,23 +305,15 @@ class ImmunityPanel(ttk.Frame):
         self._cached_row_tokens = new_row_tokens
         self._cached_order_token = order_token
         self._last_refresh_version = current_version
+        self._last_refresh_used_store_query = uses_store_query
 
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether refresh data is sourced from the live store method."""
         service_method = getattr(self.immunity_query_service, "get_target_damage_type_summary", None)
-        if not (
+        return (
             getattr(service_method, "__self__", None) is self.immunity_query_service
             and getattr(service_method, "__func__", None)
             is ImmunityQueryService.get_target_damage_type_summary
-        ):
-            return False
-        store_method = getattr(self.data_store, "get_target_damage_type_summary", None)
-        if getattr(store_method, "mock_calls", None) is not None:
-            return True
-        return (
-            getattr(store_method, "__self__", None) is self.data_store
-            and getattr(store_method, "__func__", None)
-            is DataStore.get_target_damage_type_summary
         )
 
     def _is_natural_order_active(self) -> bool:
@@ -455,3 +450,4 @@ class ImmunityPanel(ttk.Frame):
         self._cached_order_token = ()
         self._cached_view_key = ("", False)
         self._last_refresh_version = -1
+        self._last_refresh_used_store_query = False

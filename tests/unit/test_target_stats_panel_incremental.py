@@ -6,6 +6,7 @@ from tkinter import ttk
 from unittest.mock import Mock
 
 from app.parser import LogParser
+from app.services.queries import TargetSummaryQueryService
 from app.storage import DataStore
 from app.ui.widgets.target_stats_panel import TargetStatsPanel
 from tests.helpers.store_mutations import apply, damage_row
@@ -19,9 +20,9 @@ def target_stats_panel(shared_tk_root):
 
     notebook = ttk.Notebook(shared_tk_root)
     store = DataStore()
-    parser = LogParser()
-    panel = TargetStatsPanel(notebook, store, parser)
-    return panel, store, parser
+    query_service = TargetSummaryQueryService(store)
+    panel = TargetStatsPanel(notebook, store, query_service)
+    return panel, store, query_service
 
 
 class TestTargetStatsIncrementalRefresh:
@@ -57,7 +58,7 @@ class TestTargetStatsIncrementalRefresh:
         panel.refresh()
 
         panel._can_use_store_version_fast_path = Mock(return_value=True)  # type: ignore[method-assign]
-        panel.data_store.get_all_targets_summary = Mock(  # type: ignore[assignment]
+        panel.target_summary_query_service.get_all_targets_summary = Mock(  # type: ignore[assignment]
             side_effect=AssertionError("should not be called")
         )
         panel.refresh()
@@ -100,11 +101,11 @@ class TestTargetStatsIncrementalRefresh:
             {"target": "Goblin", "ab": "-", "ac": "-", "fortitude": "-", "reflex": "-", "will": "-", "damage_taken": "50"},
         ]
 
-        panel.data_store.get_all_targets_summary = lambda: initial_summary  # type: ignore[assignment]
+        panel.target_summary_query_service.get_all_targets_summary = lambda: initial_summary  # type: ignore[assignment]
         panel.refresh()
         initial_item_ids = dict(panel._item_ids)
 
-        panel.data_store.get_all_targets_summary = lambda: reordered_summary  # type: ignore[assignment]
+        panel.target_summary_query_service.get_all_targets_summary = lambda: reordered_summary  # type: ignore[assignment]
         panel.refresh()
 
         ordered_targets = [

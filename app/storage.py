@@ -86,6 +86,7 @@ class DataStore:
         self._target_ac_by_name: Dict[str, EnemyAC] = {}
         self._target_saves_by_name: Dict[str, EnemySaves] = {}
         self._target_attack_bonus_by_name: Dict[str, TargetAttackBonus] = {}
+
     @staticmethod
     def _normalize_history_limit(value: int | None, default: int) -> int:
         """Clamp a configured raw-history retention limit to a safe integer."""
@@ -405,54 +406,6 @@ class DataStore:
         with self.lock:
             return self._earliest_timestamp
 
-    def get_dps_data(self, time_tracking_mode: str = "per_character", global_start_time: Optional[datetime] = None) -> List[Dict]:
-        """Compatibility wrapper for DPS projections."""
-        from .services.queries import DpsQueryService
-
-        service = DpsQueryService(self)
-        return service.get_dps_data(
-            target=None,
-            time_tracking_mode=time_tracking_mode,
-            global_start_time=global_start_time,
-        )
-
-    def get_dps_breakdown_by_type(self, character: str, time_tracking_mode: str = "per_character", global_start_time: Optional[datetime] = None) -> List[Dict]:
-        """Compatibility wrapper for one-character DPS breakdowns."""
-        return self.get_dps_breakdowns_by_type(
-            [character],
-            target=None,
-            time_tracking_mode=time_tracking_mode,
-            global_start_time=global_start_time,
-        ).get(character, [])
-
-    def get_dps_breakdown_by_type_for_target(self, character: str, target: str, time_tracking_mode: str = "per_character", global_start_time: Optional[datetime] = None) -> List[Dict]:
-        """Compatibility wrapper for one-character target DPS breakdowns."""
-        return self.get_dps_breakdowns_by_type(
-            [character],
-            target=target,
-            time_tracking_mode=time_tracking_mode,
-            global_start_time=global_start_time,
-        ).get(character, [])
-
-    def get_dps_breakdowns_by_type(
-        self,
-        characters: List[str],
-        target: Optional[str] = None,
-        time_tracking_mode: str = "per_character",
-        global_start_time: Optional[datetime] = None,
-    ) -> Dict[str, List[Dict]]:
-        """Compatibility wrapper for DPS breakdown projections."""
-        from .services.queries import DpsQueryService
-
-        service = DpsQueryService(self)
-        if time_tracking_mode != service.time_tracking_mode:
-            service.set_time_tracking_mode(time_tracking_mode)
-        service.set_global_start_time(global_start_time)
-        return service.get_damage_type_breakdowns(
-            list(characters),
-            target_filter="All" if target is None else target,
-        )
-
     def get_target_resists(self, target: str) -> List[Tuple[str, int, int, int]]:
         """Get aggregated resist data for a specific target.
 
@@ -657,17 +610,6 @@ class DataStore:
                 character_hit_rates[attacker] = hit_rate
             return character_hit_rates
 
-    def get_dps_data_for_target(self, target: str, time_tracking_mode: str = "per_character", global_start_time: Optional[datetime] = None) -> List[Dict]:
-        """Compatibility wrapper for target-scoped DPS projections."""
-        from .services.queries import DpsQueryService
-
-        service = DpsQueryService(self)
-        return service.get_dps_data(
-            target=target,
-            time_tracking_mode=time_tracking_mode,
-            global_start_time=global_start_time,
-        )
-
     def get_earliest_timestamp_for_target(self, target: str) -> Optional[datetime]:
         """Get the earliest attack timestamp for a specific target.
 
@@ -797,19 +739,6 @@ class DataStore:
             if damage_summary is None:
                 return 0
             return damage_summary['max_damage']
-
-    def get_target_damage_type_summary(self, target: str) -> List[Dict[str, int | str | bool]]:
-        """Compatibility wrapper for target immunity summaries."""
-        from .services.queries import ImmunityQueryService
-
-        return ImmunityQueryService(self).get_target_damage_type_summary(target)
-
-    def get_all_targets_summary(self, parser: object = None) -> List[Dict]:
-        """Compatibility wrapper for target summary projections."""
-        del parser
-        from .services.queries import TargetSummaryQueryService
-
-        return TargetSummaryQueryService(self).get_all_targets_summary()
 
     def get_immunity_for_target_and_type(self, target: str, damage_type: str) -> Dict[str, int]:
         """Get immunity data for a specific target and damage type.

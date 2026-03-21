@@ -115,7 +115,7 @@ def _make_app_shell() -> WoosNwnParserApp:
     app.parser = LogParser(parse_immunity=True)
     app.death_snippet_panel = Mock()
     app.dps_panel = Mock()
-    app.dps_service = Mock()
+    app.dps_query_service = Mock()
     app.settings_controller = Mock()
     return app
 

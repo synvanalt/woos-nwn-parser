@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from ...storage import DataStore
 
 
@@ -23,13 +21,6 @@ class ImmunityQueryService:
         self._summary_cache.clear()
 
     def get_target_damage_type_summary(self, target: str) -> list[dict[str, int | str | bool]]:
-        store_method = getattr(self.data_store, "get_target_damage_type_summary", None)
-        if not (
-            getattr(store_method, "__self__", None) is self.data_store
-            and getattr(store_method, "__func__", None) is DataStore.get_target_damage_type_summary
-        ):
-            rows = store_method(target)
-            return [row.copy() for row in rows]
         self._reset_caches_if_needed()
         cached = self._summary_cache.get(target)
         if cached is not None:

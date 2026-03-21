@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 from app.parser import LogParser
 from app.storage import DataStore
-from app.services.dps_service import DPSCalculationService
+from app.services.queries import DpsQueryService
 from app.utils import parse_and_import_file
 
 
@@ -36,7 +36,7 @@ class TestDPSPipelineIntegration:
         assert result['success'] is True
 
         # Create DPS service
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
 
         # Get DPS display data
         dps_list = dps_service.get_dps_display_data(target_filter="All")
@@ -66,7 +66,7 @@ class TestDPSPipelineIntegration:
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
 
         # Filter by Goblin
         dps_list = dps_service.get_dps_display_data(target_filter="Goblin")
@@ -87,7 +87,7 @@ class TestDPSPipelineIntegration:
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
         dps_service.set_time_tracking_mode("per_character")
 
         dps_list = dps_service.get_dps_display_data()
@@ -110,7 +110,7 @@ class TestDPSPipelineIntegration:
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
         dps_service.set_time_tracking_mode("global")
 
         # Global start time should be set automatically
@@ -133,7 +133,7 @@ class TestDPSPipelineIntegration:
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
 
         breakdown = dps_service.get_damage_type_breakdown("Woo", target_filter="All")
 
@@ -162,7 +162,7 @@ class TestDPSPipelineIntegration:
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
         dps_list = dps_service.get_dps_display_data()
 
         assert len(dps_list) == 1
@@ -185,7 +185,7 @@ class TestDPSPipelineIntegration:
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
 
         # All targets
         dps_all = dps_service.get_dps_display_data(target_filter="All")
@@ -208,7 +208,7 @@ class TestDPSPipelineIntegration:
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
 
         # Test mode switching
         dps_service.set_time_tracking_mode("per_character")
@@ -236,7 +236,7 @@ class TestComplexScenarios:
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
         dps_list = dps_service.get_dps_display_data()
 
         assert len(dps_list) == 1
@@ -261,7 +261,7 @@ class TestComplexScenarios:
         assert immunity_info['max_immunity'] == 10
 
         # Check DPS still calculates correctly
-        dps_service = DPSCalculationService(database)
+        dps_service = DpsQueryService(database)
         dps_list = dps_service.get_dps_display_data()
 
         assert len(dps_list) == 1

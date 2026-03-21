@@ -235,15 +235,14 @@ class TestBatchVisualUpdates:
             pytest.skip("Tkinter not available")
 
         from app.ui.widgets.target_stats_panel import TargetStatsPanel
+        from app.services.queries import TargetSummaryQueryService
         from app.storage import DataStore
-        from app.parser import LogParser
 
         data_store = DataStore()
-        parser = LogParser()
 
         # Create a mock notebook
         notebook = ttk.Notebook(shared_tk_root)
-        panel = TargetStatsPanel(notebook, data_store, parser)
+        panel = TargetStatsPanel(notebook, data_store, TargetSummaryQueryService(data_store))
 
         # Add some data
         apply(
@@ -264,6 +263,7 @@ class TestBatchVisualUpdates:
             pytest.skip("Tkinter not available")
 
         from app.ui.widgets.immunity_panel import ImmunityPanel
+        from app.services.queries import ImmunityQueryService
         from app.storage import DataStore
         from app.parser import LogParser
 
@@ -272,7 +272,7 @@ class TestBatchVisualUpdates:
 
         # Create a mock notebook
         notebook = ttk.Notebook(shared_tk_root)
-        panel = ImmunityPanel(notebook, data_store, parser)
+        panel = ImmunityPanel(notebook, data_store, parser, ImmunityQueryService(data_store))
 
         # Add some data
         apply(data_store, damage_row(target="Target1", damage_type="Fire", total_damage=100, attacker="Attacker"))
