@@ -10,7 +10,7 @@ from pathlib import Path
 import tempfile
 
 from app.monitor import LogDirectoryMonitor
-from app.parser import LogParser
+from app.parser import ParserSession
 
 
 def simulate_game_session():
@@ -31,7 +31,7 @@ def simulate_game_session():
         print("2. App starts monitoring...")
         monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
-        parser = LogParser(parse_immunity=False)
+        parser = ParserSession(parse_immunity=False)
         data_queue = queue.Queue()
         print(f"   Monitor position: {monitor.last_position} bytes\n")
 

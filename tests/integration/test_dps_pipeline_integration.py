@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from datetime import datetime, timedelta
 
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.storage import DataStore
 from app.services.queries import DpsQueryService
 from app.utils import parse_and_import_file
@@ -29,7 +29,7 @@ class TestDPSPipelineIntegration:
         log_file.write_text(content)
 
         # Parse file
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         result = parse_and_import_file(str(log_file), parser, database)
 
@@ -62,7 +62,7 @@ class TestDPSPipelineIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
@@ -83,7 +83,7 @@ class TestDPSPipelineIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
@@ -106,7 +106,7 @@ class TestDPSPipelineIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
@@ -129,7 +129,7 @@ class TestDPSPipelineIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
@@ -158,7 +158,7 @@ class TestDPSPipelineIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
@@ -181,7 +181,7 @@ class TestDPSPipelineIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
@@ -204,7 +204,7 @@ class TestDPSPipelineIntegration:
         log_file = temp_log_dir / "test.txt"
         log_file.write_text("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 100 (100 Physical)\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
@@ -232,7 +232,7 @@ class TestComplexScenarios:
 
         log_file.write_text("".join(lines))
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
@@ -252,7 +252,7 @@ class TestComplexScenarios:
 """
         log_file.write_text(content)
 
-        parser = LogParser(parse_immunity=True)
+        parser = ParserSession(parse_immunity=True)
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 

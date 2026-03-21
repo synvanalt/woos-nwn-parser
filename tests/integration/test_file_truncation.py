@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 from app.monitor import LogDirectoryMonitor
-from app.parser import LogParser
+from app.parser import ParserSession
 
 
 def test_file_truncation_detection():
@@ -33,7 +33,7 @@ def test_file_truncation_detection():
         log_file.write_text("New Line 1\n")
 
         # Read new lines
-        parser = LogParser(parse_immunity=False)
+        parser = ParserSession(parse_immunity=False)
         data_queue = queue.Queue()
 
         # Capture messages via callback
@@ -73,7 +73,7 @@ def test_append_after_truncation():
         log_file.write_text("After restart\n")
 
         # First read (should detect truncation)
-        parser = LogParser(parse_immunity=False)
+        parser = ParserSession(parse_immunity=False)
         data_queue = queue.Queue()
         monitor.read_new_lines(parser, data_queue, debug_enabled=True)
 

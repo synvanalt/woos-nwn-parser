@@ -15,7 +15,7 @@ from pathlib import Path
 import tempfile
 
 from app.monitor import LogDirectoryMonitor
-from app.parser import LogParser
+from app.parser import ParserSession
 from tests.conftest import LogMessageCapture
 
 
@@ -39,7 +39,7 @@ def test_exact_user_scenario():
         print("\n2. I open app and turn Monitoring switch ON")
         monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
-        parser = LogParser(parse_immunity=False)
+        parser = ParserSession(parse_immunity=False)
         data_queue = queue.Queue()
         is_monitoring = True
         log_capture = LogMessageCapture()  # Create log capture instance

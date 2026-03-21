@@ -8,7 +8,7 @@ import queue
 from pathlib import Path
 
 from app.monitor import LogDirectoryMonitor
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.parsed_events import DamageDealtEvent
 
 
@@ -27,7 +27,7 @@ class TestDebugMode:
         with open(log_file, 'a') as f:
             f.write("[Thu Jan 09 14:30:01] Another test line\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         monitor.read_new_lines(parser, data_queue, debug_enabled=False)
@@ -53,7 +53,7 @@ class TestDebugMode:
         with open(log_file, 'a') as f:
             f.write("[Thu Jan 09 14:30:01] Another test line\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         # Mock callback to capture debug messages
@@ -82,7 +82,7 @@ class TestDebugMode:
             for i in range(10):
                 f.write(f"[Thu Jan 09 14:30:{i:02d}] Test line {i}\n")
 
-        parser = LogParser()
+        parser = ParserSession()
 
         # Test with debug
         debug_messages_with = []
@@ -123,7 +123,7 @@ class TestDebugMode:
         time.sleep(0.1)
         log2.write_text("[Thu Jan 09 14:01:00] Content in log2\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         monitor.read_new_lines(parser, data_queue, debug_enabled=False)
@@ -155,7 +155,7 @@ class TestDebugMode:
         time.sleep(0.1)
         log2.write_text("[Thu Jan 09 14:01:00] Content in log2\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         # Mock callback to capture debug messages
@@ -185,7 +185,7 @@ class TestDebugMode:
         # Truncate file
         log_file.write_text("New content after restart\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         monitor.read_new_lines(parser, data_queue, debug_enabled=False)
@@ -217,7 +217,7 @@ class TestDebugMode:
         # Reset to start
         monitor_disabled.last_position = 0
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         monitor_disabled.read_new_lines(parser, data_queue, debug_enabled=False)
@@ -251,7 +251,7 @@ class TestDebugModeBackwardCompatibility:
         with open(log_file, 'a') as f:
             f.write("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 50 (50 Physical)\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         monitor.read_new_lines(parser, data_queue, debug_enabled=False)

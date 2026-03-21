@@ -11,7 +11,7 @@ from unittest.mock import Mock, call
 
 from app.services.queue_processor import QueueProcessor
 from app.storage import DataStore
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
 from tests.helpers import parsed_event_factories as event_factories
 
@@ -72,7 +72,7 @@ def _process(
 class TestQueueProcessorInitialization:
     """Test suite for QueueProcessor initialization."""
 
-    def test_initialization(self, data_store: DataStore, parser: LogParser) -> None:
+    def test_initialization(self, data_store: DataStore, parser: ParserSession) -> None:
         """Test QueueProcessor initializes correctly."""
         processor = QueueProcessor(data_store, parser)
 

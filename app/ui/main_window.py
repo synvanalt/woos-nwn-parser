@@ -12,7 +12,7 @@ import tkinter as tk
 from tkinter import filedialog, font, ttk
 
 from ..parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
-from ..parser import LogParser
+from ..parser import ParserSession
 from ..services import QueueProcessor
 from ..services.queries import DpsQueryService, ImmunityQueryService, TargetSummaryQueryService
 from ..settings import load_app_settings, save_app_settings
@@ -65,7 +65,7 @@ class WoosNwnParserApp:
         self.notebook: ttk.Notebook | None = None
         self._is_closing = False
 
-        self.parser = LogParser(parse_immunity=True)
+        self.parser = ParserSession(parse_immunity=True)
         self.data_store = DataStore()
         self.queue_processor = QueueProcessor(self.data_store, self.parser)
         self.dps_query_service = DpsQueryService(self.data_store)
@@ -96,7 +96,7 @@ class WoosNwnParserApp:
         self.log_directory = configured_log_directory or get_default_log_directory()
         configured_fallback_line = (self._settings.death_fallback_line or "").strip()
         self._initial_death_fallback_line = (
-            configured_fallback_line or LogParser.DEFAULT_DEATH_FALLBACK_LINE
+            configured_fallback_line or ParserSession.DEFAULT_DEATH_FALLBACK_LINE
         )
 
         self.debug_mode = False

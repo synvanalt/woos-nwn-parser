@@ -12,7 +12,7 @@ import app.ui.controllers.import_controller as import_module
 import app.ui.main_window as main_window_module
 from app.models import DamageMutation, SaveMutation
 from app.parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.ui.controllers.import_controller import ImportController
 from app.ui.main_window import WoosNwnParserApp
 
@@ -93,7 +93,7 @@ class _FakeWidget:
 def _make_controller() -> ImportController:
     return ImportController(
         root=Mock(after=Mock(return_value="poll-next"), after_cancel=Mock()),
-        parser=LogParser(parse_immunity=True),
+        parser=ParserSession(parse_immunity=True),
         data_store=Mock(apply_mutations=Mock()),
         dps_panel=Mock(refresh=Mock()),
         death_snippet_panel=Mock(add_death_events=Mock()),
@@ -112,7 +112,7 @@ def _make_controller() -> ImportController:
 
 def _make_app_shell() -> WoosNwnParserApp:
     app = WoosNwnParserApp.__new__(WoosNwnParserApp)
-    app.parser = LogParser(parse_immunity=True)
+    app.parser = ParserSession(parse_immunity=True)
     app.death_snippet_panel = Mock()
     app.dps_panel = Mock()
     app.dps_query_service = Mock()

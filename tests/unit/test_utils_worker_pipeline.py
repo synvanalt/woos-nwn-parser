@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import app.utils
 from app.models import AttackMutation, DamageMutation, EpicDodgeMutation, ImmunityMutation, SaveMutation
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.parsed_events import (
     AttackHitEvent,
     DamageDealtEvent,
@@ -460,7 +460,7 @@ def test_shared_ingestion_engine_matches_queue_processor_and_import_payloads(mon
         if result.character_identified:
             engine_identity.append(result.character_identified)
 
-    processor = QueueProcessor(DataStore(), LogParser(parse_immunity=True))
+    processor = QueueProcessor(DataStore(), ParserSession(parse_immunity=True))
     live_queue: queue.Queue = queue.Queue()
     for parsed_event in parsed_events:
         live_queue.put(parsed_event)
@@ -468,7 +468,7 @@ def test_shared_ingestion_engine_matches_queue_processor_and_import_payloads(mon
 
     parse_results = iter(parsed_events)
     monkeypatch.setattr(
-        "app.parser.LogParser.parse_line",
+        "app.utils.ParserSession.parse_line",
         lambda self, line: next(parse_results, None),
     )
     monkeypatch.setattr(

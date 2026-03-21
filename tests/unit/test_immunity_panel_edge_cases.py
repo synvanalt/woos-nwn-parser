@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import pytest
 from tkinter import ttk
 
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.services.queries import ImmunityQueryService
 from app.storage import DataStore
 from app.ui.widgets.immunity_panel import ImmunityPanel
@@ -19,7 +19,7 @@ def immunity_panel_ctx(shared_tk_root):
 
     notebook = ttk.Notebook(shared_tk_root)
     store = DataStore()
-    parser = LogParser(parse_immunity=False)
+    parser = ParserSession(parse_immunity=False)
     panel = ImmunityPanel(notebook, store, parser, ImmunityQueryService(store))
     return panel, store, parser
 

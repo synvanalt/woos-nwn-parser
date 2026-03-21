@@ -6,7 +6,7 @@ from tkinter import ttk
 import pytest
 
 import app.ui.widgets.immunity_panel as immunity_module
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.services.queries import ImmunityQueryService
 from app.storage import DataStore
 from app.ui.widgets.immunity_panel import ImmunityPanel
@@ -19,7 +19,7 @@ def panel_ctx(shared_tk_root):
         pytest.skip("Tkinter not available")
     notebook = ttk.Notebook(shared_tk_root)
     store = DataStore()
-    parser = LogParser(parse_immunity=False)
+    parser = ParserSession(parse_immunity=False)
     panel = ImmunityPanel(notebook, store, parser, ImmunityQueryService(store))
     return panel, store, parser
 
@@ -60,7 +60,7 @@ def test_parse_immunity_var_initializes_from_parser(shared_tk_root) -> None:
 
     notebook = ttk.Notebook(shared_tk_root)
     store = DataStore()
-    parser = LogParser(parse_immunity=True)
+    parser = ParserSession(parse_immunity=True)
     panel = ImmunityPanel(notebook, store, parser, ImmunityQueryService(store))
 
     assert panel.parse_immunity_var.get() is True

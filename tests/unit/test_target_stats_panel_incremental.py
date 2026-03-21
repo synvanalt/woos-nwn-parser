@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import ttk
 from unittest.mock import Mock
 
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.services.queries import TargetSummaryQueryService
 from app.storage import DataStore
 from app.ui.widgets.target_stats_panel import TargetStatsPanel

@@ -12,7 +12,7 @@ from typing import Optional
 from unittest.mock import Mock
 
 from app.monitor import LogDirectoryMonitor
-from app.parser import LogParser
+from app.parser import ParserSession
 
 
 class TestLogDirectoryMonitorInitialization:
@@ -147,7 +147,7 @@ class TestIncrementalReading:
         monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         monitor.read_new_lines(parser, data_queue)
@@ -167,7 +167,7 @@ class TestIncrementalReading:
         with open(log1, 'a') as f:
             f.write("New line\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         # Mock callback to capture debug messages
@@ -194,7 +194,7 @@ class TestIncrementalReading:
         with open(log1, 'a') as f:
             f.write("New content\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         monitor.read_new_lines(parser, data_queue)
@@ -239,7 +239,7 @@ class TestIncrementalReading:
         monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
         original_find_active = monitor.find_active_log_file
         discovery_calls = 0
@@ -286,7 +286,7 @@ class TestIncrementalReading:
         time.sleep(0.05)
         log2.write_text("Log 2 content\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         for _ in range(monitor.IDLE_RESCAN_INTERVAL_POLLS + 1):
@@ -317,7 +317,7 @@ class TestFileRotation:
         time.sleep(0.1)
         log2.write_text("Log 2 content\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         # Mock callback to capture debug messages
@@ -353,7 +353,7 @@ class TestFileRotation:
         time.sleep(0.1)
         log2.write_text("Log 2 content\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         monitor.read_new_lines(parser, data_queue)
@@ -378,7 +378,7 @@ class TestFileTruncation:
         # Simulate truncation: file is cleared and rewritten
         log1.write_text("New content after restart\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         # Mock callback to capture debug messages
@@ -418,7 +418,7 @@ class TestFileTruncation:
         new_size = log1.stat().st_size
         assert new_size < initial_position, "Test setup error: file should be smaller after truncation"
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         # Mock callback to capture debug messages
@@ -449,7 +449,7 @@ class TestFileTruncation:
         # Clear file completely
         log1.write_text("")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         monitor.read_new_lines(parser, data_queue)
@@ -465,7 +465,7 @@ class TestErrorHandling:
         monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.current_log_file = temp_log_dir / "nonexistent.txt"
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         # Should not raise exception
@@ -482,7 +482,7 @@ class TestErrorHandling:
         with open(log1, 'a') as f:
             f.write("Another line\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         # Should handle gracefully

@@ -11,7 +11,7 @@ from queue import Queue
 from app.services.queries import DpsQueryService
 from app.services.queue_processor import QueueProcessor
 from app.storage import DataStore
-from app.parser import LogParser
+from app.parser import ParserSession
 from tests.helpers.parsed_event_factories import (
     attack_hit_event,
     critical_hit_event,
@@ -40,7 +40,7 @@ class TestQueueProcessor(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test fixtures."""
         self.data_store = Mock(spec=DataStore)
-        self.parser = Mock(spec=LogParser)
+        self.parser = Mock(spec=ParserSession)
         self.parser.parse_immunity = False
 
         self.processor = QueueProcessor(self.data_store, self.parser)
@@ -213,7 +213,7 @@ class TestQueueProcessorIntegration(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test fixtures with real DataStore."""
         self.data_store = DataStore()
-        self.parser = Mock(spec=LogParser)
+        self.parser = Mock(spec=ParserSession)
         self.parser.parse_immunity = True
 
         self.processor = QueueProcessor(self.data_store, self.parser)

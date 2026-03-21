@@ -11,7 +11,7 @@ from pathlib import Path
 import tempfile
 
 from app.monitor import LogDirectoryMonitor
-from app.parser import LogParser
+from app.parser import ParserSession
 from tests.conftest import LogMessageCapture
 
 
@@ -35,7 +35,7 @@ def test_basic_rotation_log1_to_log2():
         print("Step 2: Start monitoring")
         monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
-        parser = LogParser(parse_immunity=False)
+        parser = ParserSession(parse_immunity=False)
         data_queue = queue.Queue()
 
         assert monitor.current_log_file == log1, "Should start with log1"
@@ -123,7 +123,7 @@ def test_full_rotation_sequence():
         # Start monitoring
         monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
-        parser = LogParser(parse_immunity=False)
+        parser = ParserSession(parse_immunity=False)
         data_queue = queue.Queue()
 
         print(f"  Monitoring: {monitor.current_log_file.name}\n")
@@ -175,7 +175,7 @@ def test_rotation_does_not_trigger_truncation_warning():
         # Start monitoring with debug_mode enabled
         monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
-        parser = LogParser(parse_immunity=False)
+        parser = ParserSession(parse_immunity=False)
         data_queue = queue.Queue()
 
         initial_position = monitor.last_position
@@ -229,7 +229,7 @@ def test_truncation_on_same_file_still_works():
         # Start monitoring with debug_mode enabled
         monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
-        parser = LogParser(parse_immunity=False)
+        parser = ParserSession(parse_immunity=False)
         data_queue = queue.Queue()
 
         initial_position = monitor.last_position
@@ -286,7 +286,7 @@ def test_rotation_with_content_continuation():
         # Start monitoring with debug_mode enabled
         monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
-        parser = LogParser(parse_immunity=False)
+        parser = ParserSession(parse_immunity=False)
         data_queue = queue.Queue()
 
         # Poll log1

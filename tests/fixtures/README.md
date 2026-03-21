@@ -30,7 +30,7 @@ Example:
 
 ```python
 def test_with_real_log(real_combat_log: Path):
-    parser = LogParser()
+    parser = ParserSession()
     with open(real_combat_log, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
             parser.parse_line(line)

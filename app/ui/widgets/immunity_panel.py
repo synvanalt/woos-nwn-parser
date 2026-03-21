@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, Optional
 
 from ...storage import DataStore
 from ...services.queries import ImmunityQueryService
-from ...parser import LogParser
+from ...parser import ParserSession
 from ...utils import calculate_immunity_percentage
 from ..formatters import damage_type_to_color, apply_tag_to_tree
 from ..tooltips import TooltipManager
@@ -43,7 +43,7 @@ class ImmunityPanel(ttk.Frame):
         self,
         parent: ttk.Notebook,
         data_store: DataStore,
-        parser: LogParser,
+        parser: ParserSession,
         immunity_query_service: ImmunityQueryService,
         tooltip_manager: Optional[TooltipManager] = None,
         on_parse_immunity_changed: Optional[Callable[[bool], None]] = None,

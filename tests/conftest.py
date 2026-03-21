@@ -8,7 +8,7 @@ from typing import Dict, List
 import pytest
 
 from app.settings import get_settings_path
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.storage import DataStore
 from app.monitor import LogDirectoryMonitor
 from app.services.queries import DpsQueryService, ImmunityQueryService, TargetSummaryQueryService
@@ -108,21 +108,21 @@ sys.modules[__name__].LogMessageCapture = LogMessageCapture
 
 
 @pytest.fixture
-def parser() -> LogParser:
-    """Create a LogParser instance for testing."""
-    return LogParser(player_name=None, parse_immunity=False)
+def parser() -> ParserSession:
+    """Create a ParserSession instance for testing."""
+    return ParserSession(player_name=None, parse_immunity=False)
 
 
 @pytest.fixture
-def parser_with_immunity() -> LogParser:
-    """Create a LogParser instance with immunity parsing enabled."""
-    return LogParser(player_name=None, parse_immunity=True)
+def parser_with_immunity() -> ParserSession:
+    """Create a ParserSession instance with immunity parsing enabled."""
+    return ParserSession(player_name=None, parse_immunity=True)
 
 
 @pytest.fixture
-def parser_with_player() -> LogParser:
-    """Create a LogParser instance with player filtering."""
-    return LogParser(player_name="TestPlayer", parse_immunity=False)
+def parser_with_player() -> ParserSession:
+    """Create a ParserSession instance with player filtering."""
+    return ParserSession(player_name="TestPlayer", parse_immunity=False)
 
 
 @pytest.fixture
@@ -150,7 +150,7 @@ def immunity_query_service(data_store: DataStore) -> ImmunityQueryService:
 
 
 @pytest.fixture
-def queue_processor(data_store: DataStore, parser: LogParser) -> QueueProcessor:
+def queue_processor(data_store: DataStore, parser: ParserSession) -> QueueProcessor:
     """Create a QueueProcessor instance for testing."""
     return QueueProcessor(data_store, parser)
 

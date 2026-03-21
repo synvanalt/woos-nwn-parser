@@ -1,4 +1,4 @@
-"""Unit tests for LogParser.
+"""Unit tests for the parser session and line parser layers.
 
 Tests regex pattern matching, damage parsing, immunity parsing,
 attack parsing, save parsing, and player filtering.
@@ -7,7 +7,7 @@ attack parsing, save parsing, and player filtering.
 from datetime import datetime
 
 import app.parser_session as parser_session_module
-from app.parser import LineParser, LogParser, ParserSession
+from app.parser import LineParser, ParserSession
 from app.parsed_events import (
     AttackCriticalHitEvent,
     AttackHitEvent,
@@ -15,12 +15,12 @@ from app.parsed_events import (
 )
 
 
-class TestLogParserInitialization:
-    """Test suite for LogParser initialization."""
+class TestParserSessionInitialization:
+    """Test suite for ParserSession initialization."""
 
     def test_default_initialization(self) -> None:
         """Test parser initializes with default values."""
-        parser = LogParser()
+        parser = ParserSession()
         assert parser.player_name is None
         assert parser.parse_immunity is True
         assert not hasattr(parser, "target_ac")
@@ -29,34 +29,34 @@ class TestLogParserInitialization:
 
     def test_initialization_with_player_name(self) -> None:
         """Test parser initializes with player name."""
-        parser = LogParser(player_name="TestPlayer")
+        parser = ParserSession(player_name="TestPlayer")
         assert parser.player_name == "TestPlayer"
 
     def test_initialization_with_immunity_parsing(self) -> None:
         """Test parser initializes with immunity parsing enabled."""
-        parser = LogParser(parse_immunity=True)
+        parser = ParserSession(parse_immunity=True)
         assert parser.parse_immunity is True
 
 
 class TestDamageBreakdownParsing:
     """Test suite for parse_damage_breakdown method."""
 
-    def test_parse_single_damage_type(self, parser: LogParser) -> None:
+    def test_parse_single_damage_type(self, parser: ParserSession) -> None:
         """Test parsing single damage type."""
         result = parser.parse_damage_breakdown("50 Physical")
         assert result == {"Physical": 50}
 
-    def test_parse_multiple_damage_types(self, parser: LogParser) -> None:
+    def test_parse_multiple_damage_types(self, parser: ParserSession) -> None:
         """Test parsing multiple damage types."""
         result = parser.parse_damage_breakdown("30 Physical 20 Fire")
         assert result == {"Physical": 30, "Fire": 20}
 
-    def test_parse_multiword_damage_types(self, parser: LogParser) -> None:
+    def test_parse_multiword_damage_types(self, parser: ParserSession) -> None:
         """Test parsing multi-word damage types."""
         result = parser.parse_damage_breakdown("50 Positive Energy 30 Divine 20 Pure")
         assert result == {"Positive Energy": 50, "Divine": 30, "Pure": 20}
 
-    def test_parse_complex_breakdown(self, parser: LogParser) -> None:
+    def test_parse_complex_breakdown(self, parser: ParserSession) -> None:
         """Test parsing complex damage breakdown with many types."""
         result = parser.parse_damage_breakdown(
             "21 Physical 4 Divine 3 Fire 13 Positive Energy 1 Pure 2 Magical"
@@ -70,17 +70,17 @@ class TestDamageBreakdownParsing:
             "Magical": 2,
         }
 
-    def test_parse_empty_string(self, parser: LogParser) -> None:
+    def test_parse_empty_string(self, parser: ParserSession) -> None:
         """Test parsing empty damage breakdown."""
         result = parser.parse_damage_breakdown("")
         assert result == {}
 
-    def test_parse_with_extra_whitespace(self, parser: LogParser) -> None:
+    def test_parse_with_extra_whitespace(self, parser: ParserSession) -> None:
         """Test parsing with extra whitespace."""
         result = parser.parse_damage_breakdown("  30  Physical   20  Fire  ")
         assert result == {"Physical": 30, "Fire": 20}
 
-    def test_parse_multiword_damage_types_with_extra_whitespace(self, parser: LogParser) -> None:
+    def test_parse_multiword_damage_types_with_extra_whitespace(self, parser: ParserSession) -> None:
         """Whitespace normalization should preserve multi-word damage types."""
         result = parser.parse_damage_breakdown("  50   Positive   Energy   20   Negative  Energy ")
         assert result == {"Positive Energy": 50, "Negative Energy": 20}
@@ -89,7 +89,7 @@ class TestDamageBreakdownParsing:
 class TestTimestampExtraction:
     """Test suite for extract_timestamp_from_line method."""
 
-    def test_extract_valid_timestamp(self, parser: LogParser) -> None:
+    def test_extract_valid_timestamp(self, parser: ParserSession) -> None:
         """Test extracting valid timestamp from log line."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Test message"
         result = parser.extract_timestamp_from_line(line)
@@ -99,7 +99,7 @@ class TestTimestampExtraction:
         assert result.minute == 30
         assert result.second == 0
 
-    def test_extract_timestamp_different_time(self, parser: LogParser) -> None:
+    def test_extract_timestamp_different_time(self, parser: ParserSession) -> None:
         """Test extracting different timestamp."""
         line = "[CHAT WINDOW TEXT] [Wed Dec 31 21:07:37] Test message"
         result = parser.extract_timestamp_from_line(line)
@@ -108,31 +108,31 @@ class TestTimestampExtraction:
         assert result.minute == 7
         assert result.second == 37
 
-    def test_extract_timestamp_invalid_format(self, parser: LogParser) -> None:
+    def test_extract_timestamp_invalid_format(self, parser: ParserSession) -> None:
         """Test extracting timestamp from invalid format returns None."""
         line = "Invalid line without timestamp"
         result = parser.extract_timestamp_from_line(line)
         assert result is None
 
-    def test_extract_timestamp_invalid_numeric_fields(self, parser: LogParser) -> None:
+    def test_extract_timestamp_invalid_numeric_fields(self, parser: ParserSession) -> None:
         """Invalid numeric timestamp fields should return None without raising."""
         line = "[CHAT WINDOW TEXT] [Thu Jan xx 14:30:00] Test message"
         result = parser.extract_timestamp_from_line(line)
         assert result is None
 
-    def test_extract_timestamp_invalid_calendar_date(self, parser: LogParser) -> None:
+    def test_extract_timestamp_invalid_calendar_date(self, parser: ParserSession) -> None:
         """Invalid calendar dates should return None without raising."""
         line = "[CHAT WINDOW TEXT] [Thu Feb 31 14:30:00] Test message"
         result = parser.extract_timestamp_from_line(line)
         assert result is None
 
-    def test_extract_timestamp_missing_brackets(self, parser: LogParser) -> None:
+    def test_extract_timestamp_missing_brackets(self, parser: ParserSession) -> None:
         """Test extracting timestamp without brackets returns None."""
         line = "Thu Jan 09 14:30:00 Test message"
         result = parser.extract_timestamp_from_line(line)
         assert result is None
 
-    def test_extract_timestamp_preserves_date(self, parser: LogParser) -> None:
+    def test_extract_timestamp_preserves_date(self, parser: ParserSession) -> None:
         """Test that timestamp extraction preserves the date from the log.
 
         This is critical for correctly calculating elapsed time when gameplay
@@ -220,7 +220,7 @@ class TestSplitParserLayers:
 class TestDamageDealtParsing:
     """Test suite for parsing damage_dealt lines."""
 
-    def test_parse_basic_damage(self, parser: LogParser) -> None:
+    def test_parse_basic_damage(self, parser: ParserSession) -> None:
         """Test parsing basic damage line."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 50 (30 Physical 20 Fire)"
         result = parser.parse_line(line)
@@ -233,7 +233,7 @@ class TestDamageDealtParsing:
         assert result.damage_types == {'Physical': 30, 'Fire': 20}
         assert isinstance(result.timestamp, datetime)
 
-    def test_parse_damage_with_multiword_types(self, parser: LogParser) -> None:
+    def test_parse_damage_with_multiword_types(self, parser: ParserSession) -> None:
         """Test parsing damage with multi-word damage types."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Lich: 100 (50 Positive Energy 30 Divine 20 Pure)"
         result = parser.parse_line(line)
@@ -241,7 +241,7 @@ class TestDamageDealtParsing:
         assert result is not None
         assert result.damage_types == {'Positive Energy': 50, 'Divine': 30, 'Pure': 20}
 
-    def test_parse_damage_player_filter_match(self, parser_with_player: LogParser) -> None:
+    def test_parse_damage_player_filter_match(self, parser_with_player: ParserSession) -> None:
         """Test parsing damage when player matches filter."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] TestPlayer damages Goblin: 50 (50 Physical)"
         result = parser_with_player.parse_line(line)
@@ -250,7 +250,7 @@ class TestDamageDealtParsing:
         assert isinstance(result, DamageDealtEvent)
         assert result.attacker == 'TestPlayer'
 
-    def test_parse_damage_player_filter_no_match(self, parser_with_player: LogParser) -> None:
+    def test_parse_damage_player_filter_no_match(self, parser_with_player: ParserSession) -> None:
         """Damage events still emit normally even when player_name differs."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] OtherPlayer damages Goblin: 50 (50 Physical)"
         result = parser_with_player.parse_line(line)
@@ -263,13 +263,13 @@ class TestDamageDealtParsing:
 class TestImmunityParsing:
     """Test suite for parsing immunity lines."""
 
-    def test_parse_immunity_disabled(self, parser: LogParser) -> None:
+    def test_parse_immunity_disabled(self, parser: ParserSession) -> None:
         """Test immunity parsing when disabled returns None."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Goblin : Damage Immunity absorbs 10 point(s) of Fire"
         result = parser.parse_line(line)
         assert result is None
 
-    def test_parse_immunity_enabled_points(self, parser_with_immunity: LogParser) -> None:
+    def test_parse_immunity_enabled_points(self, parser_with_immunity: ParserSession) -> None:
         """Test parsing immunity with 'point(s)'."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Goblin : Damage Immunity absorbs 10 point(s) of Fire"
         result = parser_with_immunity.parse_line(line)
@@ -280,7 +280,7 @@ class TestImmunityParsing:
         assert result.damage_type == 'Fire'
         assert result.immunity_points == 10
 
-    def test_parse_immunity_points_variant(self, parser_with_immunity: LogParser) -> None:
+    def test_parse_immunity_points_variant(self, parser_with_immunity: ParserSession) -> None:
         """Test parsing immunity with 'points'."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Orc : Damage Immunity absorbs 5 points of Cold"
         result = parser_with_immunity.parse_line(line)
@@ -289,7 +289,7 @@ class TestImmunityParsing:
         assert result.immunity_points == 5
         assert result.damage_type == 'Cold'
 
-    def test_parse_immunity_point_singular(self, parser_with_immunity: LogParser) -> None:
+    def test_parse_immunity_point_singular(self, parser_with_immunity: ParserSession) -> None:
         """Test parsing immunity with 'point' (singular)."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Dragon : Damage Immunity absorbs 1 point of Fire"
         result = parser_with_immunity.parse_line(line)
@@ -301,7 +301,7 @@ class TestImmunityParsing:
 class TestAttackParsing:
     """Test suite for parsing attack lines."""
 
-    def test_parse_attack_hit(self, parser: LogParser) -> None:
+    def test_parse_attack_hit(self, parser: ParserSession) -> None:
         """Test parsing attack hit."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo attacks Goblin: *hit*: (14 + 5 = 19)"
         result = parser.parse_line(line)
@@ -315,7 +315,7 @@ class TestAttackParsing:
         assert result.bonus == 5
         assert result.total == 19
 
-    def test_parse_attack_miss(self, parser: LogParser) -> None:
+    def test_parse_attack_miss(self, parser: ParserSession) -> None:
         """Test parsing attack miss."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo attacks Goblin: *miss*: (8 + 5 = 13)"
         result = parser.parse_line(line)
@@ -325,7 +325,7 @@ class TestAttackParsing:
         assert result.roll == 8
         assert result.total == 13
 
-    def test_parse_attack_critical_hit(self, parser: LogParser) -> None:
+    def test_parse_attack_critical_hit(self, parser: ParserSession) -> None:
         """Test parsing critical hit."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo attacks Goblin: *critical hit*: (18 + 5 = 23)"
         result = parser.parse_line(line)
@@ -334,7 +334,7 @@ class TestAttackParsing:
         assert result.type == 'attack_hit_critical'
         assert result.roll == 18
 
-    def test_parse_attack_natural_1(self, parser: LogParser) -> None:
+    def test_parse_attack_natural_1(self, parser: ParserSession) -> None:
         """Test parsing natural 1 miss."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo attacks Goblin: *miss*: (1 + 5 = 6)"
         result = parser.parse_line(line)
@@ -343,7 +343,7 @@ class TestAttackParsing:
         assert result.type == 'attack_miss'
         assert result.was_nat1 is True
 
-    def test_parse_attack_natural_20(self, parser: LogParser) -> None:
+    def test_parse_attack_natural_20(self, parser: ParserSession) -> None:
         """Test parsing natural 20 hit."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo attacks Goblin: *hit*: (20 + 5 = 25)"
         result = parser.parse_line(line)
@@ -352,7 +352,7 @@ class TestAttackParsing:
         assert result.type == 'attack_hit'
         assert result.was_nat20 is True
 
-    def test_parse_attack_preserves_totals_for_downstream_ac_tracking(self, parser: LogParser) -> None:
+    def test_parse_attack_preserves_totals_for_downstream_ac_tracking(self, parser: ParserSession) -> None:
         """Test attack events preserve totals for downstream AC tracking."""
         hit_line = "Woo attacks Goblin: *hit*: (16 + 5 = 21)"
         hit_result = parser.parse_line(hit_line)
@@ -369,7 +369,7 @@ class TestAttackParsing:
         assert miss_result.target == 'Goblin'
         assert miss_result.total == 15
 
-    def test_parse_attack_emits_bonus_for_downstream_tracking(self, parser: LogParser) -> None:
+    def test_parse_attack_emits_bonus_for_downstream_tracking(self, parser: ParserSession) -> None:
         """Test that parsing attacks emits bonus data for downstream tracking."""
         line = "Goblin attacks Woo: *hit*: (15 + 8 = 23)"
         result = parser.parse_line(line)
@@ -378,7 +378,7 @@ class TestAttackParsing:
         assert result.attacker == 'Goblin'
         assert result.bonus == 8
 
-    def test_parse_concealment_miss_excluded_from_ac(self, parser: LogParser) -> None:
+    def test_parse_concealment_miss_excluded_from_ac(self, parser: ParserSession) -> None:
         """Test that concealment misses are excluded from AC estimation.
 
         When an attack misses due to concealment (displacement, invisibility, etc.),
@@ -398,7 +398,7 @@ class TestAttackParsing:
         assert concealment_result.is_concealment is True
         assert concealment_result.total == 79
 
-    def test_parse_concealment_miss_does_not_drop_event(self, parser: LogParser) -> None:
+    def test_parse_concealment_miss_does_not_drop_event(self, parser: ParserSession) -> None:
         """Concealment-only attacks should still emit miss events."""
         line = "Dragon attacks Mage: *attacker miss chance: 50%*: (15 + 70 = 85)"
         result = parser.parse_line(line)
@@ -408,7 +408,7 @@ class TestAttackParsing:
         assert result.is_concealment is True
         assert result.target == 'Mage'
 
-    def test_parse_concealment_with_regular_misses(self, parser: LogParser) -> None:
+    def test_parse_concealment_with_regular_misses(self, parser: ParserSession) -> None:
         """Test that concealment misses don't interfere with regular AC estimation.
 
         Scenario: Enemy has displacement. Some attacks miss normally (too low roll),
@@ -431,7 +431,7 @@ class TestAttackParsing:
         assert hit_result.type == 'attack_hit'
         assert hit_result.total == 45
 
-    def test_parse_concealment_percentage_variations(self, parser: LogParser) -> None:
+    def test_parse_concealment_percentage_variations(self, parser: ParserSession) -> None:
         """Test parsing concealment misses with different percentages."""
         hit_result = parser.parse_line("Rogue attacks Target: *hit*: (10 + 40 = 50)")
         concealment_results = [
@@ -444,7 +444,7 @@ class TestAttackParsing:
         assert hit_result.type == 'attack_hit'
         assert all(result is not None and result.is_concealment is True for result in concealment_results)
 
-    def test_parse_target_concealed_without_outcome_is_ignored(self, parser: LogParser) -> None:
+    def test_parse_target_concealed_without_outcome_is_ignored(self, parser: ParserSession) -> None:
         """No-outcome target-concealed lines should not emit attacks or affect stats."""
         line = (
             "[CHAT WINDOW TEXT] [Sat Oct 18 21:12:56] Attack Of Opportunity : Flurry of Blows : "
@@ -454,7 +454,7 @@ class TestAttackParsing:
 
         assert result is None
 
-    def test_parse_target_concealed_with_explicit_outcome(self, parser: LogParser) -> None:
+    def test_parse_target_concealed_with_explicit_outcome(self, parser: ParserSession) -> None:
         """Target-concealed lines with explicit outcome should parse as attacks."""
         line = (
             "[CHAT WINDOW TEXT] [Sat Oct 18 21:12:56] Attack Of Opportunity : Flurry of Blows : "
@@ -472,7 +472,7 @@ class TestAttackParsing:
         assert result.bonus == 17
         assert result.total == 36
 
-    def test_parse_target_concealed_malformed_roll_falls_back_cleanly(self, parser: LogParser) -> None:
+    def test_parse_target_concealed_malformed_roll_falls_back_cleanly(self, parser: ParserSession) -> None:
         """Malformed target-concealed fast-path lines should fail cleanly."""
         line = (
             "[CHAT WINDOW TEXT] [Sat Oct 18 21:12:56] Woo Whirlwind attacks Cerberus : "
@@ -482,7 +482,7 @@ class TestAttackParsing:
 
         assert result is None
 
-    def test_parse_concealment_real_world_scenario(self, parser: LogParser) -> None:
+    def test_parse_concealment_real_world_scenario(self, parser: ParserSession) -> None:
         """Test real-world scenario from user's logs.
 
         This reproduces the bug where Woo Wildrock's AC was incorrectly estimated
@@ -512,7 +512,7 @@ class TestAttackParsing:
 class TestEpicDodgeParsing:
     """Test suite for parsing Epic Dodge indicator lines."""
 
-    def test_parse_epic_dodge_marks_target(self, parser: LogParser) -> None:
+    def test_parse_epic_dodge_marks_target(self, parser: ParserSession) -> None:
         """Test parsing Epic Dodge line emits target info."""
         line = "[CHAT WINDOW TEXT] [Fri Feb 13 11:34:03] Epic Undead Monk : Epic Dodge : Attack evaded"
         result = parser.parse_line(line)
@@ -521,7 +521,7 @@ class TestEpicDodgeParsing:
         assert result.type == "epic_dodge"
         assert result.target == "Epic Undead Monk"
 
-    def test_parse_epic_dodge_emits_event(self, parser: LogParser) -> None:
+    def test_parse_epic_dodge_emits_event(self, parser: ParserSession) -> None:
         """Test Epic Dodge line emits a queue event for downstream consumers."""
         line = "Epic Undead Monk : Epic Dodge : Attack evaded"
         result = parser.parse_line(line)
@@ -529,7 +529,7 @@ class TestEpicDodgeParsing:
         assert result.type == "epic_dodge"
         assert result.target == "Epic Undead Monk"
 
-    def test_parse_epic_dodge_preserves_target_name(self, parser: LogParser) -> None:
+    def test_parse_epic_dodge_preserves_target_name(self, parser: ParserSession) -> None:
         """Test Epic Dodge parsing preserves complex target names."""
         line = "[CHAT WINDOW TEXT] [Fri Feb 13 11:34:03] 10 AC DUMMY - Chaotic Evil - Boss Damage Reduction : Epic Dodge : Attack evaded"
         result = parser.parse_line(line)
@@ -546,7 +546,7 @@ class TestAttackPrefixCombinations:
     Off Hand attacks, and Attack of Opportunity prefixes in all combinations.
     """
 
-    def test_parse_attack_with_single_ability(self, parser: LogParser) -> None:
+    def test_parse_attack_with_single_ability(self, parser: ParserSession) -> None:
         """Test parsing attack with single ability prefix (Flurry of Blows)."""
         line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:08:04] Flurry of Blows : Woo Whirlwind attacks 10 AC DUMMY - Chaotic Evil - Boss Damage Reduction : *hit* : (5 + 66 = 71)"
         result = parser.parse_line(line)
@@ -559,7 +559,7 @@ class TestAttackPrefixCombinations:
         assert result.bonus == 66
         assert result.total == 71
 
-    def test_parse_attack_with_two_abilities(self, parser: LogParser) -> None:
+    def test_parse_attack_with_two_abilities(self, parser: ParserSession) -> None:
         """Test parsing attack with two ability prefixes (Flurry of Blows + Sneak Attack)."""
         line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:22:07] Flurry of Blows : Sneak Attack : Woo Whirlwind attacks 10 AC DUMMY - Chaotic Evil - Boss Damage Reduction : *hit* : (5 + 57 = 62)"
         result = parser.parse_line(line)
@@ -572,7 +572,7 @@ class TestAttackPrefixCombinations:
         assert result.bonus == 57
         assert result.total == 62
 
-    def test_parse_attack_off_hand_only(self, parser: LogParser) -> None:
+    def test_parse_attack_off_hand_only(self, parser: ParserSession) -> None:
         """Test parsing off-hand attack without ability prefix."""
         line = "[CHAT WINDOW TEXT] [Wed Dec 31 21:07:58] Off Hand : Woo Wildrock attacks Ash-Tusk Clan High Priest : *hit* : (6 + 66 = 72)"
         result = parser.parse_line(line)
@@ -585,7 +585,7 @@ class TestAttackPrefixCombinations:
         assert result.bonus == 66
         assert result.total == 72
 
-    def test_parse_attack_off_hand_with_single_ability(self, parser: LogParser) -> None:
+    def test_parse_attack_off_hand_with_single_ability(self, parser: ParserSession) -> None:
         """Test parsing off-hand attack with single ability (Death Attack)."""
         line = "[CHAT WINDOW TEXT] [Wed Dec 31 21:08:21] Off Hand : Death Attack : GENERAL KORGAN attacks Woo Wildrock : *critical hit* : (18 + 65 = 83 : Threat Roll: 8 + 65 = 73)"
         result = parser.parse_line(line)
@@ -598,7 +598,7 @@ class TestAttackPrefixCombinations:
         assert result.bonus == 65
         assert result.total == 83
 
-    def test_parse_attack_with_threat_roll_hit(self, parser: LogParser) -> None:
+    def test_parse_attack_with_threat_roll_hit(self, parser: ParserSession) -> None:
         """Threat-roll hit lines should still parse as hits."""
         line = (
             "[CHAT WINDOW TEXT] [Sat Oct 18 21:15:19] Tyrmon's Fighter attacks Cerberus : "
@@ -614,7 +614,7 @@ class TestAttackPrefixCombinations:
         assert result.bonus == 50
         assert result.total == 70
 
-    def test_parse_attack_off_hand_with_two_abilities(self, parser: LogParser) -> None:
+    def test_parse_attack_off_hand_with_two_abilities(self, parser: ParserSession) -> None:
         """Test parsing off-hand attack with two abilities (Flurry of Blows + Sneak Attack)."""
         line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:23:38] Off Hand : Flurry of Blows : Sneak Attack : Woo Whirlwind attacks 10 AC DUMMY - Chaotic Evil - Boss Damage Reduction : *hit* : (9 + 45 = 54)"
         result = parser.parse_line(line)
@@ -627,7 +627,7 @@ class TestAttackPrefixCombinations:
         assert result.bonus == 45
         assert result.total == 54
 
-    def test_parse_attack_of_opportunity_only(self, parser: LogParser) -> None:
+    def test_parse_attack_of_opportunity_only(self, parser: ParserSession) -> None:
         """Test parsing attack of opportunity without other prefixes."""
         line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:08:04] Attack Of Opportunity : Woo Whirlwind attacks 10 AC DUMMY : *hit* : (5 + 66 = 71)"
         result = parser.parse_line(line)
@@ -640,7 +640,7 @@ class TestAttackPrefixCombinations:
         assert result.bonus == 66
         assert result.total == 71
 
-    def test_parse_attack_no_prefix(self, parser: LogParser) -> None:
+    def test_parse_attack_no_prefix(self, parser: ParserSession) -> None:
         """Test parsing basic attack without any prefix (regression test)."""
         line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:08:54] Woo Whirlwind attacks 10 AC DUMMY - Chaotic Evil - Boss Damage Reduction : *hit* : (10 + 61 = 71)"
         result = parser.parse_line(line)
@@ -653,7 +653,7 @@ class TestAttackPrefixCombinations:
         assert result.bonus == 61
         assert result.total == 71
 
-    def test_parse_attack_with_ability_miss(self, parser: LogParser) -> None:
+    def test_parse_attack_with_ability_miss(self, parser: ParserSession) -> None:
         """Test parsing miss with ability prefix."""
         line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:08:04] Flurry of Blows : Woo Whirlwind attacks 10 AC DUMMY : *miss* : (3 + 66 = 69)"
         result = parser.parse_line(line)
@@ -665,7 +665,7 @@ class TestAttackPrefixCombinations:
         assert result.roll == 3
         assert result.total == 69
 
-    def test_parse_attack_with_ability_preserves_roll_data(self, parser: LogParser) -> None:
+    def test_parse_attack_with_ability_preserves_roll_data(self, parser: ParserSession) -> None:
         """Test that attacks with ability prefixes preserve roll data."""
         hit_line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:22:07] Flurry of Blows : Sneak Attack : Woo Whirlwind attacks 10 AC DUMMY : *hit* : (5 + 57 = 62)"
         hit_result = parser.parse_line(hit_line)
@@ -678,7 +678,7 @@ class TestAttackPrefixCombinations:
         assert miss_result is not None
         assert miss_result.total == 59
 
-    def test_parse_attack_with_three_word_ability(self, parser: LogParser) -> None:
+    def test_parse_attack_with_three_word_ability(self, parser: ParserSession) -> None:
         """Test parsing attack with multi-word ability names."""
         line = "[CHAT WINDOW TEXT] [Sun Jan 11 20:08:04] Circle Kick Attack : Woo Whirlwind attacks Training Dummy : *hit* : (15 + 50 = 65)"
         result = parser.parse_line(line)
@@ -690,7 +690,7 @@ class TestAttackPrefixCombinations:
         assert result.roll == 15
         assert result.total == 65
 
-    def test_parse_attack_with_plus_sign_ability_prefix(self, parser: LogParser) -> None:
+    def test_parse_attack_with_plus_sign_ability_prefix(self, parser: ParserSession) -> None:
         """Ability prefixes containing '+' should still preserve the attacker name."""
         line = (
             "[CHAT WINDOW TEXT] [Fri May 23 20:41:07] Sneak Attack + Death Attack : "
@@ -710,7 +710,7 @@ class TestAttackPrefixCombinations:
 class TestSaveParsing:
     """Test suite for parsing save lines."""
 
-    def test_parse_fortitude_save(self, parser: LogParser) -> None:
+    def test_parse_fortitude_save(self, parser: ParserSession) -> None:
         """Test parsing fortitude save."""
         line = "SAVE: Goblin: Fortitude Save: *success*: (12 + 3 = 15 vs. DC: 20)"
         result = parser.parse_line(line)
@@ -721,7 +721,7 @@ class TestSaveParsing:
         assert result.save_type == 'fort'
         assert result.bonus == 3
 
-    def test_parse_reflex_save(self, parser: LogParser) -> None:
+    def test_parse_reflex_save(self, parser: ParserSession) -> None:
         """Test parsing reflex save."""
         line = "Orc: Reflex Save: *failed*: (6 + 2 = 8 vs. DC: 15)"
         result = parser.parse_line(line)
@@ -730,7 +730,7 @@ class TestSaveParsing:
         assert result.save_type == 'ref'
         assert result.bonus == 2
 
-    def test_parse_will_save(self, parser: LogParser) -> None:
+    def test_parse_will_save(self, parser: ParserSession) -> None:
         """Test parsing will save."""
         line = "Dragon: Will Save: *success*: (16 + 10 = 26 vs. DC: 25)"
         result = parser.parse_line(line)
@@ -739,7 +739,7 @@ class TestSaveParsing:
         assert result.save_type == 'will'
         assert result.bonus == 10
 
-    def test_parse_save_preserves_bonus_for_downstream_tracking(self, parser: LogParser) -> None:
+    def test_parse_save_preserves_bonus_for_downstream_tracking(self, parser: ParserSession) -> None:
         """Test that parsing saves preserves bonus data."""
         line = "SAVE: Goblin: Fortitude Save: *success*: (12 + 5 = 17 vs. DC: 20)"
         result = parser.parse_line(line)
@@ -753,22 +753,22 @@ class TestSaveParsing:
 class TestEdgeCases:
     """Test suite for edge cases and error handling."""
 
-    def test_parse_empty_line(self, parser: LogParser) -> None:
+    def test_parse_empty_line(self, parser: ParserSession) -> None:
         """Test parsing empty line returns None."""
         result = parser.parse_line("")
         assert result is None
 
-    def test_parse_whitespace_only(self, parser: LogParser) -> None:
+    def test_parse_whitespace_only(self, parser: ParserSession) -> None:
         """Test parsing whitespace-only line returns None."""
         result = parser.parse_line("   \t\n   ")
         assert result is None
 
-    def test_parse_invalid_line(self, parser: LogParser) -> None:
+    def test_parse_invalid_line(self, parser: ParserSession) -> None:
         """Test parsing line with no matching pattern returns None."""
         result = parser.parse_line("This is not a valid log line")
         assert result is None
 
-    def test_parse_line_without_timestamp(self, parser: LogParser) -> None:
+    def test_parse_line_without_timestamp(self, parser: ParserSession) -> None:
         """Test parsing line without timestamp uses current time."""
         line = "Woo attacks Goblin: *hit*: (14 + 5 = 19)"
         result = parser.parse_line(line)
@@ -778,7 +778,7 @@ class TestEdgeCases:
 
     def test_parse_line_with_malformed_timestamp_uses_single_cached_fallback_now(
         self,
-        parser: LogParser,
+        parser: ParserSession,
         monkeypatch,
     ) -> None:
         """Malformed timestamps should call datetime.now() only once per line parse."""
@@ -800,7 +800,7 @@ class TestEdgeCases:
         assert result.timestamp == FixedDatetime(2026, 3, 9, 12, 0, 0)
         assert calls == 1
 
-    def test_parse_malformed_damage_breakdown(self, parser: LogParser) -> None:
+    def test_parse_malformed_damage_breakdown(self, parser: ParserSession) -> None:
         """Test parsing malformed damage breakdown."""
         result = parser.parse_damage_breakdown("Invalid 50 Stuff")
         # Should handle gracefully, returning what it can parse
@@ -810,7 +810,7 @@ class TestEdgeCases:
 class TestDeathSnippetParsing:
     """Test suite for death snippet extraction behavior."""
 
-    def test_prayer_line_triggers_death_snippet_event(self, parser: LogParser) -> None:
+    def test_prayer_line_triggers_death_snippet_event(self, parser: ParserSession) -> None:
         parser.parse_line(
             "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:34] HYDROXYS THE TRAVELER OF PLANES attacks Woo Wildrock: *hit*: (10 + 60 = 70)"
         )
@@ -836,7 +836,7 @@ class TestDeathSnippetParsing:
         # Case-sensitive matching: lower-case name line should not be included.
         assert "woo wildrock attacks" not in snippet_joined
 
-    def test_prayer_line_without_recent_kill_within_cap_returns_none(self, parser: LogParser) -> None:
+    def test_prayer_line_without_recent_kill_within_cap_returns_none(self, parser: ParserSession) -> None:
         parser.parse_line(
             "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:30] Monster killed Hero"
         )
@@ -850,7 +850,7 @@ class TestDeathSnippetParsing:
         )
         assert result is None
 
-    def test_death_snippet_uses_exact_token_boundaries_case_sensitive(self, parser: LogParser) -> None:
+    def test_death_snippet_uses_exact_token_boundaries_case_sensitive(self, parser: ParserSession) -> None:
         parser.parse_line("[CHAT WINDOW TEXT] [Tue Jan 13 19:59:30] Orc attacks Ann: *hit*: (10 + 10 = 20)")
         parser.parse_line("[CHAT WINDOW TEXT] [Tue Jan 13 19:59:31] Orc attacks Anna: *hit*: (10 + 10 = 20)")
         parser.parse_line("[CHAT WINDOW TEXT] [Tue Jan 13 19:59:32] Orc killed Ann")
@@ -864,7 +864,7 @@ class TestDeathSnippetParsing:
         assert "Orc attacks Ann" in snippet_joined
         assert "Orc attacks Anna" not in snippet_joined
 
-    def test_whisper_identifies_character_name_and_emits_event(self, parser: LogParser) -> None:
+    def test_whisper_identifies_character_name_and_emits_event(self, parser: ParserSession) -> None:
         result = parser.parse_line(
             "[CHAT WINDOW TEXT] [Sat Mar  7 17:53:39] Woo Wildrock: [Whisper] wooparseme"
         )
@@ -874,7 +874,7 @@ class TestDeathSnippetParsing:
         assert result.character_name == "Woo Wildrock"
         assert parser.death_character_name == "Woo Wildrock"
 
-    def test_whisper_token_matching_is_case_insensitive(self, parser: LogParser) -> None:
+    def test_whisper_token_matching_is_case_insensitive(self, parser: ParserSession) -> None:
         result = parser.parse_line(
             "[CHAT WINDOW TEXT] [Sat Mar  7 17:53:39] Woo Wildrock: [Whisper] WoOPaRsEmE"
         )
@@ -882,7 +882,7 @@ class TestDeathSnippetParsing:
         assert result.type == "death_character_identified"
         assert result.character_name == "Woo Wildrock"
 
-    def test_character_known_uses_killed_line_and_ignores_fallback(self, parser: LogParser) -> None:
+    def test_character_known_uses_killed_line_and_ignores_fallback(self, parser: ParserSession) -> None:
         parser.set_death_character_name("Woo Wildrock")
         parser.parse_line(
             "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:34] HYDROXYS attacks Woo Wildrock: *hit*: (10 + 60 = 70)"
@@ -902,14 +902,14 @@ class TestDeathSnippetParsing:
         )
         assert fallback_event is None
 
-    def test_character_known_requires_case_sensitive_target_match(self, parser: LogParser) -> None:
+    def test_character_known_requires_case_sensitive_target_match(self, parser: ParserSession) -> None:
         parser.set_death_character_name("Woo Wildrock")
         result = parser.parse_line(
             "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] HYDROXYS killed woo wildrock"
         )
         assert result is None
 
-    def test_fallback_line_can_be_customized(self, parser: LogParser) -> None:
+    def test_fallback_line_can_be_customized(self, parser: ParserSession) -> None:
         parser.set_death_fallback_line("You have fallen.")
         parser.parse_line(
             "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:34] HYDROXYS killed Woo Wildrock"

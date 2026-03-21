@@ -5,7 +5,7 @@ which parses game logs to track damage, DPS, AB, AC, Saves and Damage Immunities
 
 Main modules:
     - models: Data model classes (EnemySaves, EnemyAC, DamageEvent, AttackEvent)
-    - parser: LogParser for regex-based log line parsing
+    - parser: ParserSession and LineParser for log line parsing
     - storage: DataStore for in-memory data management
     - monitor: LogDirectoryMonitor for log file monitoring and polling
     - ui: User interface components
@@ -22,7 +22,7 @@ from .models import (
     DamageEvent,
     AttackEvent,
 )
-from .parser import LogParser
+from .parser import LineParser, ParserSession
 from .storage import DataStore
 from .monitor import LogDirectoryMonitor
 from .utils import parse_and_import_file
@@ -33,7 +33,8 @@ __all__ = [
     'EnemyAC',
     'DamageEvent',
     'AttackEvent',
-    'LogParser',
+    'LineParser',
+    'ParserSession',
     'DataStore',
     'LogDirectoryMonitor',
     'parse_and_import_file',

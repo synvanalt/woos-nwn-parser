@@ -57,6 +57,10 @@ class ParserSession:
     def parse_immunity(self, value: bool) -> None:
         self.line_parser.parse_immunity = bool(value)
 
+    def parse_damage_breakdown(self, breakdown_str: str) -> Dict[str, int]:
+        """Delegate damage-breakdown parsing to the pure line parser."""
+        return self.line_parser.parse_damage_breakdown(breakdown_str)
+
     def _resolve_year(self, month: int) -> int:
         if self._last_timestamp_year is None:
             year = self._anchor_year

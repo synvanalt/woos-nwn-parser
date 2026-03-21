@@ -1,7 +1,7 @@
 """P2 low-complexity branch tests for parser, models, and formatters."""
 
 from app.models import EnemyAC, EnemySaves
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.parsed_events import AttackMissEvent
 from app.ui.formatters import get_default_log_directory
 import app.ui.formatters as formatters_module
@@ -27,7 +27,7 @@ def test_enemy_ac_warning_estimate_branch_for_conflicting_state() -> None:
 
 
 def test_parser_attacker_miss_chance_emits_miss_without_ac_tracking() -> None:
-    parser = LogParser()
+    parser = ParserSession()
     line = (
         "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] "
         "Woo attacks Goblin: *attacker miss chance: 50%*: (12 + 5 = 17)"

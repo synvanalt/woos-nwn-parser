@@ -13,7 +13,7 @@ from unittest.mock import Mock
 import pytest
 
 import app.ui.controllers.monitor_controller as monitor_module
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.parsed_events import AttackHitEvent, DamageDealtEvent
 from app.services import QueueProcessor
 from app.storage import DataStore
@@ -101,7 +101,7 @@ def _build_harness() -> tuple[QueueDrainController, RefreshCoordinator, MonitorC
     root.after = after_recorder.after
     root.after_cancel = after_recorder.after_cancel
 
-    parser = LogParser(parse_immunity=False)
+    parser = ParserSession(parse_immunity=False)
     data_store = DataStore()
     queue_processor = QueueProcessor(data_store, parser)
     data_queue: queue.Queue = queue.Queue(maxsize=WoosNwnParserApp.DATA_QUEUE_MAXSIZE)
