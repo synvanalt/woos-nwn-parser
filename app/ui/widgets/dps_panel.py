@@ -9,7 +9,7 @@ from tkinter import ttk
 from typing import Any, Iterable, Optional
 
 from ...storage import DataStore
-from ...services import DPSCalculationService
+from ...services.queries import DpsQueryService
 from ..formatters import damage_type_to_color, apply_tag_to_tree, format_time
 from ..tooltips import TooltipManager
 from .sorted_treeview import SortedTreeview
@@ -30,7 +30,7 @@ class DPSPanel(ttk.Frame):
         self,
         parent: ttk.Notebook,
         data_store: DataStore,
-        dps_service: DPSCalculationService,
+        dps_query_service: DpsQueryService,
         tooltip_manager: Optional[TooltipManager] = None,
     ) -> None:
         """Initialize the DPS panel.
@@ -38,11 +38,11 @@ class DPSPanel(ttk.Frame):
         Args:
             parent: Parent notebook widget
             data_store: Reference to the data store
-            dps_service: Reference to the DPS calculation service
+            dps_query_service: Reference to the DPS query service
         """
         super().__init__(parent, padding="10")
         self.data_store = data_store
-        self.dps_service = dps_service
+        self.dps_query_service = dps_query_service
         self.tooltip_manager = tooltip_manager
         # Cache for incremental updates
         self._cached_data: dict = {}  # character -> {dps, total_damage, hit_rate, time}
@@ -54,6 +54,7 @@ class DPSPanel(ttk.Frame):
         self._cached_breakdown_tokens: dict[str, tuple[tuple[str, int], ...]] = {}
         self._cached_order_token: tuple[str, ...] = ()
         self._last_refresh_version: int = -1
+        self._last_refresh_used_store_query: bool = False
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -155,12 +156,13 @@ class DPSPanel(ttk.Frame):
         selected_target = self.target_filter_var.get()
         view_key = (
             selected_target,
-            self.dps_service.time_tracking_mode,
-            self.dps_service.global_start_time,
+            self.dps_query_service.time_tracking_mode,
+            self.dps_query_service.global_start_time,
         )
         current_version = self.data_store.version
+        uses_store_query = self._can_use_store_version_fast_path()
         if (
-            self._can_use_store_version_fast_path()
+            self._last_refresh_used_store_query
             and
             self._cached_view_key == view_key
             and self._last_refresh_version == current_version
@@ -168,7 +170,7 @@ class DPSPanel(ttk.Frame):
         ):
             return
 
-        dps_list = self.dps_service.get_dps_display_data(target_filter=selected_target)
+        dps_list = self.dps_query_service.get_dps_display_data(target_filter=selected_target)
         natural_order = self._is_natural_order_active()
         order_token = tuple(item["character"] for item in dps_list)
         characters_in_view = set(order_token)
@@ -208,6 +210,7 @@ class DPSPanel(ttk.Frame):
             self._cached_row_tokens = new_row_tokens
             self._cached_breakdown_tokens = new_breakdown_tokens
             self._last_refresh_version = current_version
+            self._last_refresh_used_store_query = uses_store_query
             return
 
         new_data = {
@@ -253,14 +256,15 @@ class DPSPanel(ttk.Frame):
         self._cached_view_key = view_key
         self._cached_order_token = order_token
         self._last_refresh_version = current_version
+        self._last_refresh_used_store_query = uses_store_query
 
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether the service output is controlled by the store/version state."""
-        service_method = getattr(self.dps_service, "get_dps_display_data", None)
+        service_method = getattr(self.dps_query_service, "get_dps_display_data", None)
         return (
-            getattr(service_method, "__self__", None) is self.dps_service
+            getattr(service_method, "__self__", None) is self.dps_query_service
             and getattr(service_method, "__func__", None)
-            is DPSCalculationService.get_dps_display_data
+            is DpsQueryService.get_dps_display_data
         )
 
     def _is_natural_order_active(self) -> bool:
@@ -292,7 +296,7 @@ class DPSPanel(ttk.Frame):
         if not requested_characters:
             return {}
 
-        breakdowns_by_character = self.dps_service.get_damage_type_breakdowns(
+        breakdowns_by_character = self.dps_query_service.get_damage_type_breakdowns(
             requested_characters,
             selected_target,
         )
@@ -535,6 +539,7 @@ class DPSPanel(ttk.Frame):
         self._cached_breakdown_tokens.clear()
         self._cached_order_token = ()
         self._last_refresh_version = -1
+        self._last_refresh_used_store_query = False
 
     def reset_target_filter(self) -> None:
         """Reset the target filter selection to default 'All'."""

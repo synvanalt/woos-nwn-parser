@@ -11,7 +11,7 @@ from app.settings import get_settings_path
 from app.parser import LogParser
 from app.storage import DataStore
 from app.monitor import LogDirectoryMonitor
-from app.services.dps_service import DPSCalculationService
+from app.services.queries import DpsQueryService, ImmunityQueryService, TargetSummaryQueryService
 from app.services.queue_processor import QueueProcessor
 
 
@@ -132,9 +132,21 @@ def data_store() -> DataStore:
 
 
 @pytest.fixture
-def dps_service(data_store: DataStore) -> DPSCalculationService:
-    """Create a DPSCalculationService instance for testing."""
-    return DPSCalculationService(data_store)
+def dps_query_service(data_store: DataStore) -> DpsQueryService:
+    """Create a DpsQueryService instance for testing."""
+    return DpsQueryService(data_store)
+
+
+@pytest.fixture
+def target_summary_query_service(data_store: DataStore) -> TargetSummaryQueryService:
+    """Create a TargetSummaryQueryService instance for testing."""
+    return TargetSummaryQueryService(data_store)
+
+
+@pytest.fixture
+def immunity_query_service(data_store: DataStore) -> ImmunityQueryService:
+    """Create an ImmunityQueryService instance for testing."""
+    return ImmunityQueryService(data_store)
 
 
 @pytest.fixture

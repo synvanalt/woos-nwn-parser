@@ -8,6 +8,7 @@ from typing import Any, Optional
 from tkinter import ttk
 
 from ...storage import DataStore
+from ...services.queries import TargetSummaryQueryService
 from ..tooltips import TooltipManager
 from .sorted_treeview import SortedTreeview
 
@@ -26,7 +27,7 @@ class TargetStatsPanel(ttk.Frame):
         self,
         parent: ttk.Notebook,
         data_store: DataStore,
-        parser=None,
+        target_summary_query_service: TargetSummaryQueryService,
         tooltip_manager: Optional[TooltipManager] = None,
     ) -> None:
         """Initialize the target stats panel.
@@ -34,17 +35,18 @@ class TargetStatsPanel(ttk.Frame):
         Args:
             parent: Parent notebook widget
             data_store: Reference to the data store
-            parser: Legacy argument (unused); retained for compatibility
+            target_summary_query_service: Read-side query service for target rows
         """
         super().__init__(parent, padding="10")
         self.data_store = data_store
-        self.parser = parser
+        self.target_summary_query_service = target_summary_query_service
         self.tooltip_manager = tooltip_manager
         self._cached_rows: dict = {}
         self._item_ids: dict = {}
         self._cached_row_tokens: dict[str, tuple[Any, ...]] = {}
         self._cached_order_token: tuple[str, ...] = ()
         self._last_refresh_version: int = -1
+        self._last_refresh_used_store_query: bool = False
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -80,15 +82,16 @@ class TargetStatsPanel(ttk.Frame):
     def refresh(self) -> None:
         """Refresh the target stats display with current data."""
         current_version = self.data_store.version
+        uses_store_query = self._can_use_store_version_fast_path()
         if (
-            self._can_use_store_version_fast_path()
+            self._last_refresh_used_store_query
             and self._last_refresh_version == current_version
             and self._item_ids
             and self._is_natural_order_active()
         ):
             return
 
-        summary_data = self.data_store.get_all_targets_summary()
+        summary_data = self.target_summary_query_service.get_all_targets_summary()
         natural_order = self._is_natural_order_active()
         order_token = tuple(item["target"] for item in summary_data)
         new_rows = {
@@ -122,6 +125,7 @@ class TargetStatsPanel(ttk.Frame):
             self._cached_row_tokens = new_row_tokens
             self._cached_order_token = order_token
             self._last_refresh_version = current_version
+            self._last_refresh_used_store_query = uses_store_query
             return
 
         if needs_full_refresh:
@@ -132,14 +136,15 @@ class TargetStatsPanel(ttk.Frame):
         self._cached_row_tokens = new_row_tokens
         self._cached_order_token = order_token
         self._last_refresh_version = current_version
+        self._last_refresh_used_store_query = uses_store_query
 
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether refresh data is sourced from the live store method."""
-        store_method = getattr(self.data_store, "get_all_targets_summary", None)
+        service_method = getattr(self.target_summary_query_service, "get_all_targets_summary", None)
         return (
-            getattr(store_method, "__self__", None) is self.data_store
-            and getattr(store_method, "__func__", None)
-            is DataStore.get_all_targets_summary
+            getattr(service_method, "__self__", None) is self.target_summary_query_service
+            and getattr(service_method, "__func__", None)
+            is TargetSummaryQueryService.get_all_targets_summary
         )
 
     def _is_natural_order_active(self) -> bool:
@@ -169,6 +174,7 @@ class TargetStatsPanel(ttk.Frame):
         self._cached_row_tokens.clear()
         self._cached_order_token = ()
         self._last_refresh_version = -1
+        self._last_refresh_used_store_query = False
 
     def _full_refresh(self, summary_data: list[dict]) -> None:
         """Rebuild the tree when targets are added, removed, or reordered."""

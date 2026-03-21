@@ -8,6 +8,7 @@ from unittest.mock import Mock
 from datetime import datetime, timedelta
 from queue import Queue
 
+from app.services.queries import DpsQueryService
 from app.services.queue_processor import QueueProcessor
 from app.storage import DataStore
 from app.parser import LogParser
@@ -17,6 +18,20 @@ from tests.helpers.parsed_event_factories import (
     damage_event,
     immunity_event,
 )
+
+
+def _matcher(processor: QueueProcessor):
+    return processor.ingestion_engine._matcher
+
+
+def _damage_buffer(processor: QueueProcessor) -> dict:
+    matcher = _matcher(processor)
+    return {} if matcher is None else matcher.latest_damage_by_target
+
+
+def _pending_immunity_queue(processor: QueueProcessor) -> dict:
+    matcher = _matcher(processor)
+    return {} if matcher is None else matcher.pending_immunity_queue
 
 
 class TestQueueProcessor(unittest.TestCase):
@@ -36,8 +51,8 @@ class TestQueueProcessor(unittest.TestCase):
         self.assertIsNotNone(self.processor)
         self.assertEqual(self.processor.data_store, self.data_store)
         self.assertEqual(self.processor.parser, self.parser)
-        self.assertEqual(len(self.processor.damage_buffer), 0)
-        self.assertEqual(len(self.processor.pending_immunity_queue), 0)
+        self.assertEqual(len(_damage_buffer(self.processor)), 0)
+        self.assertEqual(len(_pending_immunity_queue(self.processor)), 0)
 
     def test_process_empty_queue(self) -> None:
         """Test processing an empty queue does nothing."""
@@ -79,8 +94,9 @@ class TestQueueProcessor(unittest.TestCase):
 
         self.processor.process_queue(self.queue, Mock())
 
-        self.assertIn('TestTarget', self.processor.pending_immunity_queue)
-        self.assertIn('Fire', self.processor.pending_immunity_queue['TestTarget'])
+        pending_queue = _pending_immunity_queue(self.processor)
+        self.assertIn('TestTarget', pending_queue)
+        self.assertIn('Fire', pending_queue['TestTarget'])
 
     def test_immunity_with_matching_damage(self) -> None:
         """Test processing immunity event with matching recent damage."""
@@ -131,14 +147,16 @@ class TestQueueProcessor(unittest.TestCase):
         now = datetime.now()
         old_time = now - timedelta(seconds=10)
 
-        self.processor.immunity_matcher.queue_immunity(
+        matcher = _matcher(self.processor)
+        assert matcher is not None
+        matcher.queue_immunity(
             target='OldTarget',
             damage_type='Fire',
             immunity_points=10,
             timestamp=old_time,
             line_number=1,
         )
-        self.processor.immunity_matcher.queue_immunity(
+        matcher.queue_immunity(
             target='NewTarget',
             damage_type='Ice',
             immunity_points=15,
@@ -148,8 +166,9 @@ class TestQueueProcessor(unittest.TestCase):
 
         self.processor.cleanup_stale_immunities(max_age_seconds=5.0)
 
-        self.assertNotIn('OldTarget', self.processor.pending_immunity_queue)
-        self.assertIn('NewTarget', self.processor.pending_immunity_queue)
+        pending_queue = _pending_immunity_queue(self.processor)
+        self.assertNotIn('OldTarget', pending_queue)
+        self.assertIn('NewTarget', pending_queue)
 
     def test_critical_hit_event(self) -> None:
         """Test processing critical_hit event."""
@@ -180,9 +199,10 @@ class TestQueueProcessor(unittest.TestCase):
         )
         self.processor.process_queue(self.queue, Mock())
 
-        self.assertIn('TestTarget', self.processor.damage_buffer)
+        damage_buffer = _damage_buffer(self.processor)
+        self.assertIn('TestTarget', damage_buffer)
         self.assertEqual(
-            self.processor.damage_buffer['TestTarget']['damage_types'],
+            damage_buffer['TestTarget']['damage_types'],
             {'Piercing': 50, 'Fire': 50},
         )
 
@@ -228,7 +248,7 @@ class TestQueueProcessorIntegration(unittest.TestCase):
         )
         self.processor.process_queue(self.queue, Mock())
 
-        dps_data = self.data_store.get_dps_data()
+        dps_data = DpsQueryService(self.data_store).get_dps_data()
         self.assertTrue(any(d['character'] == 'Rogue' for d in dps_data))
 
 

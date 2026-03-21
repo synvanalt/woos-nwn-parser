@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 
+from app.services.queries import DpsQueryService
 from app.storage import DataStore
 from tests.helpers.store_mutations import apply, attack, damage_row, dps_update
 
@@ -153,7 +154,10 @@ class TestEventIndices:
             dps_update(attacker="Ally", total_damage=30, timestamp=now + timedelta(seconds=1), damage_types={"Fire": 30}),
         )
 
-        dps_list = store.get_dps_data_for_target("Goblin", "per_character")
+        dps_list = DpsQueryService(store).get_dps_data(
+            target="Goblin",
+            time_tracking_mode="per_character",
+        )
 
         assert len(dps_list) == 2
         assert any(d["character"] == "Woo" for d in dps_list)

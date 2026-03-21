@@ -4,7 +4,7 @@ from tkinter import ttk
 
 import pytest
 
-from app.services.dps_service import DPSCalculationService
+from app.services.queries import DpsQueryService, ImmunityQueryService, TargetSummaryQueryService
 from app.storage import DataStore
 from app.ui.widgets.debug_console_panel import DebugConsolePanel
 from app.ui.widgets.death_snippet_panel import DeathSnippetPanel
@@ -38,7 +38,8 @@ def notebook(shared_tk_root):
 
 def test_dps_panel_registers_only_configured_widget_tooltips(notebook) -> None:
     recorder = _TooltipRecorder()
-    panel = DPSPanel(notebook, DataStore(), DPSCalculationService(DataStore()), tooltip_manager=recorder)
+    store = DataStore()
+    panel = DPSPanel(notebook, store, DpsQueryService(store), tooltip_manager=recorder)
 
     assert len(recorder.calls) == 2
     assert all("DPS" in call[2] or "target" in call[2].lower() for call in recorder.calls)
@@ -51,8 +52,14 @@ def test_dps_panel_registers_only_configured_widget_tooltips(notebook) -> None:
 def test_immunity_panel_registers_two_tooltips(notebook) -> None:
     recorder = _TooltipRecorder()
     parser = type("ParserStub", (), {"parse_immunity": True})()
-
-    ImmunityPanel(notebook, DataStore(), parser, tooltip_manager=recorder)
+    store = DataStore()
+    ImmunityPanel(
+        notebook,
+        store,
+        parser,
+        ImmunityQueryService(store),
+        tooltip_manager=recorder,
+    )
 
     assert len(recorder.calls) == 2
 

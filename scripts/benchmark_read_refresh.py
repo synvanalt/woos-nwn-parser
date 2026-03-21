@@ -33,7 +33,9 @@ class RuntimeBindings:
     """Lazy-loaded app symbols for one repo root."""
 
     data_store_cls: type
-    dps_service_cls: type
+    dps_query_service_cls: type
+    target_summary_query_service_cls: type
+    immunity_query_service_cls: type
     parser_cls: type
     parse_and_import_file: Callable[[str, Any, Any], dict[str, Any]]
     damage_mutation_cls: type
@@ -87,14 +89,16 @@ def _load_runtime(repo_root: Path) -> RuntimeBindings:
     sys.path.insert(0, repo_root_str)
 
     storage_mod = importlib.import_module("app.storage")
-    dps_service_mod = importlib.import_module("app.services.dps_service")
+    queries_mod = importlib.import_module("app.services.queries")
     parser_mod = importlib.import_module("app.parser")
     utils_mod = importlib.import_module("app.utils")
     models_mod = importlib.import_module("app.models")
 
     return RuntimeBindings(
         data_store_cls=getattr(storage_mod, "DataStore"),
-        dps_service_cls=getattr(dps_service_mod, "DPSCalculationService"),
+        dps_query_service_cls=getattr(queries_mod, "DpsQueryService"),
+        target_summary_query_service_cls=getattr(queries_mod, "TargetSummaryQueryService"),
+        immunity_query_service_cls=getattr(queries_mod, "ImmunityQueryService"),
         parser_cls=getattr(parser_mod, "LogParser"),
         parse_and_import_file=getattr(utils_mod, "parse_and_import_file"),
         damage_mutation_cls=getattr(models_mod, "DamageMutation"),
@@ -105,25 +109,62 @@ def _load_runtime(repo_root: Path) -> RuntimeBindings:
 
 def _build_store(
     runtime: RuntimeBindings,
-    *,
-    disable_read_cache: bool,
 ) -> Any:
-    if not disable_read_cache:
-        return runtime.data_store_cls()
+    return runtime.data_store_cls()
 
-    class BenchmarkNoReadCacheDataStore(runtime.data_store_cls):
-        """Disable version-keyed read-cache reuse for benchmark comparison."""
 
-        def _ensure_read_caches_current_locked(self) -> None:
-            super()._ensure_read_caches_current_locked()
+def _build_dps_query_service(runtime: RuntimeBindings, store: Any, *, disable_query_cache: bool) -> Any:
+    if not disable_query_cache:
+        return runtime.dps_query_service_cls(store)
+
+    class BenchmarkNoCacheDpsQueryService(runtime.dps_query_service_cls):
+        """Disable query-service cache reuse for benchmark comparison."""
+
+        def _reset_caches_if_needed(self) -> None:
+            super()._reset_caches_if_needed()
             self._dps_data_cache.clear()
-            self._dps_data_for_target_cache.clear()
-            self._dps_breakdown_rows_cache.clear()
-            self._hit_rate_for_damage_dealers_cache.clear()
-            self._all_targets_summary_cache = None
-            self._target_damage_type_summary_cache.clear()
+            self._dps_breakdowns_cache.clear()
+            self._hit_rate_cache.clear()
 
-    return BenchmarkNoReadCacheDataStore()
+    return BenchmarkNoCacheDpsQueryService(store)
+
+
+def _build_target_summary_query_service(
+    runtime: RuntimeBindings,
+    store: Any,
+    *,
+    disable_query_cache: bool,
+) -> Any:
+    if not disable_query_cache:
+        return runtime.target_summary_query_service_cls(store)
+
+    class BenchmarkNoCacheTargetSummaryQueryService(runtime.target_summary_query_service_cls):
+        """Disable target-summary cache reuse for benchmark comparison."""
+
+        def _reset_caches_if_needed(self) -> None:
+            super()._reset_caches_if_needed()
+            self._summary_cache = None
+
+    return BenchmarkNoCacheTargetSummaryQueryService(store)
+
+
+def _build_immunity_query_service(
+    runtime: RuntimeBindings,
+    store: Any,
+    *,
+    disable_query_cache: bool,
+) -> Any:
+    if not disable_query_cache:
+        return runtime.immunity_query_service_cls(store)
+
+    class BenchmarkNoCacheImmunityQueryService(runtime.immunity_query_service_cls):
+        """Disable immunity-summary cache reuse for benchmark comparison."""
+
+        def _reset_caches_if_needed(self) -> None:
+            super()._reset_caches_if_needed()
+            self._summary_cache.clear()
+
+    return BenchmarkNoCacheImmunityQueryService(store)
 
 
 def _import_fixture(
@@ -131,18 +172,17 @@ def _import_fixture(
     fixture_path: Path,
     *,
     parse_immunity: bool,
-    disable_read_cache: bool,
 ) -> tuple[Any, Any]:
     parser = runtime.parser_cls(parse_immunity=parse_immunity)
-    store = _build_store(runtime, disable_read_cache=disable_read_cache)
+    store = _build_store(runtime)
     result = runtime.parse_and_import_file(str(fixture_path), parser, store)
     if not result.get("success"):
         raise RuntimeError(f"Import failed for {fixture_path}: {result.get('error')}")
     return parser, store
 
 
-def _select_primary_target(store: Any) -> Optional[str]:
-    summary = store.get_all_targets_summary()
+def _select_primary_target(target_summary_query_service: Any) -> Optional[str]:
+    summary = target_summary_query_service.get_all_targets_summary()
     if not summary:
         return None
     best_row = max(summary, key=lambda row: int(row.get("damage_taken", "0")))
@@ -162,9 +202,9 @@ def _select_mutation_character(store: Any, service: Any, target: Optional[str]) 
     return "BenchmarkAttacker"
 
 
-def _select_mutation_damage_type(store: Any, target: Optional[str]) -> str:
+def _select_mutation_damage_type(store: Any, immunity_query_service: Any, target: Optional[str]) -> str:
     if target:
-        summary = store.get_target_damage_type_summary(target)
+        summary = immunity_query_service.get_target_damage_type_summary(target)
         if summary:
             return str(summary[0]["damage_type"])
     damage_types = store.get_all_damage_types()
@@ -233,14 +273,14 @@ def _run_dps_target_bundle(service: Any, target: Optional[str]) -> Optional[Refr
     )
 
 
-def _run_target_summary_bundle(store: Any) -> RefreshCounts:
-    return _count_bundle_result(store.get_all_targets_summary())
+def _run_target_summary_bundle(target_summary_query_service: Any) -> RefreshCounts:
+    return _count_bundle_result(target_summary_query_service.get_all_targets_summary())
 
 
-def _run_immunity_target_bundle(store: Any, target: Optional[str]) -> Optional[RefreshCounts]:
+def _run_immunity_target_bundle(immunity_query_service: Any, target: Optional[str]) -> Optional[RefreshCounts]:
     if not target:
         return None
-    counts = _count_bundle_result(store.get_target_damage_type_summary(target))
+    counts = _count_bundle_result(immunity_query_service.get_target_damage_type_summary(target))
     return RefreshCounts(
         rows_seen=counts.rows_seen,
         targets_seen=1,
@@ -249,17 +289,20 @@ def _run_immunity_target_bundle(store: Any, target: Optional[str]) -> Optional[R
 
 
 def _build_bundle_callbacks(
-    store: Any,
-    service: Any,
+    dps_query_service: Any,
+    target_summary_query_service: Any,
+    immunity_query_service: Any,
     target: Optional[str],
 ) -> list[tuple[str, Callable[[], Optional[RefreshCounts]]]]:
     callbacks: list[tuple[str, Callable[[], Optional[RefreshCounts]]]] = [
-        ("dps_all_bundle", lambda: _run_dps_all_bundle(service)),
-        ("target_summary_bundle", lambda: _run_target_summary_bundle(store)),
+        ("dps_all_bundle", lambda: _run_dps_all_bundle(dps_query_service)),
+        ("target_summary_bundle", lambda: _run_target_summary_bundle(target_summary_query_service)),
     ]
     if target:
-        callbacks.append(("dps_target_bundle", lambda: _run_dps_target_bundle(service, target)))
-        callbacks.append(("immunity_target_bundle", lambda: _run_immunity_target_bundle(store, target)))
+        callbacks.append(("dps_target_bundle", lambda: _run_dps_target_bundle(dps_query_service, target)))
+        callbacks.append(
+            ("immunity_target_bundle", lambda: _run_immunity_target_bundle(immunity_query_service, target))
+        )
     return callbacks
 
 
@@ -339,32 +382,56 @@ def _run_case(
     fixture: FixtureInfo,
     *,
     parse_immunity: bool,
-    disable_read_cache: bool,
+    disable_query_cache: bool,
     workload: str,
     bundle_name: str,
     cycles_per_iteration: int,
     iterations: int,
     warmups: int,
-    before_each_cycle_factory: Optional[Callable[[Any, Any, Optional[str]], Callable[[int], None]]] = None,
+    before_each_cycle_factory: Optional[Callable[[Any, Any, Any, Any, Optional[str]], Callable[[int], None]]] = None,
 ) -> dict[str, object]:
     for _ in range(warmups):
         _, warm_store = _import_fixture(
             runtime,
             fixture.path,
             parse_immunity=parse_immunity,
-            disable_read_cache=disable_read_cache,
         )
-        warm_service = runtime.dps_service_cls(warm_store)
-        warm_target = _select_primary_target(warm_store)
+        warm_dps_query_service = _build_dps_query_service(
+            runtime,
+            warm_store,
+            disable_query_cache=disable_query_cache,
+        )
+        warm_target_summary_query_service = _build_target_summary_query_service(
+            runtime,
+            warm_store,
+            disable_query_cache=disable_query_cache,
+        )
+        warm_immunity_query_service = _build_immunity_query_service(
+            runtime,
+            warm_store,
+            disable_query_cache=disable_query_cache,
+        )
+        warm_target = _select_primary_target(warm_target_summary_query_service)
         warm_callback = next(
             callback
-            for name, callback in _build_bundle_callbacks(warm_store, warm_service, warm_target)
+            for name, callback in _build_bundle_callbacks(
+                warm_dps_query_service,
+                warm_target_summary_query_service,
+                warm_immunity_query_service,
+                warm_target,
+            )
             if name == bundle_name
         )
         warm_callback()
         before_each_cycle = None
         if before_each_cycle_factory is not None:
-            before_each_cycle = before_each_cycle_factory(warm_store, warm_service, warm_target)
+            before_each_cycle = before_each_cycle_factory(
+                warm_store,
+                warm_dps_query_service,
+                warm_target_summary_query_service,
+                warm_immunity_query_service,
+                warm_target,
+            )
         _time_bundle(
             warm_callback,
             cycles_per_iteration=cycles_per_iteration,
@@ -378,19 +445,43 @@ def _run_case(
             runtime,
             fixture.path,
             parse_immunity=parse_immunity,
-            disable_read_cache=disable_read_cache,
         )
-        service = runtime.dps_service_cls(store)
-        target = _select_primary_target(store)
+        dps_query_service = _build_dps_query_service(
+            runtime,
+            store,
+            disable_query_cache=disable_query_cache,
+        )
+        target_summary_query_service = _build_target_summary_query_service(
+            runtime,
+            store,
+            disable_query_cache=disable_query_cache,
+        )
+        immunity_query_service = _build_immunity_query_service(
+            runtime,
+            store,
+            disable_query_cache=disable_query_cache,
+        )
+        target = _select_primary_target(target_summary_query_service)
         callback = next(
             callback
-            for name, callback in _build_bundle_callbacks(store, service, target)
+            for name, callback in _build_bundle_callbacks(
+                dps_query_service,
+                target_summary_query_service,
+                immunity_query_service,
+                target,
+            )
             if name == bundle_name
         )
         callback()
         before_each_cycle = None
         if before_each_cycle_factory is not None:
-            before_each_cycle = before_each_cycle_factory(store, service, target)
+            before_each_cycle = before_each_cycle_factory(
+                store,
+                dps_query_service,
+                target_summary_query_service,
+                immunity_query_service,
+                target,
+            )
         result = _time_bundle(
             callback,
             cycles_per_iteration=cycles_per_iteration,
@@ -411,7 +502,7 @@ def _run_case(
     return {
         "file": fixture.path.name,
         "mode": "parse_immunity=on" if parse_immunity else "parse_immunity=off",
-        "read_cache": "off" if disable_read_cache else "on",
+        "query_cache": "off" if disable_query_cache else "on",
         "workload": workload,
         "bundle": bundle_name,
         "min_ms": min(times) * 1000.0,
@@ -512,14 +603,18 @@ def main() -> None:
                 ("steady_state", None),
                 (
                     "live_refresh",
-                    lambda store, service, target, parse_immunity=parse_immunity: (
+                    lambda store, dps_query_service, _target_summary_query_service, immunity_query_service, target, parse_immunity=parse_immunity: (
                         lambda cycle_index: _apply_live_refresh_mutation(
                             runtime,
                             store,
                             parse_immunity=parse_immunity,
                             target=target,
-                            character=_select_mutation_character(store, service, target),
-                            damage_type=_select_mutation_damage_type(store, target),
+                            character=_select_mutation_character(store, dps_query_service, target),
+                            damage_type=_select_mutation_damage_type(
+                                store,
+                                immunity_query_service,
+                                target,
+                            ),
                             cycle_index=cycle_index,
                         )
                     ),
@@ -534,21 +629,42 @@ def main() -> None:
                 runtime,
                 fixture.path,
                 parse_immunity=parse_immunity,
-                disable_read_cache=False,
             )
-            probe_service = runtime.dps_service_cls(probe_store)
-            probe_target = _select_primary_target(probe_store)
-            bundle_names = [name for name, _ in _build_bundle_callbacks(probe_store, probe_service, probe_target)]
+            probe_dps_query_service = _build_dps_query_service(
+                runtime,
+                probe_store,
+                disable_query_cache=False,
+            )
+            probe_target_summary_query_service = _build_target_summary_query_service(
+                runtime,
+                probe_store,
+                disable_query_cache=False,
+            )
+            probe_immunity_query_service = _build_immunity_query_service(
+                runtime,
+                probe_store,
+                disable_query_cache=False,
+            )
+            probe_target = _select_primary_target(probe_target_summary_query_service)
+            bundle_names = [
+                name
+                for name, _ in _build_bundle_callbacks(
+                    probe_dps_query_service,
+                    probe_target_summary_query_service,
+                    probe_immunity_query_service,
+                    probe_target,
+                )
+            ]
 
             for workload_name, before_each_cycle_factory in workloads:
-                for disable_read_cache in (False, True):
+                for disable_query_cache in (False, True):
                     for bundle_name in bundle_names:
                         rows.append(
                             _run_case(
                                 runtime,
                                 fixture,
                                 parse_immunity=parse_immunity,
-                                disable_read_cache=disable_read_cache,
+                                disable_query_cache=disable_query_cache,
                                 workload=workload_name,
                                 bundle_name=bundle_name,
                                 cycles_per_iteration=args.cycles_per_iteration,
@@ -560,12 +676,12 @@ def main() -> None:
 
     paired_medians = {
         (
-            row["file"],
-            row["mode"],
-            row["workload"],
-            row["bundle"],
-            row["read_cache"],
-        ): float(row["median_ms"])
+                row["file"],
+                row["mode"],
+                row["workload"],
+                row["bundle"],
+                row["query_cache"],
+            ): float(row["median_ms"])
         for row in rows
     }
 
@@ -590,7 +706,7 @@ def main() -> None:
         )
         if off_median is None or on_median is None or on_median <= 0:
             row["speedup_vs_off"] = "-"
-        elif row["read_cache"] == "on":
+        elif row["query_cache"] == "on":
             row["speedup_vs_off"] = f"{off_median / on_median:.2f}x"
         else:
             row["speedup_vs_off"] = "1.00x"
@@ -615,7 +731,7 @@ def main() -> None:
     headers = (
         "file",
         "mode",
-        "read_cache",
+        "query_cache",
         "workload",
         "bundle",
         "min_ms",
@@ -634,7 +750,7 @@ def main() -> None:
         formatted = {
             "file": str(row["file"]),
             "mode": str(row["mode"]),
-            "read_cache": str(row["read_cache"]),
+            "query_cache": str(row["query_cache"]),
             "workload": str(row["workload"]),
             "bundle": str(row["bundle"]),
             "min_ms": f"{row['min_ms']:.3f}",

@@ -91,7 +91,7 @@ def test_on_closing_is_reentrant_safe(app_shell) -> None:
 
 
 def test_time_tracking_mode_change_refreshes_when_mode_changes(app_shell) -> None:
-    app_shell.dps_service = Mock(time_tracking_mode="per_character", set_time_tracking_mode=Mock())
+    app_shell.dps_query_service = Mock(time_tracking_mode="per_character", set_time_tracking_mode=Mock())
     app_shell.dps_panel.time_tracking_var = Mock(get=Mock(return_value="Global"))
     app_shell._schedule_session_settings_save = Mock()
     event = Mock(widget=Mock())
@@ -99,13 +99,13 @@ def test_time_tracking_mode_change_refreshes_when_mode_changes(app_shell) -> Non
     app_shell._on_time_tracking_mode_changed(event)
 
     event.widget.selection_clear.assert_called_once_with()
-    app_shell.dps_service.set_time_tracking_mode.assert_called_once_with("global")
+    app_shell.dps_query_service.set_time_tracking_mode.assert_called_once_with("global")
     app_shell._schedule_session_settings_save.assert_called_once_with()
     app_shell.dps_panel.refresh.assert_called_once_with()
 
 
 def test_restore_persisted_dps_panel_state_sets_combobox_label(app_shell) -> None:
-    app_shell.dps_service = Mock(time_tracking_mode="global")
+    app_shell.dps_query_service = Mock(time_tracking_mode="global")
     app_shell.dps_panel.time_tracking_var = Mock()
 
     app_shell._restore_persisted_dps_panel_state()
@@ -145,7 +145,7 @@ def test_init_uses_persisted_settings_over_defaults(monkeypatch) -> None:
     assert app.log_directory == r"C:\persisted_logs"
     assert app._initial_death_fallback_line == "Persisted fallback"
     assert app.parser.parse_immunity is False
-    assert app.dps_service.time_tracking_mode == "global"
+    assert app.dps_query_service.time_tracking_mode == "global"
 
 
 def test_init_defaults_parse_immunity_on_when_setting_missing(monkeypatch) -> None:

@@ -13,7 +13,8 @@ from tkinter import filedialog, font, ttk
 
 from ..parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
 from ..parser import LogParser
-from ..services import DPSCalculationService, QueueProcessor
+from ..services import QueueProcessor
+from ..services.queries import DpsQueryService, ImmunityQueryService, TargetSummaryQueryService
 from ..settings import load_app_settings, save_app_settings
 from ..storage import DataStore
 from .controllers import (
@@ -67,14 +68,15 @@ class WoosNwnParserApp:
         self.parser = LogParser(parse_immunity=True)
         self.data_store = DataStore()
         self.queue_processor = QueueProcessor(self.data_store, self.parser)
-        self.dps_service = DPSCalculationService(self.data_store)
+        self.dps_query_service = DpsQueryService(self.data_store)
+        self.target_summary_query_service = TargetSummaryQueryService(self.data_store)
+        self.immunity_query_service = ImmunityQueryService(self.data_store)
         self.data_queue: queue.Queue = queue.Queue(maxsize=self.DATA_QUEUE_MAXSIZE)
         self.dps_refresh_job = None
 
         self.settings_controller = SessionSettingsController(
             root=self.root,
             parser=self.parser,
-            dps_service=self.dps_service,
             get_log_directory=lambda: self.log_directory,
             get_death_fallback_line=self._get_death_fallback_line_for_settings,
             get_first_timestamp_mode=self._get_current_first_timestamp_mode,
@@ -88,7 +90,7 @@ class WoosNwnParserApp:
 
         persisted_mode = self._settings.first_timestamp_mode
         if persisted_mode is not None:
-            self.dps_service.set_time_tracking_mode(persisted_mode)
+            self.dps_query_service.set_time_tracking_mode(persisted_mode)
 
         configured_log_directory = (self._settings.log_directory or "").strip()
         self.log_directory = configured_log_directory or get_default_log_directory()
@@ -262,7 +264,7 @@ class WoosNwnParserApp:
         self.dps_panel = DPSPanel(
             self.notebook,
             self.data_store,
-            self.dps_service,
+            self.dps_query_service,
             tooltip_manager=self.tooltip_manager,
         )
         self._restore_persisted_dps_panel_state()
@@ -270,13 +272,19 @@ class WoosNwnParserApp:
         self.dps_panel.time_tracking_combo.bind("<<ComboboxSelected>>", self._on_time_tracking_mode_changed)
         self.dps_panel.target_filter_combo.bind("<<ComboboxSelected>>", self._on_target_filter_changed)
 
-        self.stats_panel = TargetStatsPanel(self.notebook, self.data_store, tooltip_manager=self.tooltip_manager)
+        self.stats_panel = TargetStatsPanel(
+            self.notebook,
+            self.data_store,
+            self.target_summary_query_service,
+            tooltip_manager=self.tooltip_manager,
+        )
         self.notebook.add(self.stats_panel, text="Target Stats")
 
         self.immunity_panel = ImmunityPanel(
             self.notebook,
             self.data_store,
             self.parser,
+            self.immunity_query_service,
             tooltip_manager=self.tooltip_manager,
             on_parse_immunity_changed=self._on_parse_immunity_changed,
         )
@@ -403,7 +411,7 @@ class WoosNwnParserApp:
         self.immunity_panel.clear_cache()
         self.dps_panel.clear_cache()
         self.stats_panel.clear_cache()
-        self.dps_service.set_global_start_time(None)
+        self.dps_query_service.set_global_start_time(None)
         self.dps_panel.reset_target_filter()
         self.refresh_targets()
 
@@ -437,9 +445,9 @@ class WoosNwnParserApp:
         event.widget.selection_clear()
         new_mode_display = self.dps_panel.time_tracking_var.get()
         new_mode = new_mode_display.lower().replace(" ", "_")
-        if new_mode == self.dps_service.time_tracking_mode:
+        if new_mode == self.dps_query_service.time_tracking_mode:
             return
-        self.dps_service.set_time_tracking_mode(new_mode)
+        self.dps_query_service.set_time_tracking_mode(new_mode)
         self._schedule_session_settings_save()
         self.log_debug(f"First timestamp mode changed to: {new_mode_display}")
         self.dps_panel.refresh()
@@ -479,7 +487,7 @@ class WoosNwnParserApp:
             "per_character": "Per Character",
             "global": "Global",
         }
-        current_mode = self.dps_service.time_tracking_mode
+        current_mode = self.dps_query_service.time_tracking_mode
         self.dps_panel.time_tracking_var.set(mode_display_by_value.get(current_mode, "Per Character"))
 
     def _get_current_first_timestamp_mode(self) -> str | None:

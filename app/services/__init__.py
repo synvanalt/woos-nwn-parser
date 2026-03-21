@@ -5,7 +5,12 @@ Services can be tested in isolation without Tkinter dependencies.
 """
 
 from .queue_processor import QueueProcessor
-from .dps_service import DPSCalculationService
+from .queries import DpsQueryService, ImmunityQueryService, TargetSummaryQueryService
 
-__all__ = ['QueueProcessor', 'DPSCalculationService']
+__all__ = [
+    'QueueProcessor',
+    'DpsQueryService',
+    'ImmunityQueryService',
+    'TargetSummaryQueryService',
+]
 

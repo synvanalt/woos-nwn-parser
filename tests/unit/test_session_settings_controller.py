@@ -12,7 +12,6 @@ def test_build_settings_reads_current_callbacks() -> None:
     controller = SessionSettingsController(
         root=None,
         parser=parser,
-        dps_service=Mock(),
         get_log_directory=lambda: r"C:\logs",
         get_death_fallback_line=lambda: "fallback line",
         get_first_timestamp_mode=lambda: "global",
@@ -36,7 +35,6 @@ def test_schedule_save_debounces_and_flushes() -> None:
     controller = SessionSettingsController(
         root=root,
         parser=Mock(parse_immunity=True),
-        dps_service=Mock(),
         get_log_directory=lambda: "",
         get_death_fallback_line=lambda: "",
         get_first_timestamp_mode=lambda: "per_character",

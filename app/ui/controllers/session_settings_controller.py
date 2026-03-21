@@ -16,7 +16,6 @@ class SessionSettingsController:
         *,
         root: tk.Misc | None,
         parser,
-        dps_service,
         get_log_directory: Callable[[], str],
         get_death_fallback_line: Callable[[], str],
         get_first_timestamp_mode: Callable[[], str | None],
@@ -26,7 +25,6 @@ class SessionSettingsController:
     ) -> None:
         self.root = root
         self.parser = parser
-        self.dps_service = dps_service
         self.get_log_directory = get_log_directory
         self.get_death_fallback_line = get_death_fallback_line
         self.get_first_timestamp_mode = get_first_timestamp_mode

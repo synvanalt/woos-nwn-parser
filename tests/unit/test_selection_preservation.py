@@ -11,7 +11,7 @@ import pytest
 from datetime import datetime
 
 from app.storage import DataStore
-from app.services import DPSCalculationService
+from app.services.queries import DpsQueryService, ImmunityQueryService, TargetSummaryQueryService
 from app.ui.widgets import DPSPanel, TargetStatsPanel, ImmunityPanel
 from tests.helpers.store_mutations import apply, damage_row, dps_update, immunity
 
@@ -40,8 +40,8 @@ def test_dps_panel_selection_preservation(shared_tk_root, notebook) -> None:
 
     # Setup
     data_store = DataStore()
-    dps_service = DPSCalculationService(data_store)
-    panel = DPSPanel(notebook, data_store, dps_service)
+    dps_query_service = DpsQueryService(data_store)
+    panel = DPSPanel(notebook, data_store, dps_query_service)
 
     # Add some test data using the correct API
     timestamp1 = datetime.now()
@@ -96,7 +96,7 @@ def test_target_stats_panel_selection_preservation(shared_tk_root, notebook) -> 
 
     # Setup
     data_store = DataStore()
-    panel = TargetStatsPanel(notebook, data_store)
+    panel = TargetStatsPanel(notebook, data_store, TargetSummaryQueryService(data_store))
     data_store.record_target_attack_roll("Hero", "Monster1", "hit", 15, 15, 30)
     data_store.record_target_attack_roll("Monster1", "Hero", "hit", 15, 15, 30)
     data_store.record_target_attack_roll("Hero", "Monster2", "hit", 18, 18, 36)
@@ -146,7 +146,12 @@ def test_immunity_panel_selection_preservation(shared_tk_root, notebook) -> None
 
     # Setup
     data_store = DataStore()
-    panel = ImmunityPanel(notebook, data_store, type("ParserStub", (), {"parse_immunity": False})())
+    panel = ImmunityPanel(
+        notebook,
+        data_store,
+        type("ParserStub", (), {"parse_immunity": False})(),
+        ImmunityQueryService(data_store),
+    )
 
     # Add some test data with immunity
     timestamp1 = datetime.now()
@@ -205,7 +210,7 @@ def test_multiple_selection_preservation(shared_tk_root, notebook) -> None:
 
     # Setup Target Stats Panel for multi-select test
     data_store = DataStore()
-    panel = TargetStatsPanel(notebook, data_store)
+    panel = TargetStatsPanel(notebook, data_store, TargetSummaryQueryService(data_store))
 
     # Add test data for multiple targets - Hero attacking multiple Monsters
     for i in range(1, 4):

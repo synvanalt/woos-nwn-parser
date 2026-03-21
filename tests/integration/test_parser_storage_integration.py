@@ -8,6 +8,7 @@ from pathlib import Path
 from datetime import datetime
 
 from app.parser import LogParser
+from app.services.queries import DpsQueryService, TargetSummaryQueryService
 from app.storage import DataStore
 from app.utils import parse_and_import_file
 
@@ -107,7 +108,7 @@ class TestParserStorageIntegration:
         assert result['success'] is True
         assert len(database.attacks) == 3
 
-        summary = database.get_all_targets_summary()
+        summary = TargetSummaryQueryService(database).get_all_targets_summary()
         goblin_summary = next((item for item in summary if item["target"] == "Goblin"), None)
         assert goblin_summary is not None
         assert goblin_summary["ac"] == "16-21"
@@ -127,7 +128,7 @@ class TestParserStorageIntegration:
 
         assert result['success'] is True
 
-        summary = database.get_all_targets_summary()
+        summary = TargetSummaryQueryService(database).get_all_targets_summary()
         goblin_summary = next((item for item in summary if item["target"] == "Goblin"), None)
         assert goblin_summary is not None
         assert goblin_summary["fortitude"] == "5"
@@ -153,7 +154,7 @@ class TestParserStorageIntegration:
         assert "Orc" in targets
 
         # Verify DPS calculations work
-        dps_list = database.get_dps_data(time_tracking_mode="per_character")
+        dps_list = DpsQueryService(database).get_dps_data(time_tracking_mode="per_character")
         assert len(dps_list) > 0
 
     def test_parse_with_player_filter(self, temp_log_dir: Path) -> None:
@@ -210,7 +211,7 @@ class TestParserStorageIntegration:
         assert result['success'] is True
 
         # Get damage breakdown
-        breakdown = database.get_dps_breakdown_by_type("Woo", time_tracking_mode="per_character")
+        breakdown = DpsQueryService(database).get_damage_type_breakdown("Woo")
 
         assert len(breakdown) == 2
 
@@ -266,7 +267,7 @@ class TestParserStorageIntegration:
         assert result['success'] is True
 
         # Get target summary
-        summary = database.get_all_targets_summary()
+        summary = TargetSummaryQueryService(database).get_all_targets_summary()
 
         goblin_summary = next((s for s in summary if s['target'] == 'Goblin'), None)
         assert goblin_summary is not None
@@ -290,7 +291,7 @@ class TestParserStorageIntegration:
         result = parse_and_import_file(str(log_file), parser, database)
 
         assert result['success'] is True
-        summary = database.get_all_targets_summary()
+        summary = TargetSummaryQueryService(database).get_all_targets_summary()
         monk_summary = next((s for s in summary if s['target'] == 'Epic Undead Monk'), None)
 
         assert monk_summary is not None

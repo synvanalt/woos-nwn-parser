@@ -95,7 +95,9 @@ def test_queued_immunity_mismatch_emits_debug_log() -> None:
     damage_type = 'Fire'
     old = datetime.now() - timedelta(seconds=10)
     now = datetime.now()
-    processor.immunity_matcher.queue_immunity(
+    matcher = processor.ingestion_engine._matcher
+    assert matcher is not None
+    matcher.queue_immunity(
         target=target,
         damage_type=damage_type,
         immunity_points=10,

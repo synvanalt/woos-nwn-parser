@@ -27,7 +27,7 @@ from .models import (
 class DataStore:
     """In-memory data store using dataclasses.
 
-    Provides the same interface as the old Database class for easy migration.
+    Owns mutable session state, write-side mutations, and indexed primitive reads.
     All data is stored in memory and lost when the app closes (session-only).
     """
 
@@ -86,25 +86,6 @@ class DataStore:
         self._target_ac_by_name: Dict[str, EnemyAC] = {}
         self._target_saves_by_name: Dict[str, EnemySaves] = {}
         self._target_attack_bonus_by_name: Dict[str, TargetAttackBonus] = {}
-        self._read_cache_version: int = -1
-        self._dps_data_cache: Dict[tuple[str, Optional[datetime]], tuple[Dict[str, Any], ...]] = {}
-        self._dps_data_for_target_cache: Dict[
-            tuple[str, str, Optional[datetime]],
-            tuple[Dict[str, Any], ...],
-        ] = {}
-        self._dps_breakdown_rows_cache: Dict[
-            tuple[Optional[str], str, str, Optional[datetime]],
-            tuple[Dict[str, Any], ...],
-        ] = {}
-        self._hit_rate_for_damage_dealers_cache: Dict[
-            Optional[str],
-            tuple[tuple[str, float], ...],
-        ] = {}
-        self._all_targets_summary_cache: Optional[tuple[Dict[str, str], ...]] = None
-        self._target_damage_type_summary_cache: Dict[
-            str,
-            tuple[Dict[str, int | str | bool], ...],
-        ] = {}
 
     @staticmethod
     def _normalize_history_limit(value: int | None, default: int) -> int:
@@ -416,132 +397,6 @@ class DataStore:
             self._dps_breakdown_dirty_attacker_target.discard(key)
         return self._dps_breakdown_token_by_attacker_target[key]
 
-    def _ensure_read_caches_current_locked(self) -> None:
-        """Reset version-keyed read caches when underlying store version changes."""
-        if self._read_cache_version == self._version:
-            return
-
-        self._read_cache_version = self._version
-        self._dps_data_cache.clear()
-        self._dps_data_for_target_cache.clear()
-        self._dps_breakdown_rows_cache.clear()
-        self._hit_rate_for_damage_dealers_cache.clear()
-        self._all_targets_summary_cache = None
-        self._target_damage_type_summary_cache.clear()
-
-    def _copy_cached_rows(
-        self,
-        rows: tuple[Dict[str, Any], ...],
-    ) -> List[Dict[str, Any]]:
-        """Return defensive copies of cached row dictionaries."""
-        return [row.copy() for row in rows]
-
-    def _resolve_global_start_time_locked(
-        self,
-        target: Optional[str],
-        global_start_time: Optional[datetime],
-    ) -> Optional[datetime]:
-        """Resolve the effective global start time for the requested scope."""
-        if global_start_time is not None:
-            return global_start_time
-        if target is None:
-            return self._earliest_timestamp
-        return self._earliest_timestamp_by_target.get(target)
-
-    def _cache_dps_breakdown_rows_locked(
-        self,
-        *,
-        character: str,
-        target: Optional[str],
-        time_tracking_mode: str,
-        global_start_time: Optional[datetime],
-    ) -> tuple[Dict[str, Any], ...]:
-        """Build and cache one character's damage-type breakdown rows."""
-        self._ensure_read_caches_current_locked()
-        resolved_global_start = self._resolve_global_start_time_locked(
-            target,
-            global_start_time,
-        )
-        cache_key = (target, character, time_tracking_mode, resolved_global_start)
-        cached_rows = self._dps_breakdown_rows_cache.get(cache_key)
-        if cached_rows is not None:
-            return cached_rows
-
-        if target is None:
-            summary = self.dps_data.get(character)
-            if summary is None:
-                cached_rows = ()
-            elif time_tracking_mode == "global":
-                if (
-                    resolved_global_start is None
-                    or self.last_damage_timestamp is None
-                ):
-                    cached_rows = ()
-                else:
-                    time_seconds = max(
-                        (self.last_damage_timestamp - resolved_global_start).total_seconds(),
-                        1,
-                    )
-                    cached_rows = tuple(
-                        self._build_dps_breakdown_rows(
-                            summary.get('damage_by_type', {}),
-                            time_seconds,
-                        )
-                    )
-            else:
-                if self.last_damage_timestamp is None:
-                    cached_rows = ()
-                else:
-                    time_seconds = max(
-                        (
-                            self.last_damage_timestamp - summary['first_timestamp']
-                        ).total_seconds(),
-                        1,
-                    )
-                    cached_rows = tuple(
-                        self._build_dps_breakdown_rows(
-                            summary.get('damage_by_type', {}),
-                            time_seconds,
-                        )
-                    )
-        else:
-            summary = self._dps_by_attacker_target.get((character, target))
-            if summary is None or summary['total_damage'] == 0:
-                cached_rows = ()
-            elif time_tracking_mode == "global":
-                if (
-                    resolved_global_start is None
-                    or self.last_damage_timestamp is None
-                ):
-                    cached_rows = ()
-                else:
-                    time_seconds = max(
-                        (self.last_damage_timestamp - resolved_global_start).total_seconds(),
-                        1,
-                    )
-                    cached_rows = tuple(
-                        self._build_dps_breakdown_rows(
-                            summary['damage_by_type'],
-                            time_seconds,
-                        )
-                    )
-            else:
-                time_seconds = max(
-                    (
-                        summary['last_timestamp'] - summary['first_timestamp']
-                    ).total_seconds(),
-                    1,
-                )
-                cached_rows = tuple(
-                    self._build_dps_breakdown_rows(
-                        summary['damage_by_type'],
-                        time_seconds,
-                    )
-                )
-
-        self._dps_breakdown_rows_cache[cache_key] = cached_rows
-        return cached_rows
-
     def get_earliest_timestamp(self) -> Optional[datetime]:
         """Get the earliest timestamp from all recorded DPS data.
 
@@ -550,177 +405,6 @@ class DataStore:
         """
         with self.lock:
             return self._earliest_timestamp
-
-    def get_dps_data(self, time_tracking_mode: str = "per_character", global_start_time: Optional[datetime] = None) -> List[Dict]:
-        """Get DPS data for all characters, sorted by DPS descending.
-
-        Args:
-            time_tracking_mode: Either "per_character" or "global"
-            global_start_time: Start time for global mode (only used if time_tracking_mode is "global")
-
-        Returns:
-            List of dicts with keys: character, total_damage, time_seconds, dps
-        """
-        with self.lock:
-            self._ensure_read_caches_current_locked()
-
-            # If no damage recorded yet, return empty list
-            if not self.dps_data:
-                return []
-
-            resolved_global_start = self._resolve_global_start_time_locked(
-                None,
-                global_start_time,
-            )
-            cache_key = (time_tracking_mode, resolved_global_start)
-            cached_rows = self._dps_data_cache.get(cache_key)
-            if cached_rows is not None:
-                return self._copy_cached_rows(cached_rows)
-
-            dps_list = []
-
-            if time_tracking_mode == "global":
-                # Global mode: use global start time and global last damage timestamp
-                if resolved_global_start is None:
-                    return dps_list
-
-                # Use the global last damage timestamp (same as per_character mode)
-                if self.last_damage_timestamp is None:
-                    return dps_list
-
-                for character, data in self.dps_data.items():
-                    total_damage = data['total_damage']
-                    time_delta = self.last_damage_timestamp - resolved_global_start
-                    time_seconds = max(time_delta.total_seconds(), 1)  # Avoid division by zero
-
-                    # Calculate DPS
-                    dps = total_damage / time_seconds
-
-                    dps_list.append({
-                        'character': character,
-                        'total_damage': total_damage,
-                        'time_seconds': time_delta,
-                        'dps': dps,
-                        'breakdown_token': self._get_character_breakdown_token(
-                            character,
-                            data.get('damage_by_type', {}),
-                        ),
-                    })
-            else:
-                # Per-character mode (default): use each character's own first timestamp (last timestamp is global)
-                if self.last_damage_timestamp is None:
-                    return dps_list
-
-                for character, data in self.dps_data.items():
-                    total_damage = data['total_damage']
-                    first_ts = data['first_timestamp']
-                    # Use the GLOBAL last damage timestamp, not individual character's
-                    last_ts = self.last_damage_timestamp
-
-                    # Calculate time elapsed in seconds
-                    time_delta = last_ts - first_ts
-                    time_seconds = max(time_delta.total_seconds(), 1)  # Avoid division by zero
-
-                    # Calculate DPS
-                    dps = total_damage / time_seconds
-
-                    dps_list.append({
-                        'character': character,
-                        'total_damage': total_damage,
-                        'time_seconds': time_delta,
-                        'dps': dps,
-                        'breakdown_token': self._get_character_breakdown_token(
-                            character,
-                            data.get('damage_by_type', {}),
-                        ),
-                    })
-
-            # Sort by DPS descending
-            dps_list.sort(key=lambda x: x['dps'], reverse=True)
-            cached_rows = tuple(row.copy() for row in dps_list)
-            self._dps_data_cache[cache_key] = cached_rows
-            return self._copy_cached_rows(cached_rows)
-
-    def get_dps_breakdown_by_type(self, character: str, time_tracking_mode: str = "per_character", global_start_time: Optional[datetime] = None) -> List[Dict]:
-        """Get DPS breakdown by damage type for a specific character.
-
-        Args:
-            character: Character name to get breakdown for
-            time_tracking_mode: Either "per_character" or "global"
-            global_start_time: Start time for global mode (only used if time_tracking_mode is "global")
-
-        Returns:
-            List of dicts with keys: damage_type, total_damage, dps
-        """
-        return self.get_dps_breakdowns_by_type(
-            [character],
-            target=None,
-            time_tracking_mode=time_tracking_mode,
-            global_start_time=global_start_time,
-        ).get(character, [])
-
-    def get_dps_breakdown_by_type_for_target(self, character: str, target: str, time_tracking_mode: str = "per_character", global_start_time: Optional[datetime] = None) -> List[Dict]:
-        """Get DPS breakdown by damage type for a specific character against a specific target.
-
-        Args:
-            character: Character name to get breakdown for
-            target: Target name to filter by
-            time_tracking_mode: Either "per_character" or "global"
-            global_start_time: Start time for global mode
-
-        Returns:
-            List of dicts with keys: damage_type, total_damage, dps
-        """
-        return self.get_dps_breakdowns_by_type(
-            [character],
-            target=target,
-            time_tracking_mode=time_tracking_mode,
-            global_start_time=global_start_time,
-        ).get(character, [])
-
-    def _build_dps_breakdown_rows(
-        self,
-        damage_by_type: Dict[str, int],
-        time_seconds: float,
-    ) -> List[Dict]:
-        """Build sorted breakdown rows for one damage map."""
-        breakdown = []
-        for damage_type, total_dmg in damage_by_type.items():
-            breakdown.append({
-                'damage_type': damage_type,
-                'total_damage': total_dmg,
-                'dps': total_dmg / time_seconds,
-            })
-
-        breakdown.sort(key=lambda x: x['total_damage'], reverse=True)
-        return breakdown
-
-    def get_dps_breakdowns_by_type(
-        self,
-        characters: List[str],
-        target: Optional[str] = None,
-        time_tracking_mode: str = "per_character",
-        global_start_time: Optional[datetime] = None,
-    ) -> Dict[str, List[Dict]]:
-        """Get DPS breakdowns by damage type for multiple characters in one lock pass."""
-        with self.lock:
-            self._ensure_read_caches_current_locked()
-            unique_characters = list(dict.fromkeys(characters))
-            result: Dict[str, List[Dict]] = {character: [] for character in unique_characters}
-            if not unique_characters:
-                return result
-
-            for character in unique_characters:
-                result[character] = self._copy_cached_rows(
-                    self._cache_dps_breakdown_rows_locked(
-                        character=character,
-                        target=target,
-                        time_tracking_mode=time_tracking_mode,
-                        global_start_time=global_start_time,
-                    )
-                )
-
-            return result
 
     def get_target_resists(self, target: str) -> List[Tuple[str, int, int, int]]:
         """Get aggregated resist data for a specific target.
@@ -891,11 +575,6 @@ class DataStore:
             Dict mapping character name to hit rate percentage (0-100)
         """
         with self.lock:
-            self._ensure_read_caches_current_locked()
-            cached_hit_rates = self._hit_rate_for_damage_dealers_cache.get(target)
-            if cached_hit_rates is not None:
-                return dict(cached_hit_rates)
-
             # Determine which characters dealt damage using cached set when possible
             if target:
                 damage_dealers = self._damage_dealers_by_target.get(target, set())
@@ -929,97 +608,7 @@ class DataStore:
                 attempted = successful + stats['misses']
                 hit_rate = (successful / attempted * 100) if attempted > 0 else 0.0
                 character_hit_rates[attacker] = hit_rate
-
-            cached_hit_rates = tuple(character_hit_rates.items())
-            self._hit_rate_for_damage_dealers_cache[target] = cached_hit_rates
-            return dict(cached_hit_rates)
-
-    def get_dps_data_for_target(self, target: str, time_tracking_mode: str = "per_character", global_start_time: Optional[datetime] = None) -> List[Dict]:
-        """Get DPS data for all characters against a specific target.
-
-        Args:
-            target: Target to filter by
-            time_tracking_mode: Either "per_character" or "global"
-            global_start_time: Start time for global mode (only used if time_tracking_mode is "global")
-
-        Returns:
-            List of dicts with keys: character, total_damage, time_seconds, dps
-        """
-        with self.lock:
-            self._ensure_read_caches_current_locked()
-            resolved_global_start = self._resolve_global_start_time_locked(
-                target,
-                global_start_time,
-            )
-            cache_key = (target, time_tracking_mode, resolved_global_start)
-            cached_rows = self._dps_data_for_target_cache.get(cache_key)
-            if cached_rows is not None:
-                return self._copy_cached_rows(cached_rows)
-
-            dps_list = []
-
-            attackers = self._damage_dealers_by_target.get(target, set())
-            if not attackers:
-                return dps_list
-
-            if time_tracking_mode == "global":
-                # Global mode: use global start time and global last damage timestamp
-                if resolved_global_start is None:
-                    return dps_list
-
-                # Use the global last damage timestamp (same as per_character mode)
-                if self.last_damage_timestamp is None:
-                    return dps_list
-
-                for character in attackers:
-                    summary = self._dps_by_attacker_target.get((character, target))
-                    if summary is None or summary['total_damage'] == 0:
-                        continue
-
-                    time_delta = self.last_damage_timestamp - resolved_global_start
-                    time_seconds = max(time_delta.total_seconds(), 1)
-                    dps = summary['total_damage'] / time_seconds
-
-                    dps_list.append({
-                        'character': character,
-                        'total_damage': summary['total_damage'],
-                        'time_seconds': time_delta,
-                        'dps': dps,
-                        'breakdown_token': self._get_attacker_target_breakdown_token(
-                            (character, target),
-                            summary['damage_by_type'],
-                        ),
-                    })
-            else:
-                # Per-character mode: use each character's first and last damage on this target
-                for character in attackers:
-                    summary = self._dps_by_attacker_target.get((character, target))
-                    if summary is None:
-                        continue
-
-                    if summary['total_damage'] == 0:
-                        continue
-
-                    time_delta = summary['last_timestamp'] - summary['first_timestamp']
-                    time_seconds = max(time_delta.total_seconds(), 1)
-                    dps = summary['total_damage'] / time_seconds
-
-                    dps_list.append({
-                        'character': character,
-                        'total_damage': summary['total_damage'],
-                        'time_seconds': time_delta,
-                        'dps': dps,
-                        'breakdown_token': self._get_attacker_target_breakdown_token(
-                            (character, target),
-                            summary['damage_by_type'],
-                        ),
-                    })
-
-            # Sort by DPS descending
-            dps_list.sort(key=lambda x: x['dps'], reverse=True)
-            cached_rows = tuple(row.copy() for row in dps_list)
-            self._dps_data_for_target_cache[cache_key] = cached_rows
-            return self._copy_cached_rows(cached_rows)
+            return character_hit_rates
 
     def get_earliest_timestamp_for_target(self, target: str) -> Optional[datetime]:
         """Get the earliest attack timestamp for a specific target.
@@ -1103,7 +692,6 @@ class DataStore:
             self._target_ac_by_name.clear()
             self._target_saves_by_name.clear()
             self._target_attack_bonus_by_name.clear()
-            self._ensure_read_caches_current_locked()
 
     def close(self) -> None:
         """Close the data store (no-op for in-memory store)."""
@@ -1151,96 +739,6 @@ class DataStore:
             if damage_summary is None:
                 return 0
             return damage_summary['max_damage']
-
-    def get_target_damage_type_summary(self, target: str) -> List[Dict[str, int | str | bool]]:
-        """Get one summary row per damage type seen for a target."""
-        with self.lock:
-            self._ensure_read_caches_current_locked()
-            cached_summary = self._target_damage_type_summary_cache.get(target)
-            if cached_summary is not None:
-                return [row.copy() for row in cached_summary]
-
-            damage_summary = self._damage_summary_by_target.get(target, {})
-            immunity_summary = self.immunity_data.get(target, {})
-
-            if not damage_summary and not immunity_summary:
-                return []
-
-            result: List[Dict[str, int | str | bool]] = []
-            for damage_type in sorted(set(damage_summary) | set(immunity_summary)):
-                damage_info = damage_summary.get(damage_type, {})
-                immunity_info = immunity_summary.get(damage_type, {})
-                max_event_damage = int(damage_info.get('max_damage', 0))
-                max_immunity_damage = int(immunity_info.get('max_damage', 0))
-                sample_count = int(immunity_info.get('sample_count', 0))
-                result.append({
-                    'damage_type': damage_type,
-                    'max_event_damage': max_event_damage,
-                    'max_immunity_damage': max_immunity_damage,
-                    'immunity_absorbed': int(immunity_info.get('max_immunity', 0)),
-                    'sample_count': sample_count,
-                    'suppress_temporary_full_immunity': (
-                        sample_count > 0
-                        and max_immunity_damage == 0
-                        and max_event_damage > 0
-                    ),
-                })
-
-            cached_summary = tuple(row.copy() for row in result)
-            self._target_damage_type_summary_cache[target] = cached_summary
-            return [row.copy() for row in cached_summary]
-
-    def get_all_targets_summary(self, parser: object = None) -> List[Dict]:
-        """Get summary data for all targets with attack bonus, AC, and saves.
-
-        Returns:
-            List of dicts with keys: target, ab, ac, fortitude, reflex, will, damage_taken,
-            Sorted alphabetically by target name
-        """
-        with self.lock:
-            self._ensure_read_caches_current_locked()
-            if self._all_targets_summary_cache is not None:
-                return [row.copy() for row in self._all_targets_summary_cache]
-
-            targets = self._get_sorted_targets_locked()
-            summary = []
-
-            for target in targets:
-                # Get AB from DataStore-owned attack bonus state
-                ab_display = "-"
-                if target in self._target_attack_bonus_by_name:
-                    ab_display = self._target_attack_bonus_by_name[target].get_bonus_display()
-
-                # Get AC from DataStore-owned AC estimation state
-                ac_display = "-"
-                if target in self._target_ac_by_name:
-                    ac_display = self._target_ac_by_name[target].get_ac_estimate()
-
-                # Get saves from DataStore-owned save estimation state
-                fort_display = "-"
-                ref_display = "-"
-                will_display = "-"
-                if target in self._target_saves_by_name:
-                    saves = self._target_saves_by_name[target]
-                    fort_display = str(saves.fortitude) if saves.fortitude is not None else "-"
-                    ref_display = str(saves.reflex) if saves.reflex is not None else "-"
-                    will_display = str(saves.will) if saves.will is not None else "-"
-
-                # Calculate total damage taken by this target
-                damage_taken = self._damage_taken_by_target.get(target, 0)
-
-                summary.append({
-                    'target': target,
-                    'ab': ab_display,
-                    'ac': ac_display,
-                    'fortitude': fort_display,
-                    'reflex': ref_display,
-                    'will': will_display,
-                    'damage_taken': str(damage_taken)
-                })
-
-            self._all_targets_summary_cache = tuple(row.copy() for row in summary)
-            return [row.copy() for row in self._all_targets_summary_cache]
 
     def get_immunity_for_target_and_type(self, target: str, damage_type: str) -> Dict[str, int]:
         """Get immunity data for a specific target and damage type.

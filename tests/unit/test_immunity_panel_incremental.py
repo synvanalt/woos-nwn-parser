@@ -5,6 +5,7 @@ from tkinter import ttk
 from unittest.mock import Mock
 
 from app.parser import LogParser
+from app.services.queries import ImmunityQueryService
 from app.storage import DataStore
 from app.ui.widgets.immunity_panel import ImmunityPanel
 from tests.helpers.store_mutations import apply, damage_row
@@ -19,8 +20,9 @@ def immunity_panel(shared_tk_root):
     notebook = ttk.Notebook(shared_tk_root)
     store = DataStore()
     parser = LogParser()
-    panel = ImmunityPanel(notebook, store, parser)
-    return panel, store, parser
+    query_service = ImmunityQueryService(store)
+    panel = ImmunityPanel(notebook, store, parser, query_service)
+    return panel, store, query_service
 
 
 class TestImmunityPanelIncrementalRefresh:
@@ -56,7 +58,7 @@ class TestImmunityPanelIncrementalRefresh:
         apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
         panel.refresh_target_details("Goblin")
 
-        panel.data_store.get_target_damage_type_summary = Mock(  # type: ignore[assignment]
+        panel.immunity_query_service.get_target_damage_type_summary = Mock(  # type: ignore[assignment]
             side_effect=AssertionError("should not be called")
         )
         panel.refresh_target_details("Goblin")
@@ -96,11 +98,11 @@ class TestImmunityPanelIncrementalRefresh:
             {"damage_type": "Fire", "max_event_damage": 50, "max_immunity_damage": 0, "immunity_absorbed": 0, "sample_count": 0},
         ]
 
-        panel.data_store.get_target_damage_type_summary = lambda _target: initial_summary  # type: ignore[assignment]
+        panel.immunity_query_service.get_target_damage_type_summary = lambda _target: initial_summary  # type: ignore[assignment]
         panel.refresh_target_details("Goblin")
         initial_item_ids = dict(panel._item_ids)
 
-        panel.data_store.get_target_damage_type_summary = lambda _target: reordered_summary  # type: ignore[assignment]
+        panel.immunity_query_service.get_target_damage_type_summary = lambda _target: reordered_summary  # type: ignore[assignment]
         panel.refresh_target_details("Goblin")
 
         ordered_damage_types = [

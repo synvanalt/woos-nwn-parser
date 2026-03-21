@@ -6,13 +6,14 @@
 ## Architecture
 - `app/parser.py`: line parsing and event extraction.
 - `app/monitor.py`: log polling, rotation, and truncation handling.
-- `app/storage.py`: in-memory session store with indices and cached lookups.
+- `app/storage.py`: in-memory session store with indexed mutable state and batched mutations.
 - `app/services/queue_processor.py`: batched queue draining and data-store writes.
-- `app/services/dps_service.py`: DPS and breakdown calculations.
+- `app/services/queries/`: read-side query services for DPS, target summaries, and immunity summaries.
 - `app/ui/`: Tk orchestration and panel refresh logic.
 - `app/utils.py`: historic log import and worker-side parsing helpers.
 
 ## Knowledge Docs
+- `docs/knowledge/architecture.md`: read when you need architecture context, runtime data flow, component ownership, or cross-component integration guidance. When architecture knowledge is needed, use this file as the primary source.
 - `docs/knowledge/immunity-matching.md`: read before changing immunity parsing, matcher heuristics, live/import parity, or `Target Immunities` panel calculation semantics.
 
 ## Performance Rules
@@ -36,3 +37,4 @@
 - Run targeted tests for touched areas.
 - Re-run `python scripts/benchmark_baseline.py` after performance changes.
 - Report benchmark median before/after, not just perceived speedups.
+

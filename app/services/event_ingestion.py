@@ -31,24 +31,6 @@ from .immunity_matcher import ImmunityMatcher
 MatcherFactory = Callable[[], ImmunityMatcher]
 
 
-class _DisabledImmunityMatcher:
-    """Compatibility object for disabled-immunity workflows."""
-
-    def __init__(self) -> None:
-        self.latest_damage_by_target: dict[str, dict[str, object]] = {}
-        self._pending_damage: dict[str, dict[str, object]] = {}
-
-    @property
-    def pending_immunity_queue(self) -> dict[str, dict[str, list[dict[str, object]]]]:
-        return {}
-
-    def cleanup_stale_observations(self, *, max_age_seconds: float = 5.0) -> None:
-        return
-
-    def has_pending_immunity(self, *, target: str, damage_type: str) -> bool:
-        return False
-
-
 @dataclass(slots=True)
 class IngestionResult:
     """Normalized result of consuming one parsed event."""
@@ -72,29 +54,26 @@ class EventIngestionEngine:
         parse_immunity: bool,
         matcher_factory: MatcherFactory = ImmunityMatcher,
     ) -> None:
+        self._matcher_factory = matcher_factory
+        self._parse_immunity = False
+        self._matcher: ImmunityMatcher | None = None
         self.parse_immunity = bool(parse_immunity)
-        self._matcher = matcher_factory() if self.parse_immunity else None
-        self._disabled_matcher = _DisabledImmunityMatcher()
         self._synthetic_line_number = 0
 
     @property
-    def immunity_matcher(self) -> ImmunityMatcher | _DisabledImmunityMatcher:
-        """Expose matcher for compatibility-oriented callers/tests."""
-        return self._matcher if self._matcher is not None else self._disabled_matcher
+    def parse_immunity(self) -> bool:
+        return self._parse_immunity
 
-    @property
-    def damage_buffer(self) -> dict[str, dict[str, object]]:
-        """Compatibility/debug view of recent damage observations."""
-        if self._matcher is None:
-            return self._disabled_matcher.latest_damage_by_target
-        return self._matcher.latest_damage_by_target
-
-    @property
-    def pending_immunity_queue(self) -> dict[str, dict[str, list[dict[str, object]]]]:
-        """Compatibility/debug view of unmatched immunity observations."""
-        if self._matcher is None:
-            return self._disabled_matcher.pending_immunity_queue
-        return self._matcher.pending_immunity_queue
+    @parse_immunity.setter
+    def parse_immunity(self, value: bool) -> None:
+        enabled = bool(value)
+        if enabled == self._parse_immunity:
+            return
+        self._parse_immunity = enabled
+        if enabled:
+            self._matcher = self._matcher_factory()
+        else:
+            self._matcher = None
 
     def consume(self, parsed_event: ParsedEvent) -> IngestionResult:
         """Consume one parsed event and return normalized outputs."""

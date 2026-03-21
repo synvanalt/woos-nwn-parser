@@ -12,6 +12,7 @@
 ### Fixed
 - `Target Immunities` no longer keeps showing a stale temporary `100%` immunity after later hits prove that damage type is being dealt again; those rows now fall back to the real max damage and show `-` for absorbed amount and immunity percentage
 - Choosing a log directory now updates the `File` field more reliably: it shows the newest active NWN log when one exists, shows `N/A` when none exists yet, and automatically starts parsing once a new log file appears while monitoring is on
+- Improved log-monitoring reliability in edge-case file-read scenarios
 
 
 ## [1.6.0] - 2026-03-14
