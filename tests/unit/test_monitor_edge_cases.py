@@ -13,6 +13,7 @@ class _FakeFileHandle:
     def __init__(self, lines: list[str], tell_value: int) -> None:
         self._lines = lines
         self._tell_value = tell_value
+        self._cursor = 0
 
     def __enter__(self):
         return self
@@ -21,10 +22,14 @@ class _FakeFileHandle:
         return False
 
     def seek(self, _pos: int) -> None:
-        return None
+        self._cursor = 0
 
-    def readlines(self) -> list[str]:
-        return self._lines
+    def readline(self) -> str:
+        if self._cursor >= len(self._lines):
+            return ""
+        line = self._lines[self._cursor]
+        self._cursor += 1
+        return line
 
     def tell(self) -> int:
         return self._tell_value
