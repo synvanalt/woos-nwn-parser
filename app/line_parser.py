@@ -114,6 +114,7 @@ class LineParser:
         self._target_concealed_marker = "target concealed:"
         self._save_marker = " Save"
         self._epic_dodge_marker = "Epic Dodge"
+
     @staticmethod
     def normalize_name(value: str) -> str:
         """Trim and normalize a character name string."""

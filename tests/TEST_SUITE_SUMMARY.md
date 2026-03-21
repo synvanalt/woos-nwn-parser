@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 21, 2026 (query-service read split and monitor test-seam cleanup)
+**Last Updated:** March 21, 2026 (parser split cleanup and doc sync)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after the UI-controller test migration and current suite recollection.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **657 tests collected**
+- Result: **660 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 40 modules, 606 tests
+- `tests/unit/`: 40 modules, 609 tests
 - `tests/integration/`: 7 modules, 44 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 48 test modules, 657 tests
+- Total: 48 test modules, 660 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -26,7 +26,7 @@ Notes:
 ### Unit (`tests/unit`)
 - `test_bump_version_script.py` (6)
 - `test_models.py` (56)
-- `test_parser.py` (73)
+- `test_parser.py` (76)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
 - `test_storage.py` (61)
@@ -79,7 +79,7 @@ Notes:
 
 - Parser and models:
   - `test_parser.py`, `test_models.py`, `test_parser_storage_integration.py`
-  - Includes malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, malformed target-concealed fast-path fallback coverage, parser output contracts for store-owned AC/AB/save derivation, whitespace-heavy multi-word damage-breakdown coverage, hot-path regression coverage for threat-roll/basic attack fast paths plus `+`-prefixed ability chains, and explicit AC/AB regression coverage for duplicate-hit invalidation and higher-bonus tie winners
+  - Includes direct `LineParser` coverage for pure damage-breakdown parsing, explicit `ParserSession` coverage for year-rollover and death-correlation behavior, malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, malformed target-concealed fast-path fallback coverage, parser output contracts for store-owned AC/AB/save derivation, hot-path regression coverage for threat-roll/basic attack fast paths plus `+`-prefixed ability chains, and explicit AC/AB regression coverage for duplicate-hit invalidation and higher-bonus tie winners
 - Storage and indexing performance behavior:
   - `test_storage.py`, `test_storage_indices.py`
   - Direct store setup now uses the real public batch API (`DataStore.apply_mutations(...)`) instead of older per-write helper methods
