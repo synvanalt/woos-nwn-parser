@@ -146,17 +146,17 @@ woos-nwn-parser/
 │   ├── constants.py               # Shared constants (damage type palette)
 │   ├── models.py                  # Data models
 │   ├── parser.py                  # Log parsing logic
-│   ├── storage.py                 # Data storage and queries
+│   ├── storage.py                 # Mutable session store and indexed reads
 │   ├── monitor.py                 # File monitoring and rotation
 │   ├── settings.py                # User settings persistence
 │   ├── utils.py                   # Utility functions
 │   ├── assets/                    # Application resources
 │   ├── services/
 │   │   ├── __init__.py
-│   │   ├── dps_service.py         # DPS calculations
 │   │   ├── event_ingestion.py     # Shared parsed-event normalization
 │   │   ├── immunity_matcher.py    # Shared damage/immunity correlation
-│   │   └── queue_processor.py     # Live queue draining and batching
+│   │   ├── queue_processor.py     # Live queue draining and batching
+│   │   └── queries/               # Read-side query services for UI projections
 │   └── ui/
 │       ├── __init__.py
 │       ├── main_window.py         # Main application window
@@ -193,9 +193,9 @@ woos-nwn-parser/
 
 **DataStore** (`storage.py`)
 - Thread-safe in-memory session storage
-- Tracks damage events, attacks, DPS data, and immunities
-- Owns target-stat aggregation (AC/AB/Saves)
-- Provides query methods for UI components
+- Owns mutable indexed combat state and batched mutation application
+- Tracks attacks, damage totals, immunities, and target-stat aggregation (AC/AB/Saves)
+- Owns write-side mutations and indexed primitive reads consumed by query services
 
 **LogDirectoryMonitor** (`monitor.py`)
 - Watches NWN logs directory for changes
@@ -224,10 +224,11 @@ woos-nwn-parser/
 - Owns the transient immunity-matching state used by both live monitoring and historic import
 - Keeps live queue processing and import payload generation aligned through one shared normalization path
 
-**DPSCalculationService** (`services/dps_service.py`)
-- Calculates DPS with configurable time tracking modes
-- Supports target filtering
-- Provides damage type breakdowns
+**Query Services** (`services/queries/`)
+- `DpsQueryService` builds DPS rows, hit-rate display data, and damage-type breakdowns from store indices
+- `TargetSummaryQueryService` builds `Target Stats` rows from indexed target state
+- `ImmunityQueryService` builds `Target Immunities` rows from indexed damage and immunity summaries
+- Keep read-side projection caching out of `DataStore`, while preserving defensive-copy semantics for UI consumers
 
 **WoosNwnParserApp** (`ui/main_window.py`)
 - Wires together parser, storage, widgets, and UI controllers
