@@ -12,7 +12,7 @@ from .parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent, Par
 
 
 class ParserSession:
-    """Stateful parser wrapper around ``LineParser``."""
+    """Stateful parser session built on top of ``LineParser``."""
 
     DEFAULT_DEATH_FALLBACK_LINE = "Your God refuses to hear your prayers!"
 
@@ -56,10 +56,6 @@ class ParserSession:
     @parse_immunity.setter
     def parse_immunity(self, value: bool) -> None:
         self.line_parser.parse_immunity = bool(value)
-
-    def parse_damage_breakdown(self, breakdown_str: str) -> Dict[str, int]:
-        """Delegate damage-breakdown parsing to the pure line parser."""
-        return self.line_parser.parse_damage_breakdown(breakdown_str)
 
     def _resolve_year(self, month: int) -> int:
         if self._last_timestamp_year is None:
@@ -157,7 +153,7 @@ class ParserSession:
             if scanned >= self.death_lookup_killed_lookback_lines:
                 break
             scanned += 1
-            match = self.line_parser.patterns["killed"].search(candidate)
+            match = self.line_parser.match_killed_line(candidate)
             if match:
                 killed_match = match
                 break
@@ -227,11 +223,11 @@ class ParserSession:
                     timestamp = datetime.now()
             return timestamp
 
-        if self.line_parser._whisper_marker in raw_line:
-            whisper_match = self.line_parser.patterns["chat_whisper"].search(raw_line)
+        if self.line_parser.is_whisper_line(raw_line):
+            whisper_match = self.line_parser.match_chat_whisper(raw_line)
             if whisper_match:
                 message = str(whisper_match.group("message")).strip()
-                if message.casefold() == self.line_parser.DEATH_IDENTIFY_TOKEN:
+                if message.casefold() == self.line_parser.death_identify_token:
                     speaker = self.line_parser.normalize_name(str(whisper_match.group("speaker")))
                     if speaker:
                         self.set_death_character_name(speaker)
@@ -241,8 +237,8 @@ class ParserSession:
                             line_number=line_number,
                         )
 
-        if self.line_parser._killed_marker in raw_line and self._death_character_name_normalized:
-            killed_match = self.line_parser.patterns["killed"].search(raw_line)
+        if self.line_parser.is_killed_line(raw_line) and self._death_character_name_normalized:
+            killed_match = self.line_parser.match_killed_line(raw_line)
             if killed_match:
                 dead_target = self.line_parser.normalize_name(str(killed_match.group("target")))
                 if dead_target == self._death_character_name_normalized:

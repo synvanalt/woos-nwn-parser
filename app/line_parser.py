@@ -38,6 +38,8 @@ class LineParser:
     """Stateless single-line parser for combat log syntax."""
 
     DEATH_IDENTIFY_TOKEN = "wooparseme"
+    WHISPER_MARKER = "[Whisper]"
+    KILLED_MARKER = " killed "
 
     def __init__(
         self,
@@ -112,13 +114,31 @@ class LineParser:
         self._target_concealed_marker = "target concealed:"
         self._save_marker = " Save"
         self._epic_dodge_marker = "Epic Dodge"
-        self._killed_marker = " killed "
-        self._whisper_marker = "[Whisper]"
-
     @staticmethod
     def normalize_name(value: str) -> str:
         """Trim and normalize a character name string."""
         return " ".join(value.strip().split())
+
+    @property
+    def death_identify_token(self) -> str:
+        """Return the configured whisper token used for auto-identification."""
+        return self.DEATH_IDENTIFY_TOKEN
+
+    def is_whisper_line(self, raw_line: str) -> bool:
+        """Return True when a raw line could contain a death-identify whisper."""
+        return self.WHISPER_MARKER in raw_line
+
+    def is_killed_line(self, raw_line: str) -> bool:
+        """Return True when a raw line could contain a killed-line marker."""
+        return self.KILLED_MARKER in raw_line
+
+    def match_chat_whisper(self, raw_line: str) -> Optional[re.Match[str]]:
+        """Match a death-identify whisper line."""
+        return self.patterns["chat_whisper"].search(raw_line)
+
+    def match_killed_line(self, raw_line: str) -> Optional[re.Match[str]]:
+        """Match a killed-line entry."""
+        return self.patterns["killed"].search(raw_line)
 
     def extract_timestamp_parts(self, line: str) -> Optional[tuple[int, int, int, int, int]]:
         """Extract month/day/time components without resolving a year."""

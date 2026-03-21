@@ -41,24 +41,24 @@ class TestParserSessionInitialization:
 class TestDamageBreakdownParsing:
     """Test suite for parse_damage_breakdown method."""
 
-    def test_parse_single_damage_type(self, parser: ParserSession) -> None:
+    def test_parse_single_damage_type(self) -> None:
         """Test parsing single damage type."""
-        result = parser.parse_damage_breakdown("50 Physical")
+        result = LineParser().parse_damage_breakdown("50 Physical")
         assert result == {"Physical": 50}
 
-    def test_parse_multiple_damage_types(self, parser: ParserSession) -> None:
+    def test_parse_multiple_damage_types(self) -> None:
         """Test parsing multiple damage types."""
-        result = parser.parse_damage_breakdown("30 Physical 20 Fire")
+        result = LineParser().parse_damage_breakdown("30 Physical 20 Fire")
         assert result == {"Physical": 30, "Fire": 20}
 
-    def test_parse_multiword_damage_types(self, parser: ParserSession) -> None:
+    def test_parse_multiword_damage_types(self) -> None:
         """Test parsing multi-word damage types."""
-        result = parser.parse_damage_breakdown("50 Positive Energy 30 Divine 20 Pure")
+        result = LineParser().parse_damage_breakdown("50 Positive Energy 30 Divine 20 Pure")
         assert result == {"Positive Energy": 50, "Divine": 30, "Pure": 20}
 
-    def test_parse_complex_breakdown(self, parser: ParserSession) -> None:
+    def test_parse_complex_breakdown(self) -> None:
         """Test parsing complex damage breakdown with many types."""
-        result = parser.parse_damage_breakdown(
+        result = LineParser().parse_damage_breakdown(
             "21 Physical 4 Divine 3 Fire 13 Positive Energy 1 Pure 2 Magical"
         )
         assert result == {
@@ -70,19 +70,19 @@ class TestDamageBreakdownParsing:
             "Magical": 2,
         }
 
-    def test_parse_empty_string(self, parser: ParserSession) -> None:
+    def test_parse_empty_string(self) -> None:
         """Test parsing empty damage breakdown."""
-        result = parser.parse_damage_breakdown("")
+        result = LineParser().parse_damage_breakdown("")
         assert result == {}
 
-    def test_parse_with_extra_whitespace(self, parser: ParserSession) -> None:
+    def test_parse_with_extra_whitespace(self) -> None:
         """Test parsing with extra whitespace."""
-        result = parser.parse_damage_breakdown("  30  Physical   20  Fire  ")
+        result = LineParser().parse_damage_breakdown("  30  Physical   20  Fire  ")
         assert result == {"Physical": 30, "Fire": 20}
 
-    def test_parse_multiword_damage_types_with_extra_whitespace(self, parser: ParserSession) -> None:
+    def test_parse_multiword_damage_types_with_extra_whitespace(self) -> None:
         """Whitespace normalization should preserve multi-word damage types."""
-        result = parser.parse_damage_breakdown("  50   Positive   Energy   20   Negative  Energy ")
+        result = LineParser().parse_damage_breakdown("  50   Positive   Energy   20   Negative  Energy ")
         assert result == {"Positive Energy": 50, "Negative Energy": 20}
 
 
@@ -800,9 +800,9 @@ class TestEdgeCases:
         assert result.timestamp == FixedDatetime(2026, 3, 9, 12, 0, 0)
         assert calls == 1
 
-    def test_parse_malformed_damage_breakdown(self, parser: ParserSession) -> None:
+    def test_parse_malformed_damage_breakdown(self) -> None:
         """Test parsing malformed damage breakdown."""
-        result = parser.parse_damage_breakdown("Invalid 50 Stuff")
+        result = LineParser().parse_damage_breakdown("Invalid 50 Stuff")
         # Should handle gracefully, returning what it can parse
         assert isinstance(result, dict)
 
