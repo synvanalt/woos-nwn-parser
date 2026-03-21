@@ -7,6 +7,9 @@ description: Keep this project's release-facing documentation in sync with code 
 
 Use this skill to decide whether `CHANGELOG.md` and `tests/TEST_SUITE_SUMMARY.md` need updates for the current task.
 
+This skill is only for release-facing and test-suite documentation.
+If a task changes internal architecture knowledge, runtime ownership boundaries, or agent-facing source-of-truth docs under `docs/knowledge/` or `AGENTS.md`, use `knowledge-docs-maintenance` as well.
+
 ## Update `tests/TEST_SUITE_SUMMARY.md`
 
 Update `tests/TEST_SUITE_SUMMARY.md` only when the change set modifies existing tests under `tests/` or adds new test files.
