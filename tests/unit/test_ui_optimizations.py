@@ -265,10 +265,10 @@ class TestBatchVisualUpdates:
         from app.ui.widgets.immunity_panel import ImmunityPanel
         from app.services.queries import ImmunityQueryService
         from app.storage import DataStore
-        from app.parser import LogParser
+        from app.parser import ParserSession
 
         data_store = DataStore()
-        parser = LogParser()
+        parser = ParserSession()
 
         # Create a mock notebook
         notebook = ttk.Notebook(shared_tk_root)

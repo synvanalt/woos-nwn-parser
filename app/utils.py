@@ -10,7 +10,7 @@ import time
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
 from .models import StoreMutation
-from .parser import LogParser
+from .parser import ParserSession
 from .parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
 from .services.event_ingestion import EventIngestionEngine, IngestionResult
 from .services.immunity_matcher import ImmunityMatcher
@@ -187,7 +187,7 @@ def parse_and_import_file(
 
     Args:
         file_path: Path to the log file
-        parser: LogParser instance
+        parser: ParserSession instance
         database: DataStore instance
 
     Returns:
@@ -277,7 +277,7 @@ def parse_file_to_ops(
     *,
     parse_immunity: bool = False,
     death_character_name: str = "",
-    death_fallback_line: str = LogParser.DEFAULT_DEATH_FALLBACK_LINE,
+    death_fallback_line: str = ParserSession.DEFAULT_DEATH_FALLBACK_LINE,
     should_abort: Optional[Callable[[], bool]] = None,
 ) -> Dict:
     """Parse a log file and return operation payloads (no datastore mutation)."""
@@ -321,9 +321,9 @@ def _build_import_parser(
     parse_immunity: bool,
     death_character_name: str,
     death_fallback_line: str,
-) -> LogParser:
+) -> ParserSession:
     """Build and configure a parser for import workflows."""
-    parser = LogParser(parse_immunity=parse_immunity)
+    parser = ParserSession(parse_immunity=parse_immunity)
     parser.set_death_character_name(death_character_name)
     parser.set_death_fallback_line(death_fallback_line)
     return parser
@@ -360,7 +360,7 @@ def _append_ingestion_result(
 def _collect_file_ops(
     file_path: str,
     *,
-    parser: LogParser,
+    parser: ParserSession,
     should_abort: Optional[Callable[[], bool]] = None,
 ) -> tuple[int, bool, Dict[str, List[Any]]]:
     """Collect all import operations for a file."""
@@ -410,7 +410,7 @@ def iter_file_ops_chunks(
     *,
     parse_immunity: bool = False,
     death_character_name: str = "",
-    death_fallback_line: str = LogParser.DEFAULT_DEATH_FALLBACK_LINE,
+    death_fallback_line: str = ParserSession.DEFAULT_DEATH_FALLBACK_LINE,
     should_abort: Optional[Callable[[], bool]] = None,
     chunk_size: int = IMPORT_STREAM_CHUNK_SIZE,
 ) -> Iterator[Dict[str, List[Any]]]:
@@ -485,7 +485,7 @@ def import_worker_process(
     abort_event,
     result_queue,
     death_character_name: str = "",
-    death_fallback_line: str = LogParser.DEFAULT_DEATH_FALLBACK_LINE,
+    death_fallback_line: str = ParserSession.DEFAULT_DEATH_FALLBACK_LINE,
 ) -> None:
     """Process target for multiprocessing import pipeline."""
     chunk_size = IMPORT_STREAM_CHUNK_SIZE

@@ -9,7 +9,7 @@ from pathlib import Path
 import tempfile
 
 from app.monitor import LogDirectoryMonitor
-from app.parser import LogParser
+from app.parser import ParserSession
 from tests.conftest import LogMessageCapture
 
 
@@ -32,7 +32,7 @@ def test_real_world_scenario():
         print("Step 2: App starts monitoring")
         monitor = LogDirectoryMonitor(tmpdir)
         monitor.start_monitoring()
-        parser = LogParser(parse_immunity=False)
+        parser = ParserSession(parse_immunity=False)
         data_queue = queue.Queue()
         print(f"  Monitor initialized at position: {monitor.last_position} bytes\n")
 

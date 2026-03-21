@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from app.monitor import LogDirectoryMonitor
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.parsed_events import DamageDealtEvent
 from tests.conftest import LogMessageCapture
 
@@ -29,7 +29,7 @@ class TestMonitorParserIntegration:
         with open(log_file, 'a') as f:
             f.write("[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 50 (50 Physical)\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         monitor.read_new_lines(parser, data_queue, debug_enabled=True)
@@ -65,7 +65,7 @@ class TestFileRotation:
         time.sleep(0.1)
         log2.write_text("Content in log2\n")
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
         log_capture = LogMessageCapture()
 
@@ -96,7 +96,7 @@ class TestFileRotation:
         monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         # Rotate to log2
@@ -125,7 +125,7 @@ class TestFileRotation:
         monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
         log_capture = LogMessageCapture()
 
@@ -170,7 +170,7 @@ class TestFileTruncation:
         # Truncate file
         log_file.write_text("New Line 1\n")
 
-        parser = LogParser(parse_immunity=False)
+        parser = ParserSession(parse_immunity=False)
         data_queue = queue.Queue()
         log_capture = LogMessageCapture()
 
@@ -210,7 +210,7 @@ class TestFileTruncation:
         new_size = log_file.stat().st_size
         assert new_size < initial_position, "Test setup error: file should be smaller"
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         log_capture = LogMessageCapture()
@@ -238,7 +238,7 @@ class TestFileTruncation:
         monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
         log_capture = LogMessageCapture()
 
@@ -280,7 +280,7 @@ class TestRealWorldScenarios:
         monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
-        parser = LogParser(parse_immunity=False)
+        parser = ParserSession(parse_immunity=False)
         data_queue = queue.Queue()
         is_monitoring = True
 
@@ -344,7 +344,7 @@ class TestRealWorldScenarios:
         monitor = LogDirectoryMonitor(str(temp_log_dir))
         monitor.start_monitoring()
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         # Simulate multiple polling cycles
@@ -370,7 +370,7 @@ class TestRealWorldScenarios:
 
         assert monitor.current_log_file is None
 
-        parser = LogParser()
+        parser = ParserSession()
         data_queue = queue.Queue()
 
         # Poll with no files (should not error)

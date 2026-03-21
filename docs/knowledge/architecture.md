@@ -57,7 +57,8 @@ The main live-data path is:
 `monitor -> parser -> queue processor / event ingestion -> DataStore -> query services -> UI panels`
 
 - `LogDirectoryMonitor` tails the active NWN log and feeds raw lines into the parser pipeline.
-- `LogParser` converts lines into typed parsed events.
+- `ParserSession` owns line numbering, year inference, and death-correlation state while routing each raw line through `LineParser`.
+- `LineParser` converts individual lines into typed parsed events for damage, attacks, saves, immunities, and other pure per-line observations.
 - `QueueProcessor` drains parsed events in bounded batches and routes them through `EventIngestionEngine`.
 - `EventIngestionEngine` turns parsed events into normalized store mutations and side events.
 - `DataStore` applies mutations and updates the indexed in-memory session state.
@@ -76,10 +77,15 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 
 ## Key Components
 
-**LogParser** (`parser.py`)
-- Parses NWN combat log lines using regex patterns
-- Emits typed parsed events for damage, attacks, saves, immunity, and death
-- Supports player filtering and immunity parsing toggles
+**ParserSession** (`parser.py`, `parser_session.py`)
+- Owns the stateful parser API used by production code
+- Tracks line numbering, recent-line history, death snippet correlation, fallback death detection, and year rollover inference
+- Exposes the session-level parser controls used by UI and import flows, including immunity parsing and death-snippet settings
+
+**LineParser** (`parser.py`, `line_parser.py`)
+- Owns pure regex and fast-path parsing for individual log lines
+- Emits typed parsed events for damage, attacks, saves, immunities, and epic dodge
+- Provides narrow helper methods used by `ParserSession` for whisper/killed-line recognition without exposing raw parser internals as the session contract
 
 **DataStore** (`storage.py`)
 - Thread-safe in-memory session storage

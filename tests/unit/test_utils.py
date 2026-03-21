@@ -17,7 +17,7 @@ from app.utils import (
     parse_and_import_file,
     import_worker_process,
 )
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.storage import DataStore
 from tests.helpers.store_mutations import apply, damage_row
 
@@ -170,7 +170,7 @@ class TestParseAndImportFile:
 
     def test_parse_valid_log_file(self, sample_combat_session: Path) -> None:
         """Test parsing a valid log file."""
-        parser = LogParser(parse_immunity=True)
+        parser = ParserSession(parse_immunity=True)
         database = DataStore()
 
         result = parse_and_import_file(str(sample_combat_session), parser, database)
@@ -182,7 +182,7 @@ class TestParseAndImportFile:
 
     def test_parse_clears_existing_data(self, sample_combat_session: Path) -> None:
         """Test that parsing with explicit clear removes existing data."""
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         # Add some data
@@ -200,7 +200,7 @@ class TestParseAndImportFile:
 
     def test_parse_tracks_dps_data(self, sample_combat_session: Path) -> None:
         """Test that parsing updates DPS tracking."""
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         parse_and_import_file(str(sample_combat_session), parser, database)
@@ -209,7 +209,7 @@ class TestParseAndImportFile:
 
     def test_parse_tracks_attacks(self, sample_combat_session: Path) -> None:
         """Test that parsing tracks attack events."""
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         parse_and_import_file(str(sample_combat_session), parser, database)
@@ -218,7 +218,7 @@ class TestParseAndImportFile:
 
     def test_parse_nonexistent_file(self) -> None:
         """Test parsing nonexistent file returns error."""
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file("nonexistent.txt", parser, database)
@@ -231,7 +231,7 @@ class TestParseAndImportFile:
         empty_file = temp_log_dir / "empty.txt"
         empty_file.write_text("")
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file(str(empty_file), parser, database)
@@ -247,7 +247,7 @@ class TestParseAndImportFile:
 """
         log_file.write_text(content)
 
-        parser = LogParser(parse_immunity=True)
+        parser = ParserSession(parse_immunity=True)
         database = DataStore()
 
         parse_and_import_file(str(log_file), parser, database)
@@ -267,7 +267,7 @@ class TestParseAndImportFile:
 
         log_file.write_text("".join(lines))
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -284,7 +284,7 @@ class TestParseAndImportFile:
         ]
         log_file.write_text("".join(lines))
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         checks = {'count': 0}
 
@@ -308,7 +308,7 @@ class TestParseAndImportFile:
         """Test parser reports cumulative progress incrementally."""
         log_file = Path(__file__).resolve().parents[1] / "fixtures" / "real_deadwyrm_offhand_crit_mix.txt"
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         progress_updates = []
 

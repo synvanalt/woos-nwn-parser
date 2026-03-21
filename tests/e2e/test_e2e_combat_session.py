@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from datetime import datetime
 
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.storage import DataStore
 from app.services.queries import DpsQueryService, TargetSummaryQueryService
 from app.utils import parse_and_import_file, calculate_immunity_percentage
@@ -38,7 +38,7 @@ class TestCompleteCombatSession:
         log_file.write_text(content)
 
         # Parse with immunity tracking
-        parser = LogParser(parse_immunity=True)
+        parser = ParserSession(parse_immunity=True)
         database = DataStore()
         result = parse_and_import_file(str(log_file), parser, database)
 
@@ -157,7 +157,7 @@ class TestCompleteCombatSession:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
@@ -195,7 +195,7 @@ class TestCompleteCombatSession:
 """
         log_file.write_text(content)
 
-        parser = LogParser(parse_immunity=True)
+        parser = ParserSession(parse_immunity=True)
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
@@ -230,7 +230,7 @@ class TestCompleteCombatSession:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
@@ -248,7 +248,7 @@ class TestCompleteCombatSession:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         parse_and_import_file(str(log_file), parser, database)
 
@@ -284,7 +284,7 @@ This is a completely invalid line
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         result = parse_and_import_file(str(log_file), parser, database)
 
@@ -302,7 +302,7 @@ This is a completely invalid line
         log_file = temp_log_dir / "empty.txt"
         log_file.write_text("")
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
         result = parse_and_import_file(str(log_file), parser, database)
 

@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from datetime import datetime
 
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.services.queries import DpsQueryService, TargetSummaryQueryService
 from app.storage import DataStore
 from app.utils import parse_and_import_file
@@ -24,7 +24,7 @@ class TestParserStorageIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -41,7 +41,7 @@ class TestParserStorageIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser(parse_immunity=True)
+        parser = ParserSession(parse_immunity=True)
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -61,7 +61,7 @@ class TestParserStorageIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser(parse_immunity=True)
+        parser = ParserSession(parse_immunity=True)
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -81,7 +81,7 @@ class TestParserStorageIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser(parse_immunity=True)
+        parser = ParserSession(parse_immunity=True)
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -100,7 +100,7 @@ class TestParserStorageIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -121,7 +121,7 @@ class TestParserStorageIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -136,7 +136,7 @@ class TestParserStorageIntegration:
 
     def test_parse_complete_combat_session(self, sample_combat_session: Path) -> None:
         """Test parsing a complete combat session."""
-        parser = LogParser(parse_immunity=True)
+        parser = ParserSession(parse_immunity=True)
         database = DataStore()
 
         result = parse_and_import_file(str(sample_combat_session), parser, database)
@@ -165,7 +165,7 @@ class TestParserStorageIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser(player_name="Woo")
+        parser = ParserSession(player_name="Woo")
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -182,7 +182,7 @@ class TestParserStorageIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -203,7 +203,7 @@ class TestParserStorageIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -235,7 +235,7 @@ class TestParserStorageIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -259,7 +259,7 @@ class TestParserStorageIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -285,7 +285,7 @@ class TestParserStorageIntegration:
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -311,7 +311,7 @@ Another invalid line
 """
         log_file.write_text(content)
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
@@ -325,7 +325,7 @@ Another invalid line
         log_file = temp_log_dir / "empty.txt"
         log_file.write_text("")
 
-        parser = LogParser()
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)

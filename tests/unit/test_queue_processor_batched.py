@@ -7,7 +7,7 @@ import queue
 from datetime import datetime
 from unittest.mock import Mock
 
-from app.parser import LogParser
+from app.parser import ParserSession
 from app.services.queue_processor import QueueProcessor
 from app.storage import DataStore
 from tests.helpers.parsed_event_factories import (
@@ -23,7 +23,7 @@ class TestBatchedEventProcessing:
     def test_process_queue_batches_dps_updates(self) -> None:
         """Test that DPS updates are batched (1 callback for N events)."""
         store = DataStore()
-        parser = LogParser()
+        parser = ParserSession()
         processor = QueueProcessor(store, parser)
 
         data_queue = queue.Queue()
@@ -46,7 +46,7 @@ class TestBatchedEventProcessing:
     def test_process_queue_deduplicates_target_updates(self) -> None:
         """Test that target updates are deduplicated."""
         store = DataStore()
-        parser = LogParser()
+        parser = ParserSession()
         processor = QueueProcessor(store, parser)
 
         data_queue = queue.Queue()
@@ -68,7 +68,7 @@ class TestBatchedEventProcessing:
     def test_process_queue_handles_multiple_targets(self) -> None:
         """Test that batching handles multiple different targets correctly."""
         store = DataStore()
-        parser = LogParser()
+        parser = ParserSession()
         processor = QueueProcessor(store, parser)
 
         data_queue = queue.Queue()
@@ -91,7 +91,7 @@ class TestBatchedEventProcessing:
     def test_process_queue_batches_immunity_updates(self) -> None:
         """Test that immunity updates are batched."""
         store = DataStore()
-        parser = LogParser(parse_immunity=True)
+        parser = ParserSession(parse_immunity=True)
         processor = QueueProcessor(store, parser)
 
         data_queue = queue.Queue()
@@ -121,7 +121,7 @@ class TestBatchedEventProcessing:
     def test_process_queue_batches_damage_dealt_callbacks(self) -> None:
         """Test that damage_dealt callbacks are batched and deduplicated."""
         store = DataStore()
-        parser = LogParser()
+        parser = ParserSession()
         processor = QueueProcessor(store, parser)
 
         data_queue = queue.Queue()
@@ -144,7 +144,7 @@ class TestBatchedEventProcessing:
     def test_batched_processing_maintains_data_integrity(self) -> None:
         """Test that batched processing doesn't lose or corrupt data."""
         store = DataStore()
-        parser = LogParser()
+        parser = ParserSession()
         processor = QueueProcessor(store, parser)
 
         data_queue = queue.Queue()
@@ -179,7 +179,7 @@ class TestBatchedEventProcessing:
     def test_empty_queue_processed_safely_batched(self) -> None:
         """Test that processing an empty queue doesn't cause errors."""
         store = DataStore()
-        parser = LogParser()
+        parser = ParserSession()
         processor = QueueProcessor(store, parser)
 
         data_queue = queue.Queue()
@@ -196,7 +196,7 @@ class TestBatchedProcessingPerformance:
     def test_batching_reduces_callback_overhead(self) -> None:
         """Test that batching significantly reduces callback count."""
         store = DataStore()
-        parser = LogParser()
+        parser = ParserSession()
         processor = QueueProcessor(store, parser)
 
         data_queue = queue.Queue()
@@ -221,7 +221,7 @@ class TestBatchedProcessingPerformance:
     def test_batching_with_heavy_combat_scenario(self) -> None:
         """Test batching performance with realistic heavy combat."""
         store = DataStore()
-        parser = LogParser()
+        parser = ParserSession()
         processor = QueueProcessor(store, parser)
 
         data_queue = queue.Queue()
@@ -261,7 +261,7 @@ class TestBatchedProcessingPerformance:
     def test_process_queue_reports_pressure_state_from_remaining_backlog(self) -> None:
         """Backlog classification should be derived from the queue after draining."""
         store = DataStore()
-        parser = LogParser()
+        parser = ParserSession()
         processor = QueueProcessor(store, parser)
 
         data_queue = queue.Queue(maxsize=4000)

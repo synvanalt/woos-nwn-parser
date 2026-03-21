@@ -11,7 +11,7 @@ from time import perf_counter
 from typing import Any, Callable, Dict, List, Set
 
 from ..models import StoreMutation
-from ..parser import LogParser
+from ..parser import ParserSession
 from ..parsed_events import (
     AttackCriticalHitEvent,
     AttackHitEvent,
@@ -48,7 +48,7 @@ class QueueDrainResult:
 class QueueProcessor:
     """Process events from log parser queue."""
 
-    def __init__(self, data_store: DataStore, parser: LogParser) -> None:
+    def __init__(self, data_store: DataStore, parser: ParserSession) -> None:
         self.data_store = data_store
         self.parser = parser
         self.ingestion_engine = EventIngestionEngine(

@@ -148,7 +148,7 @@ class LogDirectoryMonitor:
         """Read new lines from the current log file, handling rotation to new files.
 
         Args:
-            parser: LogParser instance for parsing lines
+            parser: ParserSession instance for parsing lines
             data_queue: Queue for passing parsed data to UI
             on_log_message: Optional callback for logging (message, msg_type)
             debug_enabled: Whether to emit debug messages (default False for performance)
