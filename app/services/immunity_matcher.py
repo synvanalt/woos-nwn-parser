@@ -53,7 +53,7 @@ class ImmunityMatcher:
 
     @property
     def pending_immunity_queue(self) -> Dict[str, Dict[str, list[dict[str, object]]]]:
-        """Compatibility/debug view of unmatched immunity observations."""
+        """Return a debug snapshot of unmatched immunity observations."""
         result: Dict[str, Dict[str, list[dict[str, object]]]] = {}
         for target, by_type in self._pending_immunity.items():
             target_items: Dict[str, list[dict[str, object]]] = {}

@@ -54,6 +54,7 @@ class DPSPanel(ttk.Frame):
         self._cached_breakdown_tokens: dict[str, tuple[tuple[str, int], ...]] = {}
         self._cached_order_token: tuple[str, ...] = ()
         self._last_refresh_version: int = -1
+        self._last_refresh_used_store_query: bool = False
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -159,8 +160,9 @@ class DPSPanel(ttk.Frame):
             self.dps_query_service.global_start_time,
         )
         current_version = self.data_store.version
+        uses_store_query = self._can_use_store_version_fast_path()
         if (
-            self._can_use_store_version_fast_path()
+            self._last_refresh_used_store_query
             and
             self._cached_view_key == view_key
             and self._last_refresh_version == current_version
@@ -208,6 +210,7 @@ class DPSPanel(ttk.Frame):
             self._cached_row_tokens = new_row_tokens
             self._cached_breakdown_tokens = new_breakdown_tokens
             self._last_refresh_version = current_version
+            self._last_refresh_used_store_query = uses_store_query
             return
 
         new_data = {
@@ -253,6 +256,7 @@ class DPSPanel(ttk.Frame):
         self._cached_view_key = view_key
         self._cached_order_token = order_token
         self._last_refresh_version = current_version
+        self._last_refresh_used_store_query = uses_store_query
 
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether the service output is controlled by the store/version state."""
@@ -535,6 +539,7 @@ class DPSPanel(ttk.Frame):
         self._cached_breakdown_tokens.clear()
         self._cached_order_token = ()
         self._last_refresh_version = -1
+        self._last_refresh_used_store_query = False
 
     def reset_target_filter(self) -> None:
         """Reset the target filter selection to default 'All'."""

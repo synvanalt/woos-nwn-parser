@@ -14,8 +14,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.parser import LogParser
+from app.services.queries import DpsQueryService, ImmunityQueryService, TargetSummaryQueryService
 from app.storage import DataStore
-from app.services.dps_service import DPSCalculationService
 from app.ui.widgets.dps_panel import DPSPanel
 from app.ui.widgets.immunity_panel import ImmunityPanel
 from app.ui.widgets.target_stats_panel import TargetStatsPanel
@@ -67,10 +67,12 @@ def run_panel_benchmarks(fixture: Path, parse_immunity: bool, iterations: int, w
     root.withdraw()
     notebook = tk.ttk.Notebook(root)
 
-    dps_service = DPSCalculationService(store)
-    dps_panel = DPSPanel(notebook, store, dps_service)
-    immunity_panel = ImmunityPanel(notebook, store, parser)
-    target_stats_panel = TargetStatsPanel(notebook, store, parser)
+    dps_query_service = DpsQueryService(store)
+    immunity_query_service = ImmunityQueryService(store)
+    target_summary_query_service = TargetSummaryQueryService(store)
+    dps_panel = DPSPanel(notebook, store, dps_query_service)
+    immunity_panel = ImmunityPanel(notebook, store, parser, immunity_query_service)
+    target_stats_panel = TargetStatsPanel(notebook, store, target_summary_query_service)
 
     targets = store.get_all_targets()
     if targets:

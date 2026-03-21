@@ -58,21 +58,6 @@ class QueueProcessor:
         self.parsed_event_count = 0
         self.next_immunity_cleanup_event_count = 100
 
-    @property
-    def immunity_matcher(self) -> ImmunityMatcher | None:
-        """Compatibility accessor for tests and debug views."""
-        return self.ingestion_engine.immunity_matcher
-
-    @property
-    def damage_buffer(self) -> Dict[str, Dict]:
-        """Compatibility/debug view of recent damage observations."""
-        return self.ingestion_engine.damage_buffer
-
-    @property
-    def pending_immunity_queue(self) -> Dict[str, Dict[str, list]]:
-        """Compatibility/debug view of unmatched immunity observations."""
-        return self.ingestion_engine.pending_immunity_queue
-
     def process_queue(
         self,
         data_queue: queue.Queue,
@@ -182,16 +167,17 @@ class QueueProcessor:
         debug_enabled: bool,
     ) -> Dict[str, Any]:
         self.ingestion_engine.parse_immunity = bool(self.parser.parse_immunity)
+        matcher = self.ingestion_engine._matcher
         had_pending_immunity_types: set[str] = set()
         if (
             debug_enabled
             and isinstance(data, DamageDealtEvent)
             and self.parser.parse_immunity
-            and self.immunity_matcher is not None
+            and matcher is not None
         ):
             target = data.target
             for damage_type in data.damage_types or {}:
-                if self.immunity_matcher.has_pending_immunity(
+                if matcher.has_pending_immunity(
                     target=str(target),
                     damage_type=str(damage_type),
                 ):
@@ -245,7 +231,8 @@ class QueueProcessor:
                     f"DAMAGE: {attacker} vs {target} ({total_damage} damage)",
                     "debug",
                 )
-            if self.parser.parse_immunity and self.immunity_matcher is not None:
+            matcher = self.ingestion_engine._matcher
+            if self.parser.parse_immunity and matcher is not None:
                 matched_types = {
                     mutation.damage_type
                     for mutation in event_result.mutations

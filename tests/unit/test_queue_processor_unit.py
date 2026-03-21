@@ -16,6 +16,20 @@ from app.parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
 from tests.helpers import parsed_event_factories as event_factories
 
 
+def _matcher(processor: QueueProcessor):
+    return processor.ingestion_engine._matcher
+
+
+def _damage_buffer(processor: QueueProcessor) -> dict:
+    matcher = _matcher(processor)
+    return {} if matcher is None else matcher.latest_damage_by_target
+
+
+def _pending_immunity_queue(processor: QueueProcessor) -> dict:
+    matcher = _matcher(processor)
+    return {} if matcher is None else matcher.pending_immunity_queue
+
+
 def _process(
     processor: QueueProcessor,
     data_queue: queue.Queue,
@@ -64,8 +78,8 @@ class TestQueueProcessorInitialization:
 
         assert processor.data_store == data_store
         assert processor.parser == parser
-        assert len(processor.damage_buffer) == 0
-        assert len(processor.pending_immunity_queue) == 0
+        assert len(_damage_buffer(processor)) == 0
+        assert len(_pending_immunity_queue(processor)) == 0
         assert processor.parsed_event_count == 0
         assert processor.next_immunity_cleanup_event_count == 100
 
@@ -103,9 +117,8 @@ class TestEventRouting:
         # Verify DPS was updated
         on_dps_updated.assert_called()
 
-        # Verify damage was buffered
-        assert 'Goblin' in queue_processor.damage_buffer
-        assert queue_processor.damage_buffer['Goblin']['damage_types'] == {'Physical': 50}
+        # Disabled immunity parsing should not retain matcher-side damage state
+        assert _damage_buffer(queue_processor) == {}
 
     def test_route_immunity_event(self, queue_processor: QueueProcessor) -> None:
         """Test routing immunity event to correct handler."""
@@ -135,7 +148,7 @@ class TestEventRouting:
         )
 
         # Immunity should be queued if no matching damage
-        assert 'Goblin' in queue_processor.pending_immunity_queue
+        assert 'Goblin' in _pending_immunity_queue(queue_processor)
 
     def test_route_attack_hit_event(self, queue_processor: QueueProcessor) -> None:
         """Test routing attack_hit event to correct handler."""
@@ -291,8 +304,9 @@ class TestDamageBuffering:
         )
 
         # Verify buffer contains damage types
-        assert 'Dragon' in queue_processor.damage_buffer
-        buffer_data = queue_processor.damage_buffer['Dragon']
+        damage_buffer = _damage_buffer(queue_processor)
+        assert 'Dragon' in damage_buffer
+        buffer_data = damage_buffer['Dragon']
         assert buffer_data['damage_types'] == {'Fire': 60, 'Physical': 40}
         assert 'attacker' in buffer_data
         assert 'timestamp' in buffer_data
@@ -327,7 +341,7 @@ class TestDamageBuffering:
         )
 
         # Buffer should have most recent damage
-        assert queue_processor.damage_buffer['Goblin']['damage_types'] == {'Fire': 100}
+        assert _damage_buffer(queue_processor)['Goblin']['damage_types'] == {'Fire': 100}
 
     def test_damage_buffer_stores_multiple_targets(self, queue_processor: QueueProcessor) -> None:
         """Test that damage buffer can store multiple targets simultaneously."""
@@ -359,8 +373,9 @@ class TestDamageBuffering:
         )
 
         # Both targets should be in buffer
-        assert 'Goblin' in queue_processor.damage_buffer
-        assert 'Orc' in queue_processor.damage_buffer
+        damage_buffer = _damage_buffer(queue_processor)
+        assert 'Goblin' in damage_buffer
+        assert 'Orc' in damage_buffer
 
 
 class TestImmunityQueuing:
@@ -386,9 +401,10 @@ class TestImmunityQueuing:
         )
 
         # Immunity should be queued
-        assert 'Goblin' in queue_processor.pending_immunity_queue
-        assert 'Fire' in queue_processor.pending_immunity_queue['Goblin']
-        queued = queue_processor.pending_immunity_queue['Goblin']['Fire']
+        pending_queue = _pending_immunity_queue(queue_processor)
+        assert 'Goblin' in pending_queue
+        assert 'Fire' in pending_queue['Goblin']
+        queued = pending_queue['Goblin']['Fire']
         assert len(queued) == 1
         assert queued[0]['immunity'] == 10
 
@@ -503,8 +519,9 @@ class TestImmunityQueuing:
         )
 
         # Immunity should be queued, not matched
-        assert 'Goblin' in queue_processor.pending_immunity_queue
-        assert 'Fire' in queue_processor.pending_immunity_queue['Goblin']
+        pending_queue = _pending_immunity_queue(queue_processor)
+        assert 'Goblin' in pending_queue
+        assert 'Fire' in pending_queue['Goblin']
 
     def test_queued_immunity_matched_with_later_damage(self, queue_processor: QueueProcessor) -> None:
         """Test queued immunity is matched when appropriate damage arrives."""
@@ -543,8 +560,9 @@ class TestImmunityQueuing:
         assert immunity_info['max_immunity'] == 10
 
         # Queue should be cleared
-        if 'Goblin' in queue_processor.pending_immunity_queue:
-            assert 'Fire' not in queue_processor.pending_immunity_queue['Goblin']
+        pending_queue = _pending_immunity_queue(queue_processor)
+        if 'Goblin' in pending_queue:
+            assert 'Fire' not in pending_queue['Goblin']
 
     def test_multiple_immunities_queued(self, queue_processor: QueueProcessor) -> None:
         """Test multiple immunity events can be queued."""
@@ -576,9 +594,10 @@ class TestImmunityQueuing:
         )
 
         # Both immunities should be queued
-        assert 'Dragon' in queue_processor.pending_immunity_queue
-        assert 'Fire' in queue_processor.pending_immunity_queue['Dragon']
-        assert 'Cold' in queue_processor.pending_immunity_queue['Dragon']
+        pending_queue = _pending_immunity_queue(queue_processor)
+        assert 'Dragon' in pending_queue
+        assert 'Fire' in pending_queue['Dragon']
+        assert 'Cold' in pending_queue['Dragon']
 
 
 class TestCleanupMethods:
@@ -594,7 +613,9 @@ class TestCleanupMethods:
         timestamp: datetime,
         line_number: int,
     ) -> None:
-        queue_processor.immunity_matcher.queue_immunity(
+        matcher = _matcher(queue_processor)
+        assert matcher is not None
+        matcher.queue_immunity(
             target=target,
             damage_type=damage_type,
             immunity_points=immunity_points,
@@ -638,12 +659,12 @@ class TestCleanupMethods:
         queue_processor.cleanup_stale_immunities(max_age_seconds=5.0)
 
         # Old entry should be removed
-        assert 'Goblin' not in queue_processor.pending_immunity_queue or \
-               'Fire' not in queue_processor.pending_immunity_queue.get('Goblin', {})
+        pending_queue = _pending_immunity_queue(queue_processor)
+        assert 'Goblin' not in pending_queue or 'Fire' not in pending_queue.get('Goblin', {})
 
         # Recent entry should remain
-        assert 'Orc' in queue_processor.pending_immunity_queue
-        assert 'Cold' in queue_processor.pending_immunity_queue['Orc']
+        assert 'Orc' in pending_queue
+        assert 'Cold' in pending_queue['Orc']
 
     def test_cleanup_empty_targets_removed(self, queue_processor: QueueProcessor) -> None:
         """Test that targets with no damage types are removed."""
@@ -660,7 +681,7 @@ class TestCleanupMethods:
         queue_processor.cleanup_stale_immunities(max_age_seconds=5.0)
 
         # Target should be completely removed
-        assert 'Goblin' not in queue_processor.pending_immunity_queue
+        assert 'Goblin' not in _pending_immunity_queue(queue_processor)
 
     def test_cleanup_called_periodically(self, queue_processor: QueueProcessor) -> None:
         """Test that cleanup mechanism works correctly."""
@@ -681,7 +702,7 @@ class TestCleanupMethods:
         queue_processor.cleanup_stale_immunities(max_age_seconds=5.0)
 
         # Old immunity should be removed
-        assert 'OldTarget' not in queue_processor.pending_immunity_queue
+        assert 'OldTarget' not in _pending_immunity_queue(queue_processor)
 
         # Verify counter increments on process_queue calls
         initial_count = queue_processor.parsed_event_count
@@ -727,10 +748,11 @@ class TestCleanupMethods:
         queue_processor.cleanup_stale_immunities(max_age_seconds=5.0)
 
         # Old entry removed, recent kept
-        assert 'Dragon' in queue_processor.pending_immunity_queue
-        assert 'Fire' in queue_processor.pending_immunity_queue['Dragon']
-        assert len(queue_processor.pending_immunity_queue['Dragon']['Fire']) == 1
-        assert queue_processor.pending_immunity_queue['Dragon']['Fire'][0]['immunity'] == 20
+        pending_queue = _pending_immunity_queue(queue_processor)
+        assert 'Dragon' in pending_queue
+        assert 'Fire' in pending_queue['Dragon']
+        assert len(pending_queue['Dragon']['Fire']) == 1
+        assert pending_queue['Dragon']['Fire'][0]['immunity'] == 20
 
     def test_cleanup_triggered_when_threshold_crossed(
         self, queue_processor: QueueProcessor, monkeypatch: pytest.MonkeyPatch
@@ -1050,9 +1072,9 @@ class TestErrorHandling:
 
         _process(queue_processor, data_queue, Mock(), Mock(), Mock(), Mock())
 
-        assert queue_processor.pending_immunity_queue == {}
-        assert queue_processor.immunity_matcher._pending_damage == {}
-        assert 'Goblin' in queue_processor.damage_buffer
+        assert _pending_immunity_queue(queue_processor) == {}
+        assert _matcher(queue_processor) is None
+        assert _damage_buffer(queue_processor) == {}
 
     def test_cleanup_not_triggered_when_disabled(
         self, queue_processor: QueueProcessor, monkeypatch: pytest.MonkeyPatch

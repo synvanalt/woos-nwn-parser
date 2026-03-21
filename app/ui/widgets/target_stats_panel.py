@@ -46,6 +46,7 @@ class TargetStatsPanel(ttk.Frame):
         self._cached_row_tokens: dict[str, tuple[Any, ...]] = {}
         self._cached_order_token: tuple[str, ...] = ()
         self._last_refresh_version: int = -1
+        self._last_refresh_used_store_query: bool = False
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -81,8 +82,9 @@ class TargetStatsPanel(ttk.Frame):
     def refresh(self) -> None:
         """Refresh the target stats display with current data."""
         current_version = self.data_store.version
+        uses_store_query = self._can_use_store_version_fast_path()
         if (
-            self._can_use_store_version_fast_path()
+            self._last_refresh_used_store_query
             and self._last_refresh_version == current_version
             and self._item_ids
             and self._is_natural_order_active()
@@ -123,6 +125,7 @@ class TargetStatsPanel(ttk.Frame):
             self._cached_row_tokens = new_row_tokens
             self._cached_order_token = order_token
             self._last_refresh_version = current_version
+            self._last_refresh_used_store_query = uses_store_query
             return
 
         if needs_full_refresh:
@@ -133,6 +136,7 @@ class TargetStatsPanel(ttk.Frame):
         self._cached_row_tokens = new_row_tokens
         self._cached_order_token = order_token
         self._last_refresh_version = current_version
+        self._last_refresh_used_store_query = uses_store_query
 
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether refresh data is sourced from the live store method."""
@@ -170,6 +174,7 @@ class TargetStatsPanel(ttk.Frame):
         self._cached_row_tokens.clear()
         self._cached_order_token = ()
         self._last_refresh_version = -1
+        self._last_refresh_used_store_query = False
 
     def _full_refresh(self, summary_data: list[dict]) -> None:
         """Rebuild the tree when targets are added, removed, or reordered."""

@@ -27,7 +27,7 @@ from .models import (
 class DataStore:
     """In-memory data store using dataclasses.
 
-    Provides the same interface as the old Database class for easy migration.
+    Owns mutable session state, write-side mutations, and indexed primitive reads.
     All data is stored in memory and lost when the app closes (session-only).
     """
 
