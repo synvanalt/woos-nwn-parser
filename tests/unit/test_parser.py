@@ -6,8 +6,8 @@ attack parsing, save parsing, and player filtering.
 
 from datetime import datetime
 
-import app.parser as parser_module
-from app.parser import LogParser
+import app.parser_session as parser_session_module
+from app.parser import LineParser, LogParser, ParserSession
 from app.parsed_events import (
     AttackCriticalHitEvent,
     AttackHitEvent,
@@ -170,6 +170,51 @@ class TestTimestampExtraction:
         assert elapsed_seconds > 0, "Elapsed time should be positive when crossing midnight"
         assert elapsed_seconds < 86400, "Elapsed time should be less than 24 hours"
         assert 17700 < elapsed_seconds < 17800, f"Expected ~17776 seconds, got {elapsed_seconds}"
+
+    def test_extract_timestamp_rolls_year_forward_across_december_to_january(self) -> None:
+        session = ParserSession(anchor_year=2025)
+
+        ts1 = session.extract_timestamp_from_line("[CHAT WINDOW TEXT] [Wed Dec 31 23:59:59] Test message")
+        ts2 = session.extract_timestamp_from_line("[CHAT WINDOW TEXT] [Thu Jan 01 00:00:01] Test message")
+
+        assert ts1 == datetime(2025, 12, 31, 23, 59, 59)
+        assert ts2 == datetime(2026, 1, 1, 0, 0, 1)
+
+
+class TestSplitParserLayers:
+    """Test suite for direct LineParser and ParserSession usage."""
+
+    def test_line_parser_parses_damage_without_session_state(self) -> None:
+        parser = LineParser()
+        line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 50 (30 Physical 20 Fire)"
+        timestamp = datetime(2026, 1, 9, 14, 30, 0)
+
+        result = parser.parse_line(
+            line,
+            line_number=1,
+            get_timestamp=lambda: timestamp,
+        )
+
+        assert result is not None
+        assert result.type == "damage_dealt"
+        assert result.timestamp == timestamp
+
+    def test_parser_session_emits_death_snippet_without_logparser_facade(self) -> None:
+        session = ParserSession(anchor_year=2026)
+        session.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:34] HYDROXYS attacks Woo Wildrock: *hit*: (10 + 60 = 70)"
+        )
+        session.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] HYDROXYS killed Woo Wildrock"
+        )
+
+        result = session.parse_line(
+            "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:37] Your God refuses to hear your prayers!"
+        )
+
+        assert result is not None
+        assert result.type == "death_snippet"
+        assert result.target == "Woo Wildrock"
 
 
 class TestDamageDealtParsing:
@@ -746,7 +791,7 @@ class TestEdgeCases:
                 calls += 1
                 return cls(2026, 3, 9, 12, 0, 0)
 
-        monkeypatch.setattr(parser_module, "datetime", FixedDatetime)
+        monkeypatch.setattr(parser_session_module, "datetime", FixedDatetime)
 
         line = "[CHAT WINDOW TEXT] [Thu Jan xx 14:30:00] Woo attacks Goblin: *hit*: (14 + 5 = 19)"
         result = parser.parse_line(line)
