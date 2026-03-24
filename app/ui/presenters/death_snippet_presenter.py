@@ -155,10 +155,18 @@ def prepare_death_snippet_render(
         killed_name=killed_name,
         killer_name=killer_name,
     )
+    name_pattern_cache: dict[str, re.Pattern[str]] = {}
     prepared_lines = tuple(
         PreparedLine(
             text=line,
-            spans=tuple(collect_render_spans(line, killed_name=killed_name, opponent_names=opponent_names)),
+            spans=tuple(
+                collect_render_spans(
+                    line,
+                    killed_name=killed_name,
+                    opponent_names=opponent_names,
+                    pattern_cache=name_pattern_cache,
+                )
+            ),
         )
         for line in display_lines
     )
@@ -336,12 +344,14 @@ def collect_render_spans(
     *,
     killed_name: str,
     opponent_names: set[str],
+    pattern_cache: dict[str, re.Pattern[str]] | None = None,
 ) -> list[TextSpan]:
     """Collect final render spans with name precedence over damage spans."""
     name_spans = collect_name_spans(
         line,
         killed_name=killed_name,
         opponent_names=opponent_names,
+        pattern_cache=pattern_cache,
     )
     damage_spans = collect_color_spans(line)
 

@@ -1,6 +1,7 @@
 """Unit tests for pure death snippet presenter helpers."""
 
 from datetime import datetime
+from unittest.mock import patch
 
 from app.parsed_events import DeathSnippetEvent
 from app.ui.presenters.death_snippet_presenter import (
@@ -152,3 +153,34 @@ def test_prepare_death_snippet_render_builds_sanitized_lines_opponents_and_spans
     assert "GENERAL KORGAN" in prepared.opponent_names
     assert any(span.value == "killed" for span in prepared.lines[0].spans)
     assert any(span.kind == "damage" and span.value == "electrical" for span in prepared.lines[1].spans)
+
+
+def test_prepare_death_snippet_render_reuses_name_patterns_across_lines() -> None:
+    event = _event(lines=[
+        "[CHAT WINDOW TEXT] [t] Ash-Tusk Clan Sniper attacks Woo Whirlwind : *hit* : (12 + 56 = 68)",
+        "[CHAT WINDOW TEXT] [t] Ash-Tusk Clan Sniper damages Woo Whirlwind: 40 (0 Physical 4 Divine 36 Electrical 0 Fire)",
+        "[CHAT WINDOW TEXT] [t] HYDROXIS killed Woo Whirlwind",
+    ], target="Woo Whirlwind")
+
+    compile_counts: dict[str, int] = {}
+
+    def tracking_get_name_pattern(name: str, cache: dict[str, object]) -> object:
+        if name not in cache:
+            compile_counts[name] = compile_counts.get(name, 0) + 1
+        return original_get_name_pattern(name, cache)
+
+    from app.ui.presenters import death_snippet_presenter
+
+    original_get_name_pattern = death_snippet_presenter.get_name_pattern
+    with patch.object(death_snippet_presenter, "get_name_pattern", side_effect=tracking_get_name_pattern):
+        prepare_death_snippet_render(
+            event,
+            wrap_lines=False,
+            measure_text=_fake_measure,
+        )
+
+    assert compile_counts == {
+        "Woo Whirlwind": 1,
+        "Ash-Tusk Clan Sniper": 1,
+        "HYDROXIS": 1,
+    }

@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 22, 2026 (death snippet presenter split doc sync)
+**Last Updated:** March 24, 2026 (death snippet presenter cache regression test sync)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after the death-snippet presenter test split and current suite recollection.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **661 tests collected**
+- Result: **662 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 41 modules, 610 tests
+- `tests/unit/`: 41 modules, 611 tests
 - `tests/integration/`: 7 modules, 44 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 49 test modules, 661 tests
+- Total: 49 test modules, 662 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -47,7 +47,7 @@ Notes:
 - `test_target_stats_panel_incremental.py` (11)
 - `test_ui_optimizations.py` (19)
 - `test_death_snippet_panel.py` (15)
-- `test_death_snippet_presenter.py` (12)
+- `test_death_snippet_presenter.py` (13)
 - `test_debug_console_panel.py` (6)
 - `test_main_window_load_parse.py` (21)
 - `test_message_dialogs.py` (3)
@@ -109,7 +109,7 @@ Notes:
   - Includes Target Immunities coverage for zero-damage matched samples, absorbed-value tie-breaking, suppression of invalidated temporary full-immunity rows back to real max-damage display, best-effort immunity % display when exact reverse inference fails, and persisted/default-on Parse Immunities toggle behavior
 - Death Snippets presenter coverage:
   - `test_death_snippet_presenter.py`
-  - Includes pure render-preparation coverage for chat-prefix sanitization, opponent extraction, wrap-mode line padding, damage/name span generation, and killed-name precedence over opponent highlighting
+  - Includes pure render-preparation coverage for chat-prefix sanitization, opponent extraction, wrap-mode line padding, damage/name span generation, per-render name-pattern cache reuse, and killed-name precedence over opponent highlighting
 - App settings persistence:
   - `test_settings.py`
   - Includes persisted `Parse Immunities` and `First Timestamp` coverage, including missing-key and invalid-value fallback behavior for older settings files
