@@ -38,6 +38,15 @@ class DpsSummarySnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class DpsProjectionSnapshot:
+    """Immutable atomic DPS projection state exposed to query services."""
+
+    last_damage_timestamp: Optional[datetime]
+    earliest_timestamp: Optional[datetime]
+    summaries: tuple[DpsSummarySnapshot, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class TargetDamageTypeSnapshot:
     """Immutable indexed damage/immunity summary for one target damage type."""
 
@@ -506,6 +515,23 @@ class DataStore:
         """Get immutable indexed DPS summaries for one target."""
         with self.lock:
             return self._build_dps_summaries_locked(target=target)
+
+    def get_dps_projection_snapshot(
+        self,
+        target: str | None = None,
+    ) -> DpsProjectionSnapshot:
+        """Get one atomic DPS projection snapshot for query consumption."""
+        with self.lock:
+            earliest_timestamp = (
+                self._earliest_timestamp
+                if target is None
+                else self._earliest_timestamp_by_target.get(target)
+            )
+            return DpsProjectionSnapshot(
+                last_damage_timestamp=self.last_damage_timestamp,
+                earliest_timestamp=earliest_timestamp,
+                summaries=self._build_dps_summaries_locked(target=target),
+            )
 
     def get_target_damage_type_snapshots(
         self,

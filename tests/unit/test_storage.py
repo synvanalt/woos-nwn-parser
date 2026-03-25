@@ -379,6 +379,41 @@ class TestStoreReadBoundary:
         assert summary.damage_by_type == (("Fire", 60), ("Physical", 40))
         assert summary.breakdown_token == summary.damage_by_type
 
+    def test_get_dps_projection_snapshot_returns_atomic_all_target_state(self, data_store: DataStore) -> None:
+        """DPS projection snapshots should bundle timing and summaries together."""
+        ts1 = datetime.now()
+        ts2 = ts1 + timedelta(seconds=5)
+        apply(
+            data_store,
+            dps_update(attacker="Woo", total_damage=100, timestamp=ts1, damage_types={"Fire": 100}),
+            dps_update(attacker="Mage", total_damage=200, timestamp=ts2, damage_types={"Cold": 200}),
+        )
+
+        snapshot = data_store.get_dps_projection_snapshot()
+
+        assert snapshot.earliest_timestamp == ts1
+        assert snapshot.last_damage_timestamp == ts2
+        assert [summary.character for summary in snapshot.summaries] == ["Woo", "Mage"]
+
+    def test_get_dps_projection_snapshot_returns_target_filtered_state(self, data_store: DataStore) -> None:
+        """Target-filtered DPS projection snapshots should use target-scoped indices."""
+        ts1 = datetime.now()
+        ts2 = ts1 + timedelta(seconds=5)
+        apply(
+            data_store,
+            damage_row(target="Dragon", damage_type="Fire", total_damage=50, attacker="Woo", timestamp=ts1),
+            damage_row(target="Goblin", damage_type="Cold", total_damage=25, attacker="Woo", timestamp=ts2),
+            dps_update(attacker="Woo", total_damage=75, timestamp=ts2, damage_types={"Fire": 50, "Cold": 25}),
+        )
+
+        snapshot = data_store.get_dps_projection_snapshot("Dragon")
+
+        assert snapshot.earliest_timestamp == ts1
+        assert snapshot.last_damage_timestamp == ts2
+        assert len(snapshot.summaries) == 1
+        assert snapshot.summaries[0].character == "Woo"
+        assert snapshot.summaries[0].last_timestamp == ts1
+
     def test_get_target_damage_type_snapshots_combines_damage_and_immunity(self, data_store: DataStore) -> None:
         """Target damage-type snapshots should merge indexed damage and immunity data."""
         apply(

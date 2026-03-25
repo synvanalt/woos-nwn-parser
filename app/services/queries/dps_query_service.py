@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional, Sequence
 
-from ...storage import DataStore
+from ...storage import DataStore, DpsProjectionSnapshot
 
 
 class DpsQueryService:
@@ -48,14 +48,12 @@ class DpsQueryService:
     def _resolve_global_start_time(
         self,
         *,
-        target: Optional[str],
         global_start_time: Optional[datetime],
+        projection: DpsProjectionSnapshot,
     ) -> Optional[datetime]:
         if global_start_time is not None:
             return global_start_time
-        if target is None:
-            return self.data_store.get_earliest_timestamp()
-        return self.data_store.get_earliest_timestamp_for_target(target)
+        return projection.earliest_timestamp
 
     @staticmethod
     def _copy_rows(rows: tuple[dict[str, Any], ...]) -> list[dict[str, Any]]:
@@ -81,21 +79,17 @@ class DpsQueryService:
     def _build_dps_rows(
         self,
         *,
-        target: Optional[str],
         time_tracking_mode: str,
         global_start_time: Optional[datetime],
+        projection: DpsProjectionSnapshot,
     ) -> list[dict[str, Any]]:
         resolved_global_start = self._resolve_global_start_time(
-            target=target,
             global_start_time=global_start_time,
+            projection=projection,
         )
-        last_damage_timestamp = self.data_store.get_last_damage_timestamp()
+        last_damage_timestamp = projection.last_damage_timestamp
         rows: list[dict[str, Any]] = []
-        summaries = (
-            self.data_store.get_dps_summaries()
-            if target is None
-            else self.data_store.get_target_dps_summaries(target)
-        )
+        summaries = projection.summaries
 
         if time_tracking_mode == "global":
             if resolved_global_start is None or last_damage_timestamp is None:
@@ -116,19 +110,17 @@ class DpsQueryService:
                     }
                 )
         else:
-            if last_damage_timestamp is None and target is None:
+            if last_damage_timestamp is None and global_start_time is None and projection.earliest_timestamp is None:
                 return rows
             for summary in summaries:
                 total_damage = int(summary.total_damage)
                 if total_damage == 0:
                     continue
-                if target is None:
+                if summary.last_timestamp is None:
                     if last_damage_timestamp is None:
                         continue
                     time_delta = last_damage_timestamp - summary.first_timestamp
                 else:
-                    if summary.last_timestamp is None:
-                        continue
                     time_delta = summary.last_timestamp - summary.first_timestamp
                 time_seconds = max(time_delta.total_seconds(), 1)
                 rows.append(
@@ -154,9 +146,10 @@ class DpsQueryService:
         self._reset_caches_if_needed()
         effective_mode = time_tracking_mode or self.time_tracking_mode
         effective_start = global_start_time if global_start_time is not None else self.global_start_time
+        projection = self.data_store.get_dps_projection_snapshot(target)
         resolved_global_start = self._resolve_global_start_time(
-            target=target,
             global_start_time=effective_start,
+            projection=projection,
         )
         cache_key = (target, effective_mode, resolved_global_start)
         cached_rows = self._dps_data_cache.get(cache_key)
@@ -164,9 +157,9 @@ class DpsQueryService:
             return self._copy_rows(cached_rows)
 
         rows = self._build_dps_rows(
-            target=target,
             time_tracking_mode=effective_mode,
             global_start_time=effective_start,
+            projection=projection,
         )
         cached_rows = tuple(row.copy() for row in rows)
         self._dps_data_cache[cache_key] = cached_rows
@@ -206,23 +199,13 @@ class DpsQueryService:
 
         target = None if target_filter == "All" else target_filter
         effective_start = self.global_start_time
+        projection = self.data_store.get_dps_projection_snapshot(target)
         resolved_global_start = self._resolve_global_start_time(
-            target=target,
             global_start_time=effective_start,
+            projection=projection,
         )
-
-        summaries = (
-            {
-                summary.character: summary
-                for summary in self.data_store.get_dps_summaries()
-            }
-            if target is None
-            else {
-                summary.character: summary
-                for summary in self.data_store.get_target_dps_summaries(target)
-            }
-        )
-        last_damage_timestamp = self.data_store.get_last_damage_timestamp()
+        summaries = {summary.character: summary for summary in projection.summaries}
+        last_damage_timestamp = projection.last_damage_timestamp
 
         for character in unique_characters:
             cache_key = (
