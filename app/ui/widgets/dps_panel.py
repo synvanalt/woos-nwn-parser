@@ -9,7 +9,7 @@ from tkinter import ttk
 from typing import Any, Iterable, Optional
 
 from ...storage import DataStore
-from ...services.queries import DpsBreakdownRow, DpsQueryService, DpsRow
+from ...services.queries import DpsQueryService, DpsRow
 from ..formatters import damage_type_to_color, apply_tag_to_tree, format_time
 from ..tooltips import TooltipManager
 from .sorted_treeview import SortedTreeview
