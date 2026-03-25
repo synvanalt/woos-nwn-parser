@@ -72,7 +72,7 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 
 - `DataStore` owns mutable indexed combat state, versioning, locking, and mutation application
 - `DataStore` also owns store-facing immutable read snapshots for query consumption, including atomic projection snapshots when query timing state must stay consistent with indexed summaries
-- Query services own read-side row construction, memoization, and defensive-copy return semantics for the UI
+- Query services own read-side row construction, memoization, and typed immutable DTO return semantics for the UI
 - UI controllers coordinate workflows such as monitoring, import, queue draining, coalesced refreshes, and persisted session settings
 - UI presenters/formatters own pure display-data preparation that widgets can consume without Tk dependencies
 - Panels should consume query services, not build projections directly from low-level store state
@@ -128,7 +128,7 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 - `DpsQueryService` builds DPS rows, hit-rate display data, and damage-type breakdowns from store indices
 - `TargetSummaryQueryService` builds `Target Stats` rows from indexed target state
 - `ImmunityQueryService` builds `Target Immunities` rows from indexed damage and immunity summaries
-- Keep read-side projection caching out of `DataStore`, while consuming store-owned immutable snapshots and preserving defensive-copy semantics for UI consumers
+- Keep read-side projection caching out of `DataStore`, while consuming store-owned immutable snapshots and returning typed read-model DTOs for UI consumers
 
 **WoosNwnParserApp** (`ui/main_window.py`)
 - Wires together parser, storage, widgets, query services, and UI controllers

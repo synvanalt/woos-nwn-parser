@@ -1,6 +1,6 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 25, 2026 (DPS projection snapshot coverage refresh)
+**Last Updated:** March 25, 2026 (typed query DTO migration and shim removal)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after the death-snippet presenter test split and current suite recollection.
@@ -84,7 +84,7 @@ Notes:
 - Storage and indexing performance behavior:
   - `test_storage.py`, `test_storage_indices.py`
   - Direct store setup now uses the real public batch API (`DataStore.apply_mutations(...)`) instead of older per-write helper methods
-  - Includes explicit coverage for version-scoped read-cache invalidation, clear-all reset invalidation of cached target summaries, defensive-copy behavior on cached summary getters, raw-history retention default/normalization behavior, store-summary suppression of temporary zero-damage-only full-immunity samples after later positive same-type damage, and atomic DPS projection snapshots that bundle timing state with indexed summaries
+  - Includes explicit coverage for version-scoped read-cache invalidation, clear-all reset invalidation of cached target summaries, immutable typed query-row behavior on cached summary getters, raw-history retention default/normalization behavior, store-summary suppression of temporary zero-damage-only full-immunity samples after later positive same-type damage, and atomic DPS projection snapshots that bundle timing state with indexed summaries
 - Queue processor logic and batching:
   - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`, `test_realtime_backpressure.py`
 - Queue/import tests validate the public-first mutation payload flow used by production ingestion
@@ -97,6 +97,7 @@ Notes:
 - DPS query service/pipeline:
   - `test_dps_query_service.py`, `test_dps_pipeline_integration.py`
   - Includes direct coverage that DPS table rows and damage-type breakdowns consume one atomic store projection snapshot instead of stitching together timing and summary reads across multiple lock acquisitions
+  - Query-service, integration, queue-processor, and e2e tests now consume typed DTO attributes directly instead of legacy dict-like row access
 - UI widget/main-window behavior and refresh optimizations:
   - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_message_dialogs.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
   - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, tree-sort scan bypass when callers already control order, and Target Stats staying empty after Clear Data-style store clears
@@ -207,3 +208,4 @@ When adding or moving tests:
 2. Place tests in `unit/`, `integration/`, or `e2e/` based on scope.
 3. Update this summary and `tests/fixtures/README.md` when fixtures or shared fixtures change.
 4. For performance-related parser/storage changes, run `python scripts/benchmark_baseline.py` with the default real fixtures and report before/after medians.
+
