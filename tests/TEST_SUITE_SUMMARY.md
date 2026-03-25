@@ -1,6 +1,6 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 24, 2026 (death snippet presenter cache regression test sync)
+**Last Updated:** March 25, 2026 (queue-drain result contract test cleanup)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after the death-snippet presenter test split and current suite recollection.
@@ -88,7 +88,7 @@ Notes:
 - Queue processor logic and batching:
   - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`, `test_realtime_backpressure.py`
 - Queue/import tests validate the public-first mutation payload flow used by production ingestion
-  - Includes shared-matcher resilience coverage for reverse-order immunity lines, nearest-match selection, mismatch debug logging, and disabled-mode verification that damage events no longer retain matcher-side state or trigger periodic stale cleanup
+  - Includes direct `QueueDrainResult` assertions for DPS/target/immunity/death side effects instead of legacy callback fanout, plus shared-matcher resilience coverage for reverse-order immunity lines, nearest-match selection, mismatch debug logging, and disabled-mode verification that damage events no longer retain matcher-side state or trigger periodic stale cleanup
 - Release/version automation:
   - `test_bump_version_script.py`
 - Monitor behavior (rotation/truncation/debug):
