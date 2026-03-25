@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 25, 2026 (queue-drain result contract test cleanup)
+**Last Updated:** March 25, 2026 (DPS projection snapshot coverage refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after the death-snippet presenter test split and current suite recollection.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **662 tests collected**
+- Result: **669 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 41 modules, 611 tests
+- `tests/unit/`: 41 modules, 618 tests
 - `tests/integration/`: 7 modules, 44 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 49 test modules, 662 tests
+- Total: 49 test modules, 669 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -29,7 +29,7 @@ Notes:
 - `test_parser.py` (76)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
-- `test_storage.py` (61)
+- `test_storage.py` (66)
 - `test_storage_indices.py` (21)
 - `test_utils.py` (39)
 - `test_monitor.py` (23)
@@ -37,7 +37,7 @@ Notes:
 - `test_queue_processor_unit.py` (36)
 - `test_queue_processor_batched.py` (10)
 - `test_queue_processor.py` (10)
-- `test_dps_query_service.py` (14)
+- `test_dps_query_service.py` (16)
 - `test_formatters.py` (22)
 - `test_immunity_panel_additional.py` (10)
 - `test_immunity_panel_edge_cases.py` (9)
@@ -84,7 +84,7 @@ Notes:
 - Storage and indexing performance behavior:
   - `test_storage.py`, `test_storage_indices.py`
   - Direct store setup now uses the real public batch API (`DataStore.apply_mutations(...)`) instead of older per-write helper methods
-  - Includes explicit coverage for version-scoped read-cache invalidation, clear-all reset invalidation of cached target summaries, defensive-copy behavior on cached summary getters, raw-history retention default/normalization behavior, and store-summary suppression of temporary zero-damage-only full-immunity samples after later positive same-type damage
+  - Includes explicit coverage for version-scoped read-cache invalidation, clear-all reset invalidation of cached target summaries, defensive-copy behavior on cached summary getters, raw-history retention default/normalization behavior, store-summary suppression of temporary zero-damage-only full-immunity samples after later positive same-type damage, and atomic DPS projection snapshots that bundle timing state with indexed summaries
 - Queue processor logic and batching:
   - `test_queue_processor.py`, `test_queue_processor_unit.py`, `test_queue_processor_batched.py`, `test_realtime_backpressure.py`
 - Queue/import tests validate the public-first mutation payload flow used by production ingestion
@@ -96,6 +96,7 @@ Notes:
   - Includes steady-state active-file cache coverage, idle fallback rescans when directory metadata does not surface rotation immediately, delayed discovery when monitoring starts before any NWN log file exists, and edge-case monitor tests that now use realistic `readline()`-driven file doubles instead of runtime test-only file-handle branches
 - DPS query service/pipeline:
   - `test_dps_query_service.py`, `test_dps_pipeline_integration.py`
+  - Includes direct coverage that DPS table rows and damage-type breakdowns consume one atomic store projection snapshot instead of stitching together timing and summary reads across multiple lock acquisitions
 - UI widget/main-window behavior and refresh optimizations:
   - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_message_dialogs.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
   - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, tree-sort scan bypass when callers already control order, and Target Stats staying empty after Clear Data-style store clears
