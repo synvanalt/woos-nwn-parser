@@ -27,6 +27,7 @@ woos-nwn-parser/
 |       |-- __init__.py
 |       |-- main_window.py         # Main application window
 |       |-- formatters.py          # Data formatting utilities
+|       |-- presenters/            # Pure render-preparation helpers for widgets
 |       |-- window_style.py        # Window styling helpers
 |       `-- widgets/               # UI components
 |           |-- __init__.py
@@ -72,6 +73,7 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 - `DataStore` owns mutable indexed combat state, versioning, locking, and mutation application.
 - Query services own read-side row construction, memoization, and defensive-copy return semantics for the UI.
 - UI controllers coordinate workflows such as monitoring, import, queue draining, coalesced refreshes, and persisted session settings.
+- UI presenters/formatters own pure display-data preparation that widgets can consume without Tk dependencies.
 - Panels should consume query services, not build projections directly from low-level store state.
 - Parser and matcher semantics should stay aligned across live monitoring and historic import.
 
@@ -131,6 +133,11 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 - Owns high-level Tk callbacks such as target selection, settings-triggered refreshes, and shutdown
 - Keeps debug console hidden by default and reveals it through the DPS-tab click gesture
 
+**DeathSnippetPresenter** (`ui/presenters/death_snippet_presenter.py`)
+- Owns pure death-snippet render preparation outside Tk widgets
+- Sanitizes display lines, infers opponent names, shapes no-wrap display lines, and prepares name/damage highlight spans
+- Returns prepared render instructions that the widget can map onto Tk text tags
+
 **UI Controllers** (`ui/controllers/`)
 - `MonitorController` owns live monitor start/pause, background file polling, and active-file status updates
 - `ImportController` owns the `Load & Parse Logs` workflow, modal progress UI, worker process, and incremental payload application
@@ -141,7 +148,8 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 **DeathSnippetPanel** (`ui/widgets/death_snippet_panel.py`)
 - Displays death-context snippets with a `Killed by:` dropdown (newest first)
 - Supports character auto-identification from whisper token and runtime fallback log-line configuration
-- Colors character names, damage type tokens and adjacent damage values using game color palette
+- Owns Tk layout, selection state, line-wrap behavior, and text-tag application
+- Consumes prepared render instructions from the death-snippet presenter for character-name and damage-type highlighting
 
 ## Related Knowledge Docs
 

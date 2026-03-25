@@ -1,39 +1,15 @@
 """Death snippet panel widget for Woo's NWN Parser UI."""
 
-import re
 from dataclasses import dataclass
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, font
 from typing import Callable, Optional
 
-from ...constants import DAMAGE_TYPE_PALETTE
 from ...parsed_events import DeathSnippetEvent
 from ..formatters import damage_type_to_color
+from ..presenters import PreparedLine, format_death_event_dropdown_value, prepare_death_snippet_render
 from ..tooltips import TooltipManager
-
-
-def _compile_damage_patterns() -> tuple[tuple[str, ...], tuple[tuple[str, re.Pattern[str]], ...], tuple[tuple[str, re.Pattern[str]], ...]]:
-    """Compile keyword, pair, and standalone regex patterns from palette keys."""
-    keys = tuple(DAMAGE_TYPE_PALETTE.keys())
-    pair_patterns = tuple(
-        (
-            key,
-            re.compile(
-                rf"(?P<num>\d+)\s+(?P<dtype>{re.escape(key).replace(r'\\ ', r'\\s+')})\b",
-                re.IGNORECASE,
-            ),
-        )
-        for key in keys
-    )
-    type_patterns = tuple(
-        (
-            key,
-            re.compile(rf"\b{re.escape(key).replace(r'\\ ', r'\\s+')}\b", re.IGNORECASE),
-        )
-        for key in keys
-    )
-    return keys, pair_patterns, type_patterns
 
 
 @dataclass(slots=True)
@@ -52,28 +28,6 @@ class DeathSnippetPanel(ttk.Frame):
     CONFIG_LABEL_WIDTH = 14
     KILLED_NAME_COLOR = "#98FEFF"
     OPPONENT_NAME_COLOR = "#CD98CC"
-    _DAMAGE_KEYWORDS, _PAIR_PATTERNS, _TYPE_PATTERNS = _compile_damage_patterns()
-    _DAMAGE_IMMUNITY_PREFIX = "Damage Immunity absorbs"
-    _SAVE_VS_MARKER = " Save vs. "
-    _DAMAGE_BREAKDOWN_PATTERN = re.compile(r"damages\s+[^:]+:\s*\d+\s*\((?P<breakdown>[^)]*)\)", re.IGNORECASE)
-    _IMMUNITY_OF_PATTERN = re.compile(r"\bof\s+(?P<dtype>.+?)\s*$", re.IGNORECASE)
-    _SAVE_VS_PATTERN = re.compile(r"\bSave\s+vs\.\s*(?P<dtype>.+?)\s*:", re.IGNORECASE)
-    _TIMESTAMP_PREFIX = re.compile(r"^\[[^]]+]\s*")
-    _ATTACKS_TARGET = re.compile(
-        r"(?:Off Hand\s*:\s*)?"
-        r"(?:[\w\s]+\s*:\s*)*"
-        r"(?:Attack Of Opportunity\s*:\s*)?"
-        r"(?P<attacker>.+?)\s+attacks\s+(?P<target>.+?)\s*:",
-        re.IGNORECASE,
-    )
-    _DAMAGES_TARGET = re.compile(
-        r"(?P<attacker>.+?)\s+damages\s+(?P<target>[^:]+?)\s*:",
-        re.IGNORECASE,
-    )
-    _KILLED_TARGET = re.compile(
-        r"(?P<killer>.+?)\s+killed\s+(?P<target>.+?)\s*$",
-        re.IGNORECASE,
-    )
 
     def __init__(self, parent: ttk.Notebook, tooltip_manager: Optional[TooltipManager] = None) -> None:
         super().__init__(parent, padding="10")
@@ -85,9 +39,8 @@ class DeathSnippetPanel(ttk.Frame):
         self.character_name_var = tk.StringVar(value="")
         self.fallback_death_line_var = tk.StringVar(value=self.DEFAULT_FALLBACK_DEATH_LINE)
         self.line_wrap_var = tk.BooleanVar(value=False)
-        self._text_tags_by_color: Dict[str, str] = {}
+        self._text_tags_by_color: dict[str, str] = {}
         self._last_render_key: Optional[tuple] = None
-        self._name_pattern_cache: Dict[str, re.Pattern[str]] = {}
         self._character_hint_active = False
         self._suppress_identity_callbacks = False
         self._on_character_name_changed: Optional[Callable[[str], None]] = None
@@ -409,39 +362,6 @@ class DeathSnippetPanel(ttk.Frame):
         self.hscroll.config(command=self.text.xview)
         self.hscroll.grid(row=1, column=0, sticky="ew")
 
-    def _prepare_display_lines_for_wrap_mode(self, lines: list[str]) -> list[str]:
-        """Return lines adjusted for current wrap mode.
-
-        In no-wrap mode, pad each line to the widest line width to stabilize
-        horizontal scrollbar proportions while vertically scrolling.
-        """
-        if bool(self.line_wrap_var.get()) or not lines:
-            return lines
-        if not hasattr(self, "theme_font"):
-            return lines
-
-        line_widths = [self.theme_font.measure(line) for line in lines]
-        max_width = max(line_widths, default=0)
-        if max_width <= 0:
-            return lines
-
-        space_width = max(1, int(self.theme_font.measure(" ")))
-        padded_lines: list[str] = []
-        for line, width in zip(lines, line_widths):
-            deficit = max_width - width
-            if deficit <= 0:
-                padded_lines.append(line)
-                continue
-            padding_spaces = (deficit + space_width - 1) // space_width
-            padded_lines.append(f"{line}{' ' * padding_spaces}")
-
-        return padded_lines
-
-    @staticmethod
-    def _sanitize_display_line(line: str) -> str:
-        """Remove NWN chat boilerplate prefix for cleaner display."""
-        return re.sub(r"^\[CHAT WINDOW TEXT]\s*", "", line)
-
     def _show_placeholder(self) -> None:
         """Show default text when there are no death snippets."""
         self.text.delete("1.0", tk.END)
@@ -457,18 +377,7 @@ class DeathSnippetPanel(ttk.Frame):
     @staticmethod
     def _format_dropdown_value(entry: _DeathEventEntry) -> str:
         """Build dropdown value text as HH:MM:SS plus original killer name."""
-        timestamp = entry.event.timestamp
-        killer = entry.event.killer.strip()
-
-        if isinstance(timestamp, datetime):
-            timestamp_text = timestamp.strftime("%H:%M:%S")
-        else:
-            timestamp_text = "--:--:--"
-
-        if not killer:
-            killer = "Unknown"
-
-        return f"[{timestamp_text}] {killer}"
+        return format_death_event_dropdown_value(entry.event.timestamp, entry.event.killer)
 
     def _set_combo_values(self) -> None:
         """Refresh combobox values from current death events."""
@@ -502,78 +411,6 @@ class DeathSnippetPanel(ttk.Frame):
 
         return None
 
-    @classmethod
-    def _line_may_have_damage_type(cls, line: str) -> bool:
-        lowered = line.lower()
-        return any(keyword in lowered for keyword in cls._DAMAGE_KEYWORDS)
-
-    @staticmethod
-    def _spans_overlap(start: int, end: int, spans: list[tuple[int, int]]) -> bool:
-        for span_start, span_end in spans:
-            if start < span_end and end > span_start:
-                return True
-        return False
-
-    @classmethod
-    def _collect_color_spans(cls, line: str) -> list[tuple[int, int, str]]:
-        """Collect damage color spans for one line using context-gated matching.
-
-        Returns tuples of (start_idx, end_idx, color_key).
-        """
-        if not line:
-            return []
-
-        spans: list[tuple[int, int, str]] = []
-        line_has_keyword = cls._line_may_have_damage_type(line)
-
-        # Context 1: "Damage Immunity absorbs ... of <Type>" -> color only <Type>.
-        if cls._DAMAGE_IMMUNITY_PREFIX in line and line_has_keyword:
-            immunity_match = cls._IMMUNITY_OF_PATTERN.search(line)
-            if immunity_match:
-                dtype_text = immunity_match.group("dtype")
-                dtype_start = immunity_match.start("dtype")
-                for color_key, pattern in cls._TYPE_PATTERNS:
-                    type_match = pattern.fullmatch(dtype_text.strip())
-                    if not type_match:
-                        continue
-                    # Map match inside stripped segment back to absolute indices.
-                    stripped = dtype_text.strip()
-                    local_offset = dtype_text.find(stripped)
-                    abs_start = dtype_start + local_offset
-                    abs_end = abs_start + len(stripped)
-                    spans.append((abs_start, abs_end, color_key))
-                    break
-
-        # Context 2: "X damages Y: N (breakdown)" -> color adjacent number/type pairs in breakdown only.
-        if " damages " in line and "(" in line and ")" in line:
-            breakdown_match = cls._DAMAGE_BREAKDOWN_PATTERN.search(line)
-            if breakdown_match:
-                breakdown = breakdown_match.group("breakdown")
-                breakdown_start = breakdown_match.start("breakdown")
-                for color_key, pattern in cls._PAIR_PATTERNS:
-                    for pair_match in pattern.finditer(breakdown):
-                        num_start, num_end = pair_match.span("num")
-                        type_start, type_end = pair_match.span("dtype")
-                        spans.append((breakdown_start + num_start, breakdown_start + num_end, color_key))
-                        spans.append((breakdown_start + type_start, breakdown_start + type_end, color_key))
-
-        # Context 3: "... Save vs. <Type> : ..." -> color only <Type>.
-        if cls._SAVE_VS_MARKER in line and line_has_keyword:
-            save_match = cls._SAVE_VS_PATTERN.search(line)
-            if save_match:
-                dtype_text = save_match.group("dtype").strip()
-                dtype_start = save_match.start("dtype")
-                for color_key, pattern in cls._TYPE_PATTERNS:
-                    type_match = pattern.fullmatch(dtype_text)
-                    if not type_match:
-                        continue
-                    spans.append((dtype_start, dtype_start + len(dtype_text), color_key))
-                    break
-
-        # Deduplicate and keep stable order.
-        spans = sorted(set(spans), key=lambda item: (item[0], item[1]))
-        return sorted(spans, key=lambda item: (item[0], item[1]))
-
     def _get_or_create_text_tag(self, color_key: str) -> str:
         """Get cached text tag for color key, configuring it once."""
         color = damage_type_to_color(color_key)
@@ -589,136 +426,30 @@ class DeathSnippetPanel(ttk.Frame):
         self._text_tags_by_color[color] = tag_name
         return tag_name
 
-    @classmethod
-    def _strip_timestamp_prefix(cls, line: str) -> str:
-        """Remove leading timestamp prefix from a display line."""
-        return cls._TIMESTAMP_PREFIX.sub("", line, count=1)
-
-    def _get_name_pattern(self, name: str) -> re.Pattern[str]:
-        """Get cached exact token-boundary regex for a name."""
-        cached = self._name_pattern_cache.get(name)
-        if cached is not None:
-            return cached
-        pattern = re.compile(rf"(?<!\w){re.escape(name)}(?!\w)")
-        self._name_pattern_cache[name] = pattern
-        return pattern
-
-    @staticmethod
-    def _line_contains_any_name(line: str, names: set[str]) -> bool:
-        """Fast substring gate before regex matching names."""
-        if not names:
-            return False
-        lowered = line.lower()
-        return any(name.lower() in lowered for name in names if name)
-
-    def _collect_name_spans(
-        self,
-        line: str,
-        killed_name: str,
-        opponent_names: set[str],
-    ) -> list[tuple[int, int, str]]:
-        """Collect name color spans with killed/opponent precedence."""
-        spans: list[tuple[int, int, str]] = []
-
-        if killed_name:
-            killed_pattern = self._get_name_pattern(killed_name)
-            for match in killed_pattern.finditer(line):
-                spans.append((match.start(), match.end(), "killed"))
-
-        occupied = [(start, end) for start, end, _kind in spans]
-        if not self._line_contains_any_name(line, opponent_names):
-            return spans
-
-        for opponent in sorted(opponent_names, key=len, reverse=True):
-            if not opponent:
-                continue
-            pattern = self._get_name_pattern(opponent)
-            for match in pattern.finditer(line):
-                start, end = match.span(0)
-                if self._spans_overlap(start, end, occupied):
-                    continue
-                spans.append((start, end, "opponent"))
-                occupied.append((start, end))
-
-        return sorted(spans, key=lambda item: (item[0], item[1]))
-
-    @classmethod
-    def _extract_opponent_names(
-        cls,
-        lines: list[str],
-        killed_name: str,
-        killer_name: str,
-    ) -> set[str]:
-        """Extract opponents from lines that explicitly target the killed character."""
-        opponents: set[str] = set()
-        killed_fold = killed_name.casefold()
-
-        killer = cls._normalize_name(killer_name)
-        if killer and killer.casefold() != killed_fold:
-            opponents.add(killer)
-
-        for line in lines:
-            scan_line = cls._strip_timestamp_prefix(line)
-            for pattern, actor_group in (
-                (cls._ATTACKS_TARGET, "attacker"),
-                (cls._DAMAGES_TARGET, "attacker"),
-                (cls._KILLED_TARGET, "killer"),
-            ):
-                match = pattern.search(scan_line)
-                if not match:
-                    continue
-                target = cls._normalize_name(str(match.group("target")))
-                if target.casefold() != killed_fold:
-                    continue
-                actor = cls._normalize_name(str(match.group(actor_group)))
-                if actor and actor.casefold() != killed_fold:
-                    opponents.add(actor)
-
-        return opponents
-
-    def _insert_colored_line(
-        self,
-        line: str,
-        killed_name: str = "",
-        opponent_names: Optional[set[str]] = None,
-    ) -> None:
-        """Insert one line with damage-type-aware coloring."""
-        opponent_names = opponent_names or set()
-        name_spans = self._collect_name_spans(line, killed_name, opponent_names)
-        damage_spans = self._collect_color_spans(line)
-
-        occupied_by_names = [(start, end) for start, end, _kind in name_spans]
-        spans: list[tuple[int, int, str, str]] = []
-        for start, end, kind in name_spans:
-            spans.append((start, end, kind, "name"))
-        for start, end, color_key in damage_spans:
-            if self._spans_overlap(start, end, occupied_by_names):
-                continue
-            spans.append((start, end, color_key, "damage"))
-        spans.sort(key=lambda item: (item[0], item[1]))
-
-        if not spans:
-            self.text.insert(tk.END, f"{line}\n")
+    def _insert_prepared_line(self, prepared_line: PreparedLine) -> None:
+        """Insert one precomputed line with widget tag mapping."""
+        if not prepared_line.spans:
+            self.text.insert(tk.END, f"{prepared_line.text}\n")
             return
 
         cursor = 0
-        for start, end, color_value, span_kind in spans:
-            if start < cursor:
+        for span in prepared_line.spans:
+            if span.start < cursor:
                 continue
-            if start > cursor:
-                self.text.insert(tk.END, line[cursor:start])
-            if span_kind == "name":
-                if color_value == "killed":
+            if span.start > cursor:
+                self.text.insert(tk.END, prepared_line.text[cursor:span.start])
+            if span.kind == "name":
+                if span.value == "killed":
                     tag_name = self._get_or_create_color_tag(self.KILLED_NAME_COLOR, "killed_name")
                 else:
                     tag_name = self._get_or_create_color_tag(self.OPPONENT_NAME_COLOR, "opponent_name")
             else:
-                tag_name = self._get_or_create_text_tag(color_value)
-            self.text.insert(tk.END, line[start:end], tag_name)
-            cursor = end
+                tag_name = self._get_or_create_text_tag(span.value)
+            self.text.insert(tk.END, prepared_line.text[span.start:span.end], tag_name)
+            cursor = span.end
 
-        if cursor < len(line):
-            self.text.insert(tk.END, line[cursor:])
+        if cursor < len(prepared_line.text):
+            self.text.insert(tk.END, prepared_line.text[cursor:])
         self.text.insert(tk.END, "\n")
 
     def render_selected_event(self) -> None:
@@ -734,16 +465,16 @@ class DeathSnippetPanel(ttk.Frame):
         if render_key == self._last_render_key:
             return
 
-        event = selected_event.event
-        lines = [self._sanitize_display_line(str(line)) for line in (event.lines or [])]
-        display_lines = self._prepare_display_lines_for_wrap_mode(lines)
-        killed_name = self._normalize_name(event.target)
-        killer_name = self._normalize_name(event.killer)
-        opponent_names = self._extract_opponent_names(lines, killed_name, killer_name)
+        measure_text = getattr(self.theme_font, "measure", None) if hasattr(self, "theme_font") else None
+        prepared_render = prepare_death_snippet_render(
+            selected_event.event,
+            wrap_lines=bool(self.line_wrap_var.get()),
+            measure_text=measure_text,
+        )
 
         self.text.delete("1.0", tk.END)
-        for line in display_lines:
-            self._insert_colored_line(line, killed_name=killed_name, opponent_names=opponent_names)
+        for prepared_line in prepared_render.lines:
+            self._insert_prepared_line(prepared_line)
         self.text.see(tk.END)
         self._last_render_key = render_key
 

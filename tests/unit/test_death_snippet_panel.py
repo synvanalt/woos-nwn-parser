@@ -1,4 +1,4 @@
-"""Unit tests for DeathSnippetPanel behavior."""
+"""Unit tests for DeathSnippetPanel widget behavior."""
 
 from datetime import datetime
 
@@ -84,6 +84,7 @@ class _FakeScrollbar:
         self.mapped = False
         self.command = None
         self.manager = ""
+
     def set(self, *_args) -> None:
         return None
 
@@ -96,14 +97,6 @@ class _FakeScrollbar:
 
     def winfo_manager(self) -> str:
         return self.manager
-
-    def pack(self, **_kwargs) -> None:
-        self.mapped = True
-        self.manager = "pack"
-
-    def pack_forget(self) -> None:
-        self.mapped = False
-        self.manager = ""
 
     def grid(self, **_kwargs) -> None:
         self.mapped = True
@@ -129,13 +122,6 @@ class _FakeCombo:
         if "state" in kwargs:
             self.state = kwargs["state"]
 
-    def set(self, value: str) -> None:
-        self.value = value
-        if value in self.values:
-            self.selected_index = self.values.index(value)
-        else:
-            self.selected_index = -1
-
     def get(self) -> str:
         if 0 <= self.selected_index < len(self.values):
             return self.values[self.selected_index]
@@ -155,7 +141,7 @@ class _FakeCombo:
 
 
 class TestDeathSnippetPanel:
-    """Test suite for DeathSnippetPanel helper behavior."""
+    """Test suite for DeathSnippetPanel widget behavior."""
 
     def _make_panel(self) -> DeathSnippetPanel:
         class _FakeVar:
@@ -175,7 +161,6 @@ class TestDeathSnippetPanel:
         panel._event_sequence = 0
         panel._text_tags_by_color = {}
         panel._last_render_key = None
-        panel._name_pattern_cache = {}
         panel.line_wrap_var = _FakeBoolVar(False)
         panel.hscroll = _FakeScrollbar()
         panel.character_name_var = _FakeStringVar("")
@@ -214,16 +199,6 @@ class TestDeathSnippetPanel:
                 return len(text) * self.px
 
         return _FakeFont(char_px)
-
-    def test_sanitize_display_line_removes_chat_window_prefix(self) -> None:
-        line = "[CHAT WINDOW TEXT] [Tue Jan 13 19:59:36] Your God refuses to hear your prayers!"
-        sanitized = DeathSnippetPanel._sanitize_display_line(line)
-        assert sanitized == "[Tue Jan 13 19:59:36] Your God refuses to hear your prayers!"
-
-    def test_sanitize_display_line_leaves_non_prefixed_line_unchanged(self) -> None:
-        line = "[Tue Jan 13 19:59:36] HYDROXYS killed Woo Wildrock"
-        sanitized = DeathSnippetPanel._sanitize_display_line(line)
-        assert sanitized == line
 
     def test_add_death_event_auto_selects_newest_and_preserves_killer_case(self) -> None:
         panel = self._make_panel()
@@ -289,44 +264,6 @@ class TestDeathSnippetPanel:
         assert panel.killed_by_combo.state == "disabled"
         assert panel.killed_by_combo.get() == DeathSnippetPanel.EMPTY_DROPDOWN_PLACEHOLDER
 
-    def test_collect_color_spans_colors_adjacent_pairs(self) -> None:
-        line = "BIOLLANTE damages Woo Whirlwind: 99 (27 Positive Energy 50 Fire 22 Negative Energy)"
-        spans = DeathSnippetPanel._collect_color_spans(line)
-
-        colored_tokens = [line[start:end] for start, end, _ in spans]
-        assert "27" in colored_tokens
-        assert "Positive Energy" in colored_tokens
-        assert "50" in colored_tokens
-        assert "Fire" in colored_tokens
-        assert "22" in colored_tokens
-        assert "Negative Energy" in colored_tokens
-
-    def test_collect_color_spans_does_not_color_non_adjacent_immunity_number(self) -> None:
-        line = "Damage Immunity absorbs 10 point(s) of Fire"
-        spans = DeathSnippetPanel._collect_color_spans(line)
-
-        colored_tokens = [line[start:end] for start, end, _ in spans]
-        assert "Fire" in colored_tokens
-        assert "10" not in colored_tokens
-
-    def test_collect_color_spans_colors_save_vs_damage_type(self) -> None:
-        line = "Woo Whirlwind : Fortitude Save vs. Acid : *success* : (20 + 50 = 70 vs. DC: 52)"
-        spans = DeathSnippetPanel._collect_color_spans(line)
-        colored_tokens = [line[start:end] for start, end, _ in spans]
-        assert "Acid" in colored_tokens
-
-    def test_collect_color_spans_skips_spell_resist_spell_names(self) -> None:
-        line = "SPELL RESIST: Woo Whirlwind attempts to resist: Acid Fog - Result: FAILED"
-        spans = DeathSnippetPanel._collect_color_spans(line)
-        colored_tokens = [line[start:end] for start, end, _ in spans]
-        assert "Acid" not in colored_tokens
-
-    def test_collect_color_spans_skips_wall_of_fire_spell_name(self) -> None:
-        line = "SPELL RESIST: Woo Whirlwind attempts to resist: Wall of Fire - Result: FAILED"
-        spans = DeathSnippetPanel._collect_color_spans(line)
-        colored_tokens = [line[start:end] for start, end, _ in spans]
-        assert "Fire" not in colored_tokens
-
     def test_render_selected_event_uses_tags_for_colored_tokens(self) -> None:
         panel = self._make_panel()
         panel.add_death_event(self._event(
@@ -354,54 +291,7 @@ class TestDeathSnippetPanel:
 
         assert len(panel.text.inserts) == first_insert_count
 
-    def test_insert_colored_line_fast_path_for_non_damage_lines(self) -> None:
-        panel = self._make_panel()
-        panel.text.delete("1.0", "end")
-        panel._insert_colored_line("[t] HYDROXIS killed Woo Wildrock")
-
-        assert not panel.text.tag_configs
-        assert panel.text.content == "[t] HYDROXIS killed Woo Wildrock\n"
-
-    def test_extract_opponent_names_from_hostile_lines_targeting_killed(self) -> None:
-        lines = [
-            "[Wed Jan 09 14:30:00] Ash-Tusk Clan Sniper attacks Woo Whirlwind : *hit* : (12 + 56 = 68)",
-            "[Wed Jan 09 14:30:01] GENERAL KORGAN damages Woo Whirlwind: 40 (0 Physical 4 Divine 36 Electrical 0 Fire)",
-            "[Wed Jan 09 14:30:02] HYDROXIS killed Woo Whirlwind",
-            "[Wed Jan 09 14:30:03] GENERAL KORGAN casts unknown spell",
-        ]
-
-        opponents = DeathSnippetPanel._extract_opponent_names(
-            lines=lines,
-            killed_name="Woo Whirlwind",
-            killer_name="HYDROXIS",
-        )
-
-        assert "HYDROXIS" in opponents
-        assert "Ash-Tusk Clan Sniper" in opponents
-        assert "GENERAL KORGAN" in opponents
-
-    def test_render_colors_killed_name_in_save_and_spell_resist_lines(self) -> None:
-        panel = self._make_panel()
-        panel.add_death_event(self._event(
-            timestamp=datetime(2026, 1, 9, 14, 30, 0),
-            killer="HYDROXIS",
-            target="Woo Whirlwind",
-            lines=[
-                "[CHAT WINDOW TEXT] [t] Woo Whirlwind : Fortitude Save vs. Poison : *success* : (8 + 50 = 58 vs. DC: 55)",
-                "[CHAT WINDOW TEXT] [t] SPELL RESIST: Woo Whirlwind attempts to resist: Acid Fog - Result: FAILED",
-            ],
-        ))
-
-        killed_tag = next(
-            tag for tag, conf in panel.text.tag_configs.items()
-            if conf.get("foreground") == DeathSnippetPanel.KILLED_NAME_COLOR
-        )
-        killed_tagged_text = [text for _idx, text, tag in panel.text.inserts if tag == killed_tag]
-
-        assert "Woo Whirlwind" in killed_tagged_text
-        assert killed_tagged_text.count("Woo Whirlwind") == 2
-
-    def test_render_colors_opponents_from_attacks_and_damages_against_killed(self) -> None:
+    def test_render_colors_names_from_presenter_output(self) -> None:
         panel = self._make_panel()
         panel.add_death_event(self._event(
             timestamp=datetime(2026, 1, 9, 14, 30, 0),
@@ -409,19 +299,23 @@ class TestDeathSnippetPanel:
             target="Woo Whirlwind",
             lines=[
                 "[CHAT WINDOW TEXT] [t] Ash-Tusk Clan Sniper attacks Woo Whirlwind : *hit* : (12 + 56 = 68)",
-                "[CHAT WINDOW TEXT] [t] GENERAL KORGAN damages Woo Whirlwind: 40 (0 Physical 4 Divine 36 Electrical 0 Fire)",
                 "[CHAT WINDOW TEXT] [t] HYDROXIS killed Woo Whirlwind",
             ],
         ))
 
+        killed_tag = next(
+            tag for tag, conf in panel.text.tag_configs.items()
+            if conf.get("foreground") == DeathSnippetPanel.KILLED_NAME_COLOR
+        )
         opponent_tag = next(
             tag for tag, conf in panel.text.tag_configs.items()
             if conf.get("foreground") == DeathSnippetPanel.OPPONENT_NAME_COLOR
         )
+        killed_tagged_text = [text for _idx, text, tag in panel.text.inserts if tag == killed_tag]
         opponent_tagged_text = [text for _idx, text, tag in panel.text.inserts if tag == opponent_tag]
 
+        assert "Woo Whirlwind" in killed_tagged_text
         assert "Ash-Tusk Clan Sniper" in opponent_tagged_text
-        assert "GENERAL KORGAN" in opponent_tagged_text
         assert "HYDROXIS" in opponent_tagged_text
 
     def test_clear_character_name_restores_hint_and_empty_value(self) -> None:
@@ -480,26 +374,21 @@ class TestDeathSnippetPanel:
         assert panel.text.config["xscrollcommand"] == ""
         assert panel.hscroll.winfo_ismapped() is False
 
-    def test_prepare_display_lines_for_wrap_mode_no_wrap_pads_shorter_lines(self) -> None:
+    def test_render_selected_event_uses_font_measure_for_unwrapped_lines(self) -> None:
         panel = self._make_panel()
+        panel.theme_font = self._make_fake_font()
         panel.line_wrap_var.set(False)
-        panel.theme_font = self._make_fake_font()
-        lines = ["abcd", "ab"]
+        panel.add_death_event(self._event(
+            timestamp=datetime(2026, 1, 9, 14, 30, 0),
+            killer="HYDROXIS",
+            lines=[
+                "[CHAT WINDOW TEXT] [t] abcd",
+                "[CHAT WINDOW TEXT] [t] ab",
+            ],
+            target="Woo Wildrock",
+        ))
 
-        prepared = panel._prepare_display_lines_for_wrap_mode(lines)
-
-        assert prepared[0] == "abcd"
-        assert prepared[1] == "ab  "
-
-    def test_prepare_display_lines_for_wrap_mode_wrap_on_keeps_lines_unchanged(self) -> None:
-        panel = self._make_panel()
-        panel.line_wrap_var.set(True)
-        panel.theme_font = self._make_fake_font()
-        lines = ["abcd", "ab"]
-
-        prepared = panel._prepare_display_lines_for_wrap_mode(lines)
-
-        assert prepared == lines
+        assert "[t] ab  \n" in panel.text.content
 
     def test_on_line_wrap_toggled_forces_rerender(self) -> None:
         panel = self._make_panel()
