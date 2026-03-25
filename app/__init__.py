@@ -1,15 +1,8 @@
-"""Woo's NWN Parser - A Neverwinter Nights combat log analyzer.
+"""Woo's NWN Parser public package surface.
 
-This package contains the modularized components of the Woo's NWN Parser application,
-which parses game logs to track damage, DPS, AB, AC, Saves and Damage Immunities.
-
-Main modules:
-    - models: Data model classes (EnemySaves, EnemyAC, DamageEvent, AttackEvent)
-    - parser: ParserSession and LineParser for log line parsing
-    - storage: DataStore for in-memory data management
-    - monitor: LogDirectoryMonitor for log file monitoring and polling
-    - ui: User interface components
-    - utils: Utility functions for file processing
+The application is primarily wired through ``app.__main__`` and the Tk UI, but a
+small set of parser, storage, monitoring, and query types are re-exported here
+for tests and external tooling.
 """
 
 __version__ = "1.6.0"
@@ -25,18 +18,23 @@ from .models import (
 from .parser import LineParser, ParserSession
 from .storage import DataStore
 from .monitor import LogDirectoryMonitor
-from .utils import parse_and_import_file
+from .services import QueueProcessor
+from .services.queries import DpsQueryService, ImmunityQueryService, TargetSummaryQueryService
 
 __all__ = [
-    'DAMAGE_TYPE_PALETTE',
-    'EnemySaves',
-    'EnemyAC',
-    'DamageEvent',
-    'AttackEvent',
-    'LineParser',
-    'ParserSession',
-    'DataStore',
-    'LogDirectoryMonitor',
-    'parse_and_import_file',
+    "__version__",
+    "DAMAGE_TYPE_PALETTE",
+    "EnemySaves",
+    "EnemyAC",
+    "DamageEvent",
+    "AttackEvent",
+    "LineParser",
+    "ParserSession",
+    "DataStore",
+    "LogDirectoryMonitor",
+    "QueueProcessor",
+    "DpsQueryService",
+    "ImmunityQueryService",
+    "TargetSummaryQueryService",
 ]
 

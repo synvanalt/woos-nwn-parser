@@ -352,6 +352,113 @@ class TestDPSCalculations:
         assert breakdowns["Mage"] == []
 
 
+class TestStoreReadBoundary:
+    """Test the explicit store-facing read boundary used by query services."""
+
+    def test_get_dps_projection_snapshot_includes_immutable_dps_summaries(self, data_store: DataStore) -> None:
+        """DPS projection snapshots should include safe immutable per-character summaries."""
+        ts = datetime.now()
+        apply(
+            data_store,
+            dps_update(
+                attacker="Woo",
+                total_damage=100,
+                timestamp=ts,
+                damage_types={"Fire": 60, "Physical": 40},
+            )
+        )
+
+        summaries = data_store.get_dps_projection_snapshot().summaries
+
+        assert len(summaries) == 1
+        summary = summaries[0]
+        assert summary.character == "Woo"
+        assert summary.total_damage == 100
+        assert summary.first_timestamp == ts
+        assert summary.last_timestamp is None
+        assert summary.damage_by_type == (("Fire", 60), ("Physical", 40))
+        assert summary.breakdown_token == summary.damage_by_type
+
+    def test_get_dps_projection_snapshot_returns_atomic_all_target_state(self, data_store: DataStore) -> None:
+        """DPS projection snapshots should bundle timing and summaries together."""
+        ts1 = datetime.now()
+        ts2 = ts1 + timedelta(seconds=5)
+        apply(
+            data_store,
+            dps_update(attacker="Woo", total_damage=100, timestamp=ts1, damage_types={"Fire": 100}),
+            dps_update(attacker="Mage", total_damage=200, timestamp=ts2, damage_types={"Cold": 200}),
+        )
+
+        snapshot = data_store.get_dps_projection_snapshot()
+
+        assert snapshot.earliest_timestamp == ts1
+        assert snapshot.last_damage_timestamp == ts2
+        assert [summary.character for summary in snapshot.summaries] == ["Woo", "Mage"]
+
+    def test_get_dps_projection_snapshot_returns_target_filtered_state(self, data_store: DataStore) -> None:
+        """Target-filtered DPS projection snapshots should use target-scoped indices."""
+        ts1 = datetime.now()
+        ts2 = ts1 + timedelta(seconds=5)
+        apply(
+            data_store,
+            damage_row(target="Dragon", damage_type="Fire", total_damage=50, attacker="Woo", timestamp=ts1),
+            damage_row(target="Goblin", damage_type="Cold", total_damage=25, attacker="Woo", timestamp=ts2),
+            dps_update(attacker="Woo", total_damage=75, timestamp=ts2, damage_types={"Fire": 50, "Cold": 25}),
+        )
+
+        snapshot = data_store.get_dps_projection_snapshot("Dragon")
+
+        assert snapshot.earliest_timestamp == ts1
+        assert snapshot.last_damage_timestamp == ts2
+        assert len(snapshot.summaries) == 1
+        assert snapshot.summaries[0].character == "Woo"
+        assert snapshot.summaries[0].last_timestamp == ts1
+
+    def test_get_target_damage_type_snapshots_combines_damage_and_immunity(self, data_store: DataStore) -> None:
+        """Target damage-type snapshots should merge indexed damage and immunity data."""
+        apply(
+            data_store,
+            damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"),
+            damage_row(target="Goblin", damage_type="Cold", total_damage=15, attacker="Woo"),
+            immunity(target="Goblin", damage_type="Fire", immunity_points=10, damage_dealt=50),
+        )
+
+        snapshots = data_store.get_target_damage_type_snapshots("Goblin")
+
+        assert [item.damage_type for item in snapshots] == ["Cold", "Fire"]
+        fire = next(item for item in snapshots if item.damage_type == "Fire")
+        cold = next(item for item in snapshots if item.damage_type == "Cold")
+        assert fire.max_event_damage == 50
+        assert fire.max_immunity_damage == 50
+        assert fire.immunity_absorbed == 10
+        assert fire.sample_count == 1
+        assert cold.max_event_damage == 15
+        assert cold.max_immunity_damage == 0
+        assert cold.immunity_absorbed == 0
+        assert cold.sample_count == 0
+
+    def test_get_all_target_summary_snapshots_returns_sorted_summary_values(self, data_store: DataStore) -> None:
+        """Target summary snapshots should expose formatted store-owned summary fields."""
+        apply(
+            data_store,
+            damage_row(target="zombie", damage_type="Physical", total_damage=10, attacker="Woo"),
+            damage_row(target="Goblin", damage_type="Physical", total_damage=20, attacker="Woo"),
+            save(target="Goblin", save_key="fort", bonus=5),
+        )
+        data_store.record_target_attack_roll("Woo", "Goblin", "hit", 10, 20, 30)
+
+        snapshots = data_store.get_all_target_summary_snapshots()
+
+        assert [snapshot.target for snapshot in snapshots] == ["Goblin", "zombie"]
+        goblin = snapshots[0]
+        assert goblin.ab_display == "-"
+        assert goblin.ac_display == "\u226430"
+        assert goblin.fortitude == 5
+        assert goblin.reflex is None
+        assert goblin.will is None
+        assert goblin.damage_taken == 20
+
+
 class TestTargetFiltering:
     """Test suite for target-specific queries."""
 

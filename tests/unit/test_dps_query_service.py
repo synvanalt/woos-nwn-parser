@@ -5,6 +5,7 @@ Tests DPS calculations, time tracking modes, and data aggregation.
 
 import unittest
 from datetime import datetime, timedelta
+from unittest.mock import Mock
 
 from app.services.queries import DpsQueryService
 from app.storage import DataStore
@@ -180,6 +181,37 @@ class TestDpsQueryService(unittest.TestCase):
 
         # Both should return the same character
         self.assertEqual(result1[0]['character'], result2[0]['character'])
+
+    def test_get_dps_data_uses_atomic_projection_snapshot(self) -> None:
+        """DPS rows should come from one store projection snapshot."""
+        now = datetime.now()
+        apply(
+            self.data_store,
+            dps_update(attacker="Woo", total_damage=100, timestamp=now, damage_types={"Fire": 100}),
+        )
+        self.data_store.get_last_damage_timestamp = Mock(side_effect=AssertionError("stale read"))
+        self.data_store.get_dps_summaries = Mock(side_effect=AssertionError("stale read"))
+        self.data_store.get_target_dps_summaries = Mock(side_effect=AssertionError("stale read"))
+
+        result = self.service.get_dps_data()
+
+        self.assertEqual(result[0]["character"], "Woo")
+
+    def test_get_damage_type_breakdowns_uses_atomic_projection_snapshot(self) -> None:
+        """Breakdown rows should come from one store projection snapshot."""
+        now = datetime.now()
+        apply(
+            self.data_store,
+            dps_update(attacker="Woo", total_damage=100, timestamp=now, damage_types={"Fire": 100}),
+        )
+        self.data_store.last_damage_timestamp = now + timedelta(seconds=10)
+        self.data_store.get_last_damage_timestamp = Mock(side_effect=AssertionError("stale read"))
+        self.data_store.get_dps_summaries = Mock(side_effect=AssertionError("stale read"))
+        self.data_store.get_target_dps_summaries = Mock(side_effect=AssertionError("stale read"))
+
+        result = self.service.get_damage_type_breakdowns(["Woo"])
+
+        self.assertEqual(result["Woo"][0]["damage_type"], "Fire")
 
 
 class TestDpsQueryServiceIntegration(unittest.TestCase):

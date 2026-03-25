@@ -7,9 +7,9 @@ attack handling, and cleanup methods.
 import pytest
 import queue
 from datetime import datetime, timedelta
-from unittest.mock import Mock, call
+from unittest.mock import Mock
 
-from app.services.queue_processor import QueueProcessor
+from app.services.queue_processor import QueueDrainResult, QueueProcessor
 from app.storage import DataStore
 from app.parser import ParserSession
 from app.parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
@@ -42,31 +42,21 @@ def _process(
     on_death_snippet: Mock | None = None,
     on_character_identified: Mock | None = None,
     debug_enabled: bool = False,
-) -> object:
-    """Compatibility test helper that maps legacy callback-style calls to QueueDrainResult."""
-    result = processor.process_queue(
+) -> QueueDrainResult:
+    """Run one queue-drain pass and return the queue result contract directly."""
+    del (
+        on_dps_updated,
+        on_target_selected,
+        on_immunity_changed,
+        on_damage_dealt,
+        on_death_snippet,
+        on_character_identified,
+    )
+    return processor.process_queue(
         data_queue,
         on_log_message,
         debug_enabled=debug_enabled,
     )
-    if on_dps_updated and result.dps_updated:
-        on_dps_updated()
-    if on_target_selected:
-        for target in result.targets_to_refresh:
-            on_target_selected(target)
-    if on_immunity_changed:
-        for target in result.immunity_targets:
-            on_immunity_changed(target)
-    if on_damage_dealt:
-        for target in result.damage_targets:
-            on_damage_dealt(target)
-    if on_death_snippet:
-        for event in result.death_events:
-            on_death_snippet(event)
-    if on_character_identified:
-        for event in result.character_identity_events:
-            on_character_identified(event)
-    return result
 
 
 class TestQueueProcessorInitialization:
@@ -106,7 +96,7 @@ class TestEventRouting:
         on_target_selected = Mock()
         on_immunity_changed = Mock()
 
-        _process(queue_processor,
+        result = _process(queue_processor,
             data_queue,
             on_log_message,
             on_dps_updated,
@@ -114,8 +104,9 @@ class TestEventRouting:
             on_immunity_changed
         )
 
-        # Verify DPS was updated
-        on_dps_updated.assert_called()
+        assert result.dps_updated is True
+        assert result.targets_to_refresh == {"Goblin"}
+        assert result.damage_targets == {"Goblin"}
 
         # Disabled immunity parsing should not retain matcher-side damage state
         assert _damage_buffer(queue_processor) == {}
@@ -139,7 +130,7 @@ class TestEventRouting:
         on_target_selected = Mock()
         on_immunity_changed = Mock()
 
-        _process(queue_processor,
+        result = _process(queue_processor,
             data_queue,
             on_log_message,
             on_dps_updated,
@@ -149,6 +140,7 @@ class TestEventRouting:
 
         # Immunity should be queued if no matching damage
         assert 'Goblin' in _pending_immunity_queue(queue_processor)
+        assert result.immunity_targets == set()
 
     def test_route_attack_hit_event(self, queue_processor: QueueProcessor) -> None:
         """Test routing attack_hit event to correct handler."""
@@ -899,18 +891,16 @@ class TestCallbacks:
 
         data_queue.put(damage_event)
 
-        on_dps_updated = Mock()
-
-        _process(queue_processor,
+        result = _process(queue_processor,
             data_queue,
-            Mock(), on_dps_updated, Mock(), Mock()
+            Mock(), Mock(), Mock(), Mock()
         )
 
-        # Callback should be called
-        on_dps_updated.assert_called_once()
+        assert result.dps_updated is True
+        assert result.targets_to_refresh == {"Goblin"}
 
     def test_on_immunity_changed_called(self, queue_processor: QueueProcessor) -> None:
-        """Test that on_immunity_changed callback is called when queued immunity is processed."""
+        """Test queue result exposes immunity refresh targets when matching completes."""
         queue_processor.parser.parse_immunity = True
         data_queue = queue.Queue()
 
@@ -940,18 +930,16 @@ class TestCallbacks:
 
         data_queue.put(damage_event)
 
-        on_immunity_changed = Mock()
-
-        _process(queue_processor,
+        result = _process(queue_processor,
             data_queue,
-            Mock(), Mock(), Mock(), on_immunity_changed
+            Mock(), Mock(), Mock(), Mock()
         )
 
-        # Callback should be called with target when queued immunity is processed
-        on_immunity_changed.assert_called_with('Goblin')
+        assert result.immunity_targets == {"Goblin"}
+        assert result.targets_to_refresh == {"Goblin"}
 
     def test_on_damage_dealt_called(self, queue_processor: QueueProcessor) -> None:
-        """Test that on_damage_dealt callback is called when provided."""
+        """Test queue result exposes damage refresh targets directly."""
         data_queue = queue.Queue()
 
         damage_event = event_factories.damage_event(
@@ -964,18 +952,16 @@ class TestCallbacks:
 
         data_queue.put(damage_event)
 
-        on_damage_dealt = Mock()
-
-        _process(queue_processor,
+        result = _process(queue_processor,
             data_queue,
-            Mock(), Mock(), Mock(), Mock(), on_damage_dealt
+            Mock(), Mock(), Mock(), Mock(), Mock()
         )
 
-        # Callback should be called with target
-        on_damage_dealt.assert_called_with('Goblin')
+        assert result.damage_targets == {"Goblin"}
+        assert result.targets_to_refresh == {"Goblin"}
 
     def test_on_death_snippet_called(self, queue_processor: QueueProcessor) -> None:
-        """Test that on_death_snippet callback is called for death snippet events."""
+        """Test queue result carries death snippet events directly."""
         data_queue = queue.Queue()
         death_event = event_factories.death_snippet_event(
             target='Woo Wildrock',
@@ -988,21 +974,19 @@ class TestCallbacks:
         )
         data_queue.put(death_event)
 
-        on_death_snippet = Mock()
-        _process(queue_processor,
+        result = _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock(), None,
-            on_death_snippet=on_death_snippet,
         )
 
-        on_death_snippet.assert_called_once()
-        emitted = on_death_snippet.call_args[0][0]
+        assert len(result.death_events) == 1
+        emitted = result.death_events[0]
         assert isinstance(emitted, DeathSnippetEvent)
         assert emitted.type == 'death_snippet'
         assert emitted.target == 'Woo Wildrock'
 
     def test_on_character_identified_called(self, queue_processor: QueueProcessor) -> None:
-        """Test that character-identified callback is called for identity events."""
+        """Test queue result carries identity events directly."""
         data_queue = queue.Queue()
         identity_event = event_factories.death_character_identified_event(
             character_name='Woo Wildrock',
@@ -1010,15 +994,13 @@ class TestCallbacks:
         )
         data_queue.put(identity_event)
 
-        on_character_identified = Mock()
-        _process(queue_processor,
+        result = _process(queue_processor,
             data_queue,
             Mock(), Mock(), Mock(), Mock(), None,
-            on_character_identified=on_character_identified,
         )
 
-        on_character_identified.assert_called_once()
-        emitted = on_character_identified.call_args[0][0]
+        assert len(result.character_identity_events) == 1
+        emitted = result.character_identity_events[0]
         assert isinstance(emitted, DeathCharacterIdentifiedEvent)
         assert emitted.type == "death_character_identified"
         assert emitted.character_name == "Woo Wildrock"

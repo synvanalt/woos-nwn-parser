@@ -57,25 +57,26 @@ The main live-data path is:
 
 `monitor -> parser -> queue processor / event ingestion -> DataStore -> query services -> UI panels`
 
-- `LogDirectoryMonitor` tails the active NWN log and feeds raw lines into the parser pipeline.
-- `ParserSession` owns line numbering, year inference, and death-correlation state while routing each raw line through `LineParser`.
-- `LineParser` converts individual lines into typed parsed events for damage, attacks, saves, immunities, and other pure per-line observations.
-- `QueueProcessor` drains parsed events in bounded batches and routes them through `EventIngestionEngine`.
-- `EventIngestionEngine` turns parsed events into normalized store mutations and side events.
-- `DataStore` applies mutations and updates the indexed in-memory session state.
-- Query services build panel-facing read models from those indices.
-- Tk widgets render the query-service results and preserve incremental refresh behavior.
+- `LogDirectoryMonitor` tails the active NWN log and feeds raw lines into the parser pipeline
+- `ParserSession` owns line numbering, year inference, and death-correlation state while routing each raw line through `LineParser`
+- `LineParser` converts individual lines into typed parsed events for damage, attacks, saves, immunities, and other pure per-line observations
+- `QueueProcessor` drains parsed events in bounded batches and routes them through `EventIngestionEngine`
+- `EventIngestionEngine` turns parsed events into normalized store mutations and side events
+- `DataStore` applies mutations and updates the indexed in-memory session state
+- Query services build panel-facing read models from those indices
+- Tk widgets render the query-service results and preserve incremental refresh behavior
 
 Historic import uses the same parser and ingestion logic, then applies the resulting mutations into the same `DataStore`.
 
 ## Ownership Boundaries
 
-- `DataStore` owns mutable indexed combat state, versioning, locking, and mutation application.
-- Query services own read-side row construction, memoization, and defensive-copy return semantics for the UI.
-- UI controllers coordinate workflows such as monitoring, import, queue draining, coalesced refreshes, and persisted session settings.
-- UI presenters/formatters own pure display-data preparation that widgets can consume without Tk dependencies.
-- Panels should consume query services, not build projections directly from low-level store state.
-- Parser and matcher semantics should stay aligned across live monitoring and historic import.
+- `DataStore` owns mutable indexed combat state, versioning, locking, and mutation application
+- `DataStore` also owns store-facing immutable read snapshots for query consumption, including atomic projection snapshots when query timing state must stay consistent with indexed summaries
+- Query services own read-side row construction, memoization, and defensive-copy return semantics for the UI
+- UI controllers coordinate workflows such as monitoring, import, queue draining, coalesced refreshes, and persisted session settings
+- UI presenters/formatters own pure display-data preparation that widgets can consume without Tk dependencies
+- Panels should consume query services, not build projections directly from low-level store state
+- Parser and matcher semantics should stay aligned across live monitoring and historic import
 
 ## Key Components
 
@@ -93,7 +94,8 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 - Thread-safe in-memory session storage
 - Owns mutable indexed combat state and batched mutation application
 - Tracks attacks, damage totals, immunities, and target-stat aggregation (AC/AB/Saves)
-- Owns write-side mutations and indexed primitive reads consumed by query services
+- Owns write-side mutations plus immutable store-facing read snapshots consumed by query services
+- Keeps lock ownership inside the store when building timing-sensitive read projections so query services do not assemble mixed-version DPS state from multiple lock acquisitions
 
 **LogDirectoryMonitor** (`monitor.py`)
 - Watches NWN logs directory for changes
@@ -126,7 +128,7 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 - `DpsQueryService` builds DPS rows, hit-rate display data, and damage-type breakdowns from store indices
 - `TargetSummaryQueryService` builds `Target Stats` rows from indexed target state
 - `ImmunityQueryService` builds `Target Immunities` rows from indexed damage and immunity summaries
-- Keep read-side projection caching out of `DataStore`, while preserving defensive-copy semantics for UI consumers
+- Keep read-side projection caching out of `DataStore`, while consuming store-owned immutable snapshots and preserving defensive-copy semantics for UI consumers
 
 **WoosNwnParserApp** (`ui/main_window.py`)
 - Wires together parser, storage, widgets, query services, and UI controllers

@@ -6,6 +6,7 @@ using Python dataclasses instead of a database, providing session-only storage.
 
 import threading
 from collections import deque
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
@@ -22,6 +23,51 @@ from .models import (
     StoreMutation,
     TargetAttackBonus,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class DpsSummarySnapshot:
+    """Immutable indexed DPS summary exposed to query services."""
+
+    character: str
+    total_damage: int
+    first_timestamp: datetime
+    last_timestamp: Optional[datetime]
+    damage_by_type: tuple[tuple[str, int], ...]
+    breakdown_token: tuple[tuple[str, int], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DpsProjectionSnapshot:
+    """Immutable atomic DPS projection state exposed to query services."""
+
+    last_damage_timestamp: Optional[datetime]
+    earliest_timestamp: Optional[datetime]
+    summaries: tuple[DpsSummarySnapshot, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TargetDamageTypeSnapshot:
+    """Immutable indexed damage/immunity summary for one target damage type."""
+
+    damage_type: str
+    max_event_damage: int
+    max_immunity_damage: int
+    immunity_absorbed: int
+    sample_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class TargetSummarySnapshot:
+    """Immutable target-summary snapshot exposed to query services."""
+
+    target: str
+    ab_display: str
+    ac_display: str
+    fortitude: Optional[int]
+    reflex: Optional[int]
+    will: Optional[int]
+    damage_taken: int
 
 
 class DataStore:
@@ -397,6 +443,55 @@ class DataStore:
             self._dps_breakdown_dirty_attacker_target.discard(key)
         return self._dps_breakdown_token_by_attacker_target[key]
 
+    def _build_dps_summaries_locked(
+        self,
+        *,
+        target: Optional[str],
+    ) -> tuple[DpsSummarySnapshot, ...]:
+        """Build immutable DPS summaries while lock is held."""
+        snapshots: list[DpsSummarySnapshot] = []
+        if target is None:
+            summaries = self.dps_data.items()
+            for character, summary in summaries:
+                damage_by_type = summary.get("damage_by_type", {})
+                breakdown_token = self._get_character_breakdown_token(
+                    str(character),
+                    damage_by_type,
+                )
+                snapshots.append(
+                    DpsSummarySnapshot(
+                        character=str(character),
+                        total_damage=int(summary["total_damage"]),
+                        first_timestamp=summary["first_timestamp"],
+                        last_timestamp=None,
+                        damage_by_type=breakdown_token,
+                        breakdown_token=breakdown_token,
+                    )
+                )
+            return tuple(snapshots)
+
+        attackers = self._damage_dealers_by_target.get(target, set())
+        for attacker in attackers:
+            summary = self._dps_by_attacker_target.get((attacker, target))
+            if summary is None:
+                continue
+            damage_by_type = summary["damage_by_type"]
+            breakdown_token = self._get_attacker_target_breakdown_token(
+                (str(attacker), str(target)),
+                damage_by_type,
+            )
+            snapshots.append(
+                DpsSummarySnapshot(
+                    character=str(attacker),
+                    total_damage=int(summary["total_damage"]),
+                    first_timestamp=summary["first_timestamp"],
+                    last_timestamp=summary["last_timestamp"],
+                    damage_by_type=breakdown_token,
+                    breakdown_token=breakdown_token,
+                )
+            )
+        return tuple(snapshots)
+
     def get_earliest_timestamp(self) -> Optional[datetime]:
         """Get the earliest timestamp from all recorded DPS data.
 
@@ -405,6 +500,80 @@ class DataStore:
         """
         with self.lock:
             return self._earliest_timestamp
+
+    def get_dps_projection_snapshot(
+        self,
+        target: str | None = None,
+    ) -> DpsProjectionSnapshot:
+        """Get one atomic DPS projection snapshot for query consumption."""
+        with self.lock:
+            earliest_timestamp = (
+                self._earliest_timestamp
+                if target is None
+                else self._earliest_timestamp_by_target.get(target)
+            )
+            return DpsProjectionSnapshot(
+                last_damage_timestamp=self.last_damage_timestamp,
+                earliest_timestamp=earliest_timestamp,
+                summaries=self._build_dps_summaries_locked(target=target),
+            )
+
+    def get_target_damage_type_snapshots(
+        self,
+        target: str,
+    ) -> tuple[TargetDamageTypeSnapshot, ...]:
+        """Get immutable indexed damage/immunity snapshots for one target."""
+        with self.lock:
+            damage_summary = self._damage_summary_by_target.get(target, {})
+            immunity_summary = self.immunity_data.get(target, {})
+            damage_types = sorted(set(damage_summary) | set(immunity_summary))
+            return tuple(
+                TargetDamageTypeSnapshot(
+                    damage_type=damage_type,
+                    max_event_damage=int(
+                        damage_summary.get(damage_type, {}).get("max_damage", 0)
+                    ),
+                    max_immunity_damage=int(
+                        immunity_summary.get(damage_type, {}).get("max_damage", 0)
+                    ),
+                    immunity_absorbed=int(
+                        immunity_summary.get(damage_type, {}).get("max_immunity", 0)
+                    ),
+                    sample_count=int(
+                        immunity_summary.get(damage_type, {}).get("sample_count", 0)
+                    ),
+                )
+                for damage_type in damage_types
+            )
+
+    def get_all_target_summary_snapshots(self) -> tuple[TargetSummarySnapshot, ...]:
+        """Get immutable indexed summary snapshots for all known targets."""
+        with self.lock:
+            rows: list[TargetSummarySnapshot] = []
+            for target in self._get_sorted_targets_locked():
+                ab_display = "-"
+                attack_bonus = self._target_attack_bonus_by_name.get(target)
+                if attack_bonus is not None:
+                    ab_display = attack_bonus.get_bonus_display()
+
+                ac_display = "-"
+                ac = self._target_ac_by_name.get(target)
+                if ac is not None:
+                    ac_display = ac.get_ac_estimate()
+
+                saves = self._target_saves_by_name.get(target)
+                rows.append(
+                    TargetSummarySnapshot(
+                        target=target,
+                        ab_display=ab_display,
+                        ac_display=ac_display,
+                        fortitude=None if saves is None else saves.fortitude,
+                        reflex=None if saves is None else saves.reflex,
+                        will=None if saves is None else saves.will,
+                        damage_taken=int(self._damage_taken_by_target.get(target, 0)),
+                    )
+                )
+            return tuple(rows)
 
     def get_target_resists(self, target: str) -> List[Tuple[str, int, int, int]]:
         """Get aggregated resist data for a specific target.
