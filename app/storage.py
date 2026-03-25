@@ -501,21 +501,6 @@ class DataStore:
         with self.lock:
             return self._earliest_timestamp
 
-    def get_last_damage_timestamp(self) -> Optional[datetime]:
-        """Get the latest timestamp from all recorded DPS data."""
-        with self.lock:
-            return self.last_damage_timestamp
-
-    def get_dps_summaries(self) -> tuple[DpsSummarySnapshot, ...]:
-        """Get immutable indexed DPS summaries for all characters."""
-        with self.lock:
-            return self._build_dps_summaries_locked(target=None)
-
-    def get_target_dps_summaries(self, target: str) -> tuple[DpsSummarySnapshot, ...]:
-        """Get immutable indexed DPS summaries for one target."""
-        with self.lock:
-            return self._build_dps_summaries_locked(target=target)
-
     def get_dps_projection_snapshot(
         self,
         target: str | None = None,

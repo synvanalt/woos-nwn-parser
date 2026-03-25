@@ -355,8 +355,8 @@ class TestDPSCalculations:
 class TestStoreReadBoundary:
     """Test the explicit store-facing read boundary used by query services."""
 
-    def test_get_dps_summaries_returns_immutable_snapshots(self, data_store: DataStore) -> None:
-        """DPS summaries should be safe immutable copies of indexed state."""
+    def test_get_dps_projection_snapshot_includes_immutable_dps_summaries(self, data_store: DataStore) -> None:
+        """DPS projection snapshots should include safe immutable per-character summaries."""
         ts = datetime.now()
         apply(
             data_store,
@@ -368,7 +368,7 @@ class TestStoreReadBoundary:
             )
         )
 
-        summaries = data_store.get_dps_summaries()
+        summaries = data_store.get_dps_projection_snapshot().summaries
 
         assert len(summaries) == 1
         summary = summaries[0]
