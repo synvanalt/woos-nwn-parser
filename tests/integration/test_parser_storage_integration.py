@@ -109,9 +109,9 @@ class TestParserStorageIntegration:
         assert len(database.attacks) == 3
 
         summary = TargetSummaryQueryService(database).get_all_targets_summary()
-        goblin_summary = next((item for item in summary if item["target"] == "Goblin"), None)
+        goblin_summary = next((item for item in summary if item.target == "Goblin"), None)
         assert goblin_summary is not None
-        assert goblin_summary["ac"] == "16-21"
+        assert goblin_summary.ac == "16-21"
 
     def test_parse_and_store_save_events(self, temp_log_dir: Path) -> None:
         """Test parsing save events and tracking."""
@@ -129,10 +129,10 @@ class TestParserStorageIntegration:
         assert result['success'] is True
 
         summary = TargetSummaryQueryService(database).get_all_targets_summary()
-        goblin_summary = next((item for item in summary if item["target"] == "Goblin"), None)
+        goblin_summary = next((item for item in summary if item.target == "Goblin"), None)
         assert goblin_summary is not None
-        assert goblin_summary["fortitude"] == "5"
-        assert goblin_summary["reflex"] == "3"
+        assert goblin_summary.fortitude == "5"
+        assert goblin_summary.reflex == "3"
 
     def test_parse_complete_combat_session(self, sample_combat_session: Path) -> None:
         """Test parsing a complete combat session."""
@@ -216,13 +216,13 @@ class TestParserStorageIntegration:
         assert len(breakdown) == 2
 
         # Find Fire and Physical in breakdown
-        fire_breakdown = next((b for b in breakdown if b['damage_type'] == 'Fire'), None)
-        physical_breakdown = next((b for b in breakdown if b['damage_type'] == 'Physical'), None)
+        fire_breakdown = next((b for b in breakdown if b.damage_type == 'Fire'), None)
+        physical_breakdown = next((b for b in breakdown if b.damage_type == 'Physical'), None)
 
         assert fire_breakdown is not None
-        assert fire_breakdown['total_damage'] == 90
+        assert fire_breakdown.total_damage == 90
         assert physical_breakdown is not None
-        assert physical_breakdown['total_damage'] == 60
+        assert physical_breakdown.total_damage == 60
 
     def test_hit_rate_calculation(self, temp_log_dir: Path) -> None:
         """Test hit rate calculation after parsing attacks."""
@@ -269,11 +269,11 @@ class TestParserStorageIntegration:
         # Get target summary
         summary = TargetSummaryQueryService(database).get_all_targets_summary()
 
-        goblin_summary = next((s for s in summary if s['target'] == 'Goblin'), None)
+        goblin_summary = next((s for s in summary if s.target == 'Goblin'), None)
         assert goblin_summary is not None
-        assert goblin_summary['ab'] == '8'  # Attack bonus
-        assert goblin_summary['ac'] == '16-21'  # AC estimate
-        assert goblin_summary['fortitude'] == '5'
+        assert goblin_summary.ab == '8'  # Attack bonus
+        assert goblin_summary.ac == '16-21'  # AC estimate
+        assert goblin_summary.fortitude == '5'
 
     def test_target_summary_epic_dodge_marks_ac(self, temp_log_dir: Path) -> None:
         """Test target summary prefixes AC estimate for Epic Dodge targets."""
@@ -292,10 +292,10 @@ class TestParserStorageIntegration:
 
         assert result['success'] is True
         summary = TargetSummaryQueryService(database).get_all_targets_summary()
-        monk_summary = next((s for s in summary if s['target'] == 'Epic Undead Monk'), None)
+        monk_summary = next((s for s in summary if s.target == 'Epic Undead Monk'), None)
 
         assert monk_summary is not None
-        assert monk_summary['ac'] == "~31"
+        assert monk_summary.ac == "~31"
 
 
 class TestErrorHandling:

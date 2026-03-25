@@ -973,7 +973,7 @@ class TestTargetSummary:
 
         summary = _target_summary_query(data_store).get_all_targets_summary()
         boss_summary = next(s for s in summary if s.target == "Boss")
-        assert boss_summary["ac"] == "≤31"
+        assert boss_summary.ac == "≤31"
 
 
 class TestThreadSafety:
@@ -1049,7 +1049,7 @@ class TestClearData:
         apply(data_store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
 
         summary_before_clear = _target_summary_query(data_store).get_all_targets_summary()
-        assert [row["target"] for row in summary_before_clear] == ["Goblin"]
+        assert [row.target for row in summary_before_clear] == ["Goblin"]
 
         data_store.clear_all_data()
 

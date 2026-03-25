@@ -2,33 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import timedelta
 
 
-class _MappingCompatMixin:
-    """Provide narrow read-only mapping compatibility for legacy callers/tests."""
-
-    def __getitem__(self, key: str) -> object:
-        return getattr(self, key)
-
-    def get(self, key: str, default: object = None) -> object:
-        return getattr(self, key, default)
-
-    def __contains__(self, key: object) -> bool:
-        return isinstance(key, str) and hasattr(self, key)
-
-    def keys(self) -> tuple[str, ...]:
-        return tuple(self.__dataclass_fields__)  # type: ignore[attr-defined]
-
-    def items(self) -> Iterator[tuple[str, object]]:
-        for key in self.keys():
-            yield key, getattr(self, key)
-
-
 @dataclass(frozen=True, slots=True)
-class DpsRow(_MappingCompatMixin):
+class DpsRow:
     """One top-level DPS row for UI/query consumers."""
 
     character: str
@@ -40,7 +19,7 @@ class DpsRow(_MappingCompatMixin):
 
 
 @dataclass(frozen=True, slots=True)
-class DpsBreakdownRow(_MappingCompatMixin):
+class DpsBreakdownRow:
     """One DPS damage-type breakdown row."""
 
     damage_type: str
@@ -49,7 +28,7 @@ class DpsBreakdownRow(_MappingCompatMixin):
 
 
 @dataclass(frozen=True, slots=True)
-class ImmunitySummaryRow(_MappingCompatMixin):
+class ImmunitySummaryRow:
     """One target immunity summary row."""
 
     damage_type: str
@@ -61,7 +40,7 @@ class ImmunitySummaryRow(_MappingCompatMixin):
 
 
 @dataclass(frozen=True, slots=True)
-class TargetSummaryRow(_MappingCompatMixin):
+class TargetSummaryRow:
     """One Target Stats display row."""
 
     target: str

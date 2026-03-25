@@ -44,14 +44,13 @@ class TestDPSPipelineIntegration:
         # Should have data for both characters
         assert len(dps_list) == 2
 
-        characters = {d['character'] for d in dps_list}
+        characters = {d.character for d in dps_list}
         assert 'Woo' in characters
         assert 'Rogue' in characters
 
         # Check that hit rates are included
         for dps_info in dps_list:
-            assert 'hit_rate' in dps_info
-            assert dps_info['hit_rate'] >= 0.0
+            assert dps_info.hit_rate >= 0.0
 
     def test_dps_with_target_filtering(self, temp_log_dir: Path) -> None:
         """Test DPS calculation with target filtering."""
@@ -72,7 +71,7 @@ class TestDPSPipelineIntegration:
         dps_list = dps_service.get_dps_display_data(target_filter="Goblin")
 
         # Should only include damage to Goblin
-        total_damage = sum(d['total_damage'] for d in dps_list)
+        total_damage = sum(d.total_damage for d in dps_list)
         assert total_damage == 180  # 100 + 80
 
     def test_dps_per_character_mode(self, temp_log_dir: Path) -> None:
@@ -93,8 +92,8 @@ class TestDPSPipelineIntegration:
         dps_list = dps_service.get_dps_display_data()
 
         assert len(dps_list) == 1
-        assert dps_list[0]['character'] == 'Woo'
-        assert dps_list[0]['total_damage'] == 150
+        assert dps_list[0].character == 'Woo'
+        assert dps_list[0].total_damage == 150
 
     def test_dps_global_mode(self, temp_log_dir: Path) -> None:
         """Test DPS calculation in global mode."""
@@ -140,10 +139,10 @@ class TestDPSPipelineIntegration:
         assert len(breakdown) == 2
 
         # Sorted by total damage descending
-        assert breakdown[0]['damage_type'] == 'Fire'
-        assert breakdown[0]['total_damage'] == 90
-        assert breakdown[1]['damage_type'] == 'Physical'
-        assert breakdown[1]['total_damage'] == 60
+        assert breakdown[0].damage_type == 'Fire'
+        assert breakdown[0].total_damage == 90
+        assert breakdown[1].damage_type == 'Physical'
+        assert breakdown[1].total_damage == 60
 
     def test_hit_rate_integration(self, temp_log_dir: Path) -> None:
         """Test hit rate calculation integrated with DPS."""
@@ -169,7 +168,7 @@ class TestDPSPipelineIntegration:
         woo_data = dps_list[0]
 
         # Hit rate should be calculated: 3 hits, 1 miss = 75%
-        assert woo_data['hit_rate'] == pytest.approx(75.0, abs=0.1)
+        assert woo_data.hit_rate == pytest.approx(75.0, abs=0.1)
 
     def test_multiple_characters_and_targets(self, temp_log_dir: Path) -> None:
         """Test pipeline with multiple characters and targets."""
@@ -240,7 +239,7 @@ class TestComplexScenarios:
         dps_list = dps_service.get_dps_display_data()
 
         assert len(dps_list) == 1
-        assert dps_list[0]['total_damage'] > 0
+        assert dps_list[0].total_damage > 0
 
     def test_immunity_with_dps_calculation(self, temp_log_dir: Path) -> None:
         """Test DPS calculation with immunity tracking."""
@@ -265,5 +264,5 @@ class TestComplexScenarios:
         dps_list = dps_service.get_dps_display_data()
 
         assert len(dps_list) == 1
-        assert dps_list[0]['total_damage'] == 100
+        assert dps_list[0].total_damage == 100
 

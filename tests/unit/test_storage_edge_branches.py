@@ -60,11 +60,11 @@ def test_get_dps_data_global_mode_without_start_time_uses_earliest(data_store: D
     )
 
     dps = DpsQueryService(data_store).get_dps_data(time_tracking_mode="global", global_start_time=None)
-    by_character = {row["character"]: row for row in dps}
+    by_character = {row.character: row for row in dps}
 
     assert set(by_character) == {"Woo", "Rogue"}
-    assert by_character["Woo"]["dps"] == pytest.approx(10.0, abs=0.01)   # 100 / (20-10 -> 10, but global start=min=10)
-    assert by_character["Rogue"]["dps"] == pytest.approx(5.0, abs=0.01)
+    assert by_character["Woo"].dps == pytest.approx(10.0, abs=0.01)   # 100 / (20-10 -> 10, but global start=min=10)
+    assert by_character["Rogue"].dps == pytest.approx(5.0, abs=0.01)
 
 
 def test_get_dps_breakdown_global_returns_empty_when_last_timestamp_missing(data_store: DataStore) -> None:
@@ -99,12 +99,12 @@ def test_get_dps_data_for_target_global_mode_without_start_time(data_store: Data
         time_tracking_mode="global",
         global_start_time=None,
     )
-    by_character = {row["character"]: row for row in dps}
+    by_character = {row.character: row for row in dps}
 
     assert set(by_character) == {"Woo", "Rogue"}
     # global_start_time for this target should be t_a (earliest Goblin hit)
-    assert by_character["Woo"]["dps"] == pytest.approx(80 / 20, abs=0.01)
-    assert by_character["Rogue"]["dps"] == pytest.approx(40 / 20, abs=0.01)
+    assert by_character["Woo"].dps == pytest.approx(80 / 20, abs=0.01)
+    assert by_character["Rogue"].dps == pytest.approx(40 / 20, abs=0.01)
 
 
 def test_get_earliest_timestamp_for_target_none_and_present(data_store: DataStore) -> None:
