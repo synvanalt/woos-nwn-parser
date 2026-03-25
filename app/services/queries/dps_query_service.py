@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from ...storage import DataStore
 
@@ -63,11 +63,11 @@ class DpsQueryService:
 
     @staticmethod
     def _build_breakdown_rows(
-        damage_by_type: dict[str, int],
+        damage_by_type: Sequence[tuple[str, int]],
         time_seconds: float,
     ) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
-        for damage_type, total_damage in damage_by_type.items():
+        for damage_type, total_damage in damage_by_type:
             rows.append(
                 {
                     "damage_type": damage_type,
@@ -85,91 +85,64 @@ class DpsQueryService:
         time_tracking_mode: str,
         global_start_time: Optional[datetime],
     ) -> list[dict[str, Any]]:
-        with self.data_store.lock:
-            resolved_global_start = self._resolve_global_start_time(
-                target=target,
-                global_start_time=global_start_time,
-            )
-            last_damage_timestamp = self.data_store.last_damage_timestamp
-            rows: list[dict[str, Any]] = []
+        resolved_global_start = self._resolve_global_start_time(
+            target=target,
+            global_start_time=global_start_time,
+        )
+        last_damage_timestamp = self.data_store.get_last_damage_timestamp()
+        rows: list[dict[str, Any]] = []
+        summaries = (
+            self.data_store.get_dps_summaries()
+            if target is None
+            else self.data_store.get_target_dps_summaries(target)
+        )
 
-            if target is None:
-                summaries = self.data_store.dps_data.items()
-            else:
-                attackers = self.data_store._damage_dealers_by_target.get(target, set())
-                summaries = (
-                    (attacker, self.data_store._dps_by_attacker_target.get((attacker, target)))
-                    for attacker in attackers
+        if time_tracking_mode == "global":
+            if resolved_global_start is None or last_damage_timestamp is None:
+                return rows
+            for summary in summaries:
+                total_damage = int(summary.total_damage)
+                if total_damage == 0:
+                    continue
+                time_delta = last_damage_timestamp - resolved_global_start
+                time_seconds = max(time_delta.total_seconds(), 1)
+                rows.append(
+                    {
+                        "character": summary.character,
+                        "total_damage": total_damage,
+                        "time_seconds": time_delta,
+                        "dps": total_damage / time_seconds,
+                        "breakdown_token": summary.breakdown_token,
+                    }
+                )
+        else:
+            if last_damage_timestamp is None and target is None:
+                return rows
+            for summary in summaries:
+                total_damage = int(summary.total_damage)
+                if total_damage == 0:
+                    continue
+                if target is None:
+                    if last_damage_timestamp is None:
+                        continue
+                    time_delta = last_damage_timestamp - summary.first_timestamp
+                else:
+                    if summary.last_timestamp is None:
+                        continue
+                    time_delta = summary.last_timestamp - summary.first_timestamp
+                time_seconds = max(time_delta.total_seconds(), 1)
+                rows.append(
+                    {
+                        "character": summary.character,
+                        "total_damage": total_damage,
+                        "time_seconds": time_delta,
+                        "dps": total_damage / time_seconds,
+                        "breakdown_token": summary.breakdown_token,
+                    }
                 )
 
-            if time_tracking_mode == "global":
-                if resolved_global_start is None or last_damage_timestamp is None:
-                    return rows
-                for character, summary in summaries:
-                    if not summary:
-                        continue
-                    total_damage = int(summary["total_damage"])
-                    if total_damage == 0:
-                        continue
-                    time_delta = last_damage_timestamp - resolved_global_start
-                    time_seconds = max(time_delta.total_seconds(), 1)
-                    damage_by_type = dict(summary.get("damage_by_type", {}))
-                    if target is None:
-                        breakdown_token = self.data_store._get_character_breakdown_token(
-                            str(character),
-                            damage_by_type,
-                        )
-                    else:
-                        breakdown_token = self.data_store._get_attacker_target_breakdown_token(
-                            (str(character), str(target)),
-                            damage_by_type,
-                        )
-                    rows.append(
-                        {
-                            "character": str(character),
-                            "total_damage": total_damage,
-                            "time_seconds": time_delta,
-                            "dps": total_damage / time_seconds,
-                            "breakdown_token": breakdown_token,
-                        }
-                    )
-            else:
-                if last_damage_timestamp is None and target is None:
-                    return rows
-                for character, summary in summaries:
-                    if not summary:
-                        continue
-                    total_damage = int(summary["total_damage"])
-                    if total_damage == 0:
-                        continue
-                    if target is None:
-                        first_timestamp = summary["first_timestamp"]
-                        time_delta = last_damage_timestamp - first_timestamp
-                        damage_by_type = dict(summary.get("damage_by_type", {}))
-                        breakdown_token = self.data_store._get_character_breakdown_token(
-                            str(character),
-                            damage_by_type,
-                        )
-                    else:
-                        time_delta = summary["last_timestamp"] - summary["first_timestamp"]
-                        damage_by_type = dict(summary["damage_by_type"])
-                        breakdown_token = self.data_store._get_attacker_target_breakdown_token(
-                            (str(character), str(target)),
-                            damage_by_type,
-                        )
-                    time_seconds = max(time_delta.total_seconds(), 1)
-                    rows.append(
-                        {
-                            "character": str(character),
-                            "total_damage": total_damage,
-                            "time_seconds": time_delta,
-                            "dps": total_damage / time_seconds,
-                            "breakdown_token": breakdown_token,
-                        }
-                    )
-
-            rows.sort(key=lambda row: row["dps"], reverse=True)
-            return rows
+        rows.sort(key=lambda row: row["dps"], reverse=True)
+        return rows
 
     def get_dps_data(
         self,
@@ -238,87 +211,72 @@ class DpsQueryService:
             global_start_time=effective_start,
         )
 
-        with self.data_store.lock:
-            for character in unique_characters:
-                cache_key = (
-                    target,
-                    character,
-                    self.time_tracking_mode,
-                    resolved_global_start,
-                )
-                cached_rows = self._dps_breakdowns_cache.get(cache_key)
-                if cached_rows is None:
-                    if target is None:
-                        summary = self.data_store.dps_data.get(character)
-                        if summary is None:
-                            rows: list[dict[str, Any]] = []
-                        elif self.time_tracking_mode == "global":
-                            if (
-                                resolved_global_start is None
-                                or self.data_store.last_damage_timestamp is None
-                            ):
-                                rows = []
-                            else:
-                                time_seconds = max(
-                                    (
-                                        self.data_store.last_damage_timestamp - resolved_global_start
-                                    ).total_seconds(),
-                                    1,
-                                )
-                                rows = self._build_breakdown_rows(
-                                    dict(summary.get("damage_by_type", {})),
-                                    time_seconds,
-                                )
-                        else:
-                            if self.data_store.last_damage_timestamp is None:
-                                rows = []
-                            else:
-                                time_seconds = max(
-                                    (
-                                        self.data_store.last_damage_timestamp
-                                        - summary["first_timestamp"]
-                                    ).total_seconds(),
-                                    1,
-                                )
-                                rows = self._build_breakdown_rows(
-                                    dict(summary.get("damage_by_type", {})),
-                                    time_seconds,
-                                )
+        summaries = (
+            {
+                summary.character: summary
+                for summary in self.data_store.get_dps_summaries()
+            }
+            if target is None
+            else {
+                summary.character: summary
+                for summary in self.data_store.get_target_dps_summaries(target)
+            }
+        )
+        last_damage_timestamp = self.data_store.get_last_damage_timestamp()
+
+        for character in unique_characters:
+            cache_key = (
+                target,
+                character,
+                self.time_tracking_mode,
+                resolved_global_start,
+            )
+            cached_rows = self._dps_breakdowns_cache.get(cache_key)
+            if cached_rows is None:
+                summary = summaries.get(character)
+                if summary is None or int(summary.total_damage) == 0:
+                    rows: list[dict[str, Any]] = []
+                elif self.time_tracking_mode == "global":
+                    if resolved_global_start is None or last_damage_timestamp is None:
+                        rows = []
                     else:
-                        summary = self.data_store._dps_by_attacker_target.get((character, target))
-                        if summary is None or int(summary["total_damage"]) == 0:
-                            rows = []
-                        elif self.time_tracking_mode == "global":
-                            if (
-                                resolved_global_start is None
-                                or self.data_store.last_damage_timestamp is None
-                            ):
-                                rows = []
-                            else:
-                                time_seconds = max(
-                                    (
-                                        self.data_store.last_damage_timestamp - resolved_global_start
-                                    ).total_seconds(),
-                                    1,
-                                )
-                                rows = self._build_breakdown_rows(
-                                    dict(summary["damage_by_type"]),
-                                    time_seconds,
-                                )
-                        else:
-                            time_seconds = max(
-                                (
-                                    summary["last_timestamp"] - summary["first_timestamp"]
-                                ).total_seconds(),
-                                1,
-                            )
-                            rows = self._build_breakdown_rows(
-                                dict(summary["damage_by_type"]),
-                                time_seconds,
-                            )
-                    cached_rows = tuple(row.copy() for row in rows)
-                    self._dps_breakdowns_cache[cache_key] = cached_rows
-                result[character] = self._copy_rows(cached_rows)
+                        time_seconds = max(
+                            (last_damage_timestamp - resolved_global_start).total_seconds(),
+                            1,
+                        )
+                        rows = self._build_breakdown_rows(
+                            summary.damage_by_type,
+                            time_seconds,
+                        )
+                elif target is None:
+                    if last_damage_timestamp is None:
+                        rows = []
+                    else:
+                        time_seconds = max(
+                            (last_damage_timestamp - summary.first_timestamp).total_seconds(),
+                            1,
+                        )
+                        rows = self._build_breakdown_rows(
+                            summary.damage_by_type,
+                            time_seconds,
+                        )
+                else:
+                    if summary.last_timestamp is None:
+                        rows = []
+                    else:
+                        time_seconds = max(
+                            (
+                                summary.last_timestamp - summary.first_timestamp
+                            ).total_seconds(),
+                            1,
+                        )
+                        rows = self._build_breakdown_rows(
+                            summary.damage_by_type,
+                            time_seconds,
+                        )
+                cached_rows = tuple(row.copy() for row in rows)
+                self._dps_breakdowns_cache[cache_key] = cached_rows
+            result[character] = self._copy_rows(cached_rows)
         return result
 
     def get_damage_type_breakdown(

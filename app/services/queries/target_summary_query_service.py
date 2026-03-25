@@ -25,38 +25,21 @@ class TargetSummaryQueryService:
         if self._summary_cache is not None:
             return [row.copy() for row in self._summary_cache]
 
-        with self.data_store.lock:
-            targets = self.data_store._get_sorted_targets_locked()
-            rows: list[dict[str, str]] = []
-            for target in targets:
-                ab_display = "-"
-                if target in self.data_store._target_attack_bonus_by_name:
-                    ab_display = self.data_store._target_attack_bonus_by_name[target].get_bonus_display()
-
-                ac_display = "-"
-                if target in self.data_store._target_ac_by_name:
-                    ac_display = self.data_store._target_ac_by_name[target].get_ac_estimate()
-
-                fort_display = "-"
-                ref_display = "-"
-                will_display = "-"
-                if target in self.data_store._target_saves_by_name:
-                    saves = self.data_store._target_saves_by_name[target]
-                    fort_display = str(saves.fortitude) if saves.fortitude is not None else "-"
-                    ref_display = str(saves.reflex) if saves.reflex is not None else "-"
-                    will_display = str(saves.will) if saves.will is not None else "-"
-
-                rows.append(
-                    {
-                        "target": target,
-                        "ab": ab_display,
-                        "ac": ac_display,
-                        "fortitude": fort_display,
-                        "reflex": ref_display,
-                        "will": will_display,
-                        "damage_taken": str(self.data_store._damage_taken_by_target.get(target, 0)),
-                    }
-                )
+        rows: list[dict[str, str]] = []
+        for snapshot in self.data_store.get_all_target_summary_snapshots():
+            rows.append(
+                {
+                    "target": snapshot.target,
+                    "ab": snapshot.ab_display,
+                    "ac": snapshot.ac_display,
+                    "fortitude": (
+                        str(snapshot.fortitude) if snapshot.fortitude is not None else "-"
+                    ),
+                    "reflex": str(snapshot.reflex) if snapshot.reflex is not None else "-",
+                    "will": str(snapshot.will) if snapshot.will is not None else "-",
+                    "damage_taken": str(snapshot.damage_taken),
+                }
+            )
 
         self._summary_cache = tuple(row.copy() for row in rows)
         return [row.copy() for row in self._summary_cache]
