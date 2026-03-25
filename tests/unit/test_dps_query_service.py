@@ -7,7 +7,7 @@ import unittest
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
-from app.services.queries import DpsQueryService
+from app.services.queries import DpsBreakdownRow, DpsQueryService, DpsRow
 from app.storage import DataStore
 from tests.helpers.store_mutations import apply, attack, damage_row, dps_update
 
@@ -83,9 +83,9 @@ class TestDpsQueryService(unittest.TestCase):
 
         # Verify results include hit rate
         self.assertEqual(len(result), 2)
-        by_character = {row["character"]: row for row in result}
-        self.assertEqual(by_character['Rogue1']['hit_rate'], 75.0)
-        self.assertEqual(by_character['Mage1']['hit_rate'], 75.0)
+        by_character = {row.character: row for row in result}
+        self.assertEqual(by_character['Rogue1'].hit_rate, 75.0)
+        self.assertEqual(by_character['Mage1'].hit_rate, 75.0)
 
     def test_get_dps_display_data_specific_target(self) -> None:
         """Test getting DPS data for a specific target."""
@@ -101,9 +101,9 @@ class TestDpsQueryService(unittest.TestCase):
         result = self.service.get_dps_display_data(target_filter='Dragon')
 
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["character"], "Rogue1")
-        self.assertEqual(result[0]["total_damage"], 500)
-        self.assertEqual(result[0]["hit_rate"], 50.0)
+        self.assertEqual(result[0].character, "Rogue1")
+        self.assertEqual(result[0].total_damage, 500)
+        self.assertEqual(result[0].hit_rate, 50.0)
 
     def test_get_damage_type_breakdown_all_targets(self) -> None:
         """Test getting damage type breakdown for all targets."""
@@ -117,8 +117,8 @@ class TestDpsQueryService(unittest.TestCase):
         result = self.service.get_damage_type_breakdown('Mage1', target_filter='All')
 
         self.assertEqual(len(result), 2)
-        self.assertEqual(result[0]['damage_type'], 'Fire')
-        self.assertEqual(result[1]['damage_type'], 'Cold')
+        self.assertEqual(result[0].damage_type, 'Fire')
+        self.assertEqual(result[1].damage_type, 'Cold')
 
     def test_get_damage_type_breakdown_specific_target(self) -> None:
         """Test getting damage type breakdown for specific target."""
@@ -132,7 +132,7 @@ class TestDpsQueryService(unittest.TestCase):
         result = self.service.get_damage_type_breakdown('Mage1', target_filter='Dragon')
 
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]['damage_type'], 'Fire')
+        self.assertEqual(result[0].damage_type, 'Fire')
 
     def test_get_damage_type_breakdowns_bulk_all_targets(self) -> None:
         """Test bulk damage type breakdown routing for all targets."""
@@ -148,8 +148,8 @@ class TestDpsQueryService(unittest.TestCase):
 
         self.assertIn('Mage1', result)
         self.assertIn('Rogue1', result)
-        self.assertEqual(result["Mage1"][0]["damage_type"], "Fire")
-        self.assertEqual(result["Rogue1"][0]["damage_type"], "Physical")
+        self.assertEqual(result["Mage1"][0].damage_type, "Fire")
+        self.assertEqual(result["Rogue1"][0].damage_type, "Physical")
 
 
     def test_global_mode_with_earliest_timestamp(self) -> None:
@@ -180,7 +180,7 @@ class TestDpsQueryService(unittest.TestCase):
         result2 = self.service.get_dps_display_data(target_filter='All')
 
         # Both should return the same character
-        self.assertEqual(result1[0]['character'], result2[0]['character'])
+        self.assertEqual(result1[0].character, result2[0].character)
 
     def test_get_dps_data_uses_atomic_projection_snapshot(self) -> None:
         """DPS rows should come from one store projection snapshot."""
@@ -195,7 +195,7 @@ class TestDpsQueryService(unittest.TestCase):
 
         result = self.service.get_dps_data()
 
-        self.assertEqual(result[0]["character"], "Woo")
+        self.assertEqual(result[0].character, "Woo")
 
     def test_get_damage_type_breakdowns_uses_atomic_projection_snapshot(self) -> None:
         """Breakdown rows should come from one store projection snapshot."""
@@ -211,7 +211,7 @@ class TestDpsQueryService(unittest.TestCase):
 
         result = self.service.get_damage_type_breakdowns(["Woo"])
 
-        self.assertEqual(result["Woo"][0]["damage_type"], "Fire")
+        self.assertEqual(result["Woo"][0].damage_type, "Fire")
 
 
 class TestDpsQueryServiceIntegration(unittest.TestCase):

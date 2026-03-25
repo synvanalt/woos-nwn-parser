@@ -8,7 +8,7 @@ from typing import Any, Optional
 from tkinter import ttk
 
 from ...storage import DataStore
-from ...services.queries import TargetSummaryQueryService
+from ...services.queries import TargetSummaryQueryService, TargetSummaryRow
 from ..tooltips import TooltipManager
 from .sorted_treeview import SortedTreeview
 
@@ -93,9 +93,9 @@ class TargetStatsPanel(ttk.Frame):
 
         summary_data = self.target_summary_query_service.get_all_targets_summary()
         natural_order = self._is_natural_order_active()
-        order_token = tuple(item["target"] for item in summary_data)
+        order_token = tuple(item.target for item in summary_data)
         new_rows = {
-            item["target"]: self._build_row_values(item)
+            item.target: self._build_row_values(item)
             for item in summary_data
         }
         new_row_tokens = {
@@ -151,16 +151,16 @@ class TargetStatsPanel(ttk.Frame):
         """Return whether the active tree sort matches store target order."""
         return self.tree._last_sorted_col == "Target" and not self.tree._sort_reverse
 
-    def _build_row_values(self, item: dict[str, Any]) -> tuple[Any, ...]:
+    def _build_row_values(self, item: TargetSummaryRow) -> tuple[Any, ...]:
         """Build the rendered row values for one target summary."""
         return (
-            item["target"],
-            item["ab"],
-            item["ac"],
-            item["fortitude"],
-            item["reflex"],
-            item["will"],
-            item["damage_taken"],
+            item.target,
+            item.ab,
+            item.ac,
+            item.fortitude,
+            item.reflex,
+            item.will,
+            item.damage_taken,
         )
 
     def _build_row_token(self, row_values: tuple[Any, ...]) -> tuple[Any, ...]:
@@ -176,7 +176,7 @@ class TargetStatsPanel(ttk.Frame):
         self._last_refresh_version = -1
         self._last_refresh_used_store_query = False
 
-    def _full_refresh(self, summary_data: list[dict]) -> None:
+    def _full_refresh(self, summary_data: list[TargetSummaryRow]) -> None:
         """Rebuild the tree when targets are added, removed, or reordered."""
         # Save the currently selected target names
         selected_targets = set()
@@ -205,10 +205,10 @@ class TargetStatsPanel(ttk.Frame):
                     "end",
                     values=row_values,
                 )
-                self._item_ids[item["target"]] = item_id
+                self._item_ids[item.target] = item_id
 
                 # Check if this target should be selected
-                if item["target"] in selected_targets:
+                if item.target in selected_targets:
                     items_to_select.append(item_id)
 
             # Apply sort only if needed:
@@ -227,13 +227,13 @@ class TargetStatsPanel(ttk.Frame):
             self.tree.selection_set(items_to_select)
 
         self._cached_rows = {
-            item["target"]: self._build_row_values(item)
+            item.target: self._build_row_values(item)
             for item in summary_data
         }
 
     def _incremental_refresh(
         self,
-        summary_data: list[dict],
+        summary_data: list[TargetSummaryRow],
         new_rows: dict,
         changed_targets: set[str],
         natural_order: bool,
@@ -241,7 +241,7 @@ class TargetStatsPanel(ttk.Frame):
         """Update existing rows without rebuilding the whole tree."""
         known_items = set(self.tree.get_children())
         for item in summary_data:
-            target = item["target"]
+            target = item.target
             if target not in changed_targets:
                 continue
             row_values = new_rows[target]
@@ -254,7 +254,7 @@ class TargetStatsPanel(ttk.Frame):
 
         if natural_order:
             for index, item in enumerate(summary_data):
-                item_id = self._item_ids.get(item["target"])
+                item_id = self._item_ids.get(item.target)
                 if item_id not in known_items:
                     self._full_refresh(summary_data)
                     return
