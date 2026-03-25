@@ -249,7 +249,7 @@ class TestQueueProcessorIntegration(unittest.TestCase):
         self.processor.process_queue(self.queue, Mock())
 
         dps_data = DpsQueryService(self.data_store).get_dps_data()
-        self.assertTrue(any(d['character'] == 'Rogue' for d in dps_data))
+        self.assertTrue(any(d.character == 'Rogue' for d in dps_data))
 
 
 if __name__ == '__main__':

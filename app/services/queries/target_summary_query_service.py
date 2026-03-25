@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ...storage import DataStore
+from .models import TargetSummaryRow
 
 
 class TargetSummaryQueryService:
@@ -11,7 +12,7 @@ class TargetSummaryQueryService:
     def __init__(self, data_store: DataStore) -> None:
         self.data_store = data_store
         self._cache_version = -1
-        self._summary_cache: tuple[dict[str, str], ...] | None = None
+        self._summary_cache: tuple[TargetSummaryRow, ...] | None = None
 
     def _reset_caches_if_needed(self) -> None:
         version = self.data_store.version
@@ -20,26 +21,26 @@ class TargetSummaryQueryService:
         self._cache_version = version
         self._summary_cache = None
 
-    def get_all_targets_summary(self) -> list[dict[str, str]]:
+    def get_all_targets_summary(self) -> list[TargetSummaryRow]:
         self._reset_caches_if_needed()
         if self._summary_cache is not None:
-            return [row.copy() for row in self._summary_cache]
+            return list(self._summary_cache)
 
-        rows: list[dict[str, str]] = []
+        rows: list[TargetSummaryRow] = []
         for snapshot in self.data_store.get_all_target_summary_snapshots():
             rows.append(
-                {
-                    "target": snapshot.target,
-                    "ab": snapshot.ab_display,
-                    "ac": snapshot.ac_display,
-                    "fortitude": (
+                TargetSummaryRow(
+                    target=snapshot.target,
+                    ab=snapshot.ab_display,
+                    ac=snapshot.ac_display,
+                    fortitude=(
                         str(snapshot.fortitude) if snapshot.fortitude is not None else "-"
                     ),
-                    "reflex": str(snapshot.reflex) if snapshot.reflex is not None else "-",
-                    "will": str(snapshot.will) if snapshot.will is not None else "-",
-                    "damage_taken": str(snapshot.damage_taken),
-                }
+                    reflex=str(snapshot.reflex) if snapshot.reflex is not None else "-",
+                    will=str(snapshot.will) if snapshot.will is not None else "-",
+                    damage_taken=str(snapshot.damage_taken),
+                )
             )
 
-        self._summary_cache = tuple(row.copy() for row in rows)
-        return [row.copy() for row in self._summary_cache]
+        self._summary_cache = tuple(rows)
+        return list(self._summary_cache)

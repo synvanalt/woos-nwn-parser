@@ -6,7 +6,7 @@ from tkinter import ttk
 from unittest.mock import Mock
 
 from app.parser import ParserSession
-from app.services.queries import TargetSummaryQueryService
+from app.services.queries import TargetSummaryQueryService, TargetSummaryRow
 from app.storage import DataStore
 from app.ui.widgets.target_stats_panel import TargetStatsPanel
 from tests.helpers.store_mutations import apply, damage_row
@@ -93,12 +93,12 @@ class TestTargetStatsIncrementalRefresh:
     def test_incremental_refresh_reorders_natural_target_order_without_rebuild(self, target_stats_panel) -> None:
         panel, _store, _ = target_stats_panel
         initial_summary = [
-            {"target": "Goblin", "ab": "-", "ac": "-", "fortitude": "-", "reflex": "-", "will": "-", "damage_taken": "50"},
-            {"target": "Orc", "ab": "-", "ac": "-", "fortitude": "-", "reflex": "-", "will": "-", "damage_taken": "25"},
+            TargetSummaryRow("Goblin", "-", "-", "-", "-", "-", "50"),
+            TargetSummaryRow("Orc", "-", "-", "-", "-", "-", "25"),
         ]
         reordered_summary = [
-            {"target": "Orc", "ab": "-", "ac": "-", "fortitude": "-", "reflex": "-", "will": "-", "damage_taken": "25"},
-            {"target": "Goblin", "ab": "-", "ac": "-", "fortitude": "-", "reflex": "-", "will": "-", "damage_taken": "50"},
+            TargetSummaryRow("Orc", "-", "-", "-", "-", "-", "25"),
+            TargetSummaryRow("Goblin", "-", "-", "-", "-", "-", "50"),
         ]
 
         panel.target_summary_query_service.get_all_targets_summary = lambda: initial_summary  # type: ignore[assignment]

@@ -10,7 +10,7 @@ from tkinter import ttk
 from typing import Any, Callable, Dict, Optional
 
 from ...storage import DataStore
-from ...services.queries import ImmunityQueryService
+from ...services.queries import ImmunityQueryService, ImmunitySummaryRow
 from ...parser import ParserSession
 from ...utils import calculate_immunity_percentage
 from ..formatters import damage_type_to_color, apply_tag_to_tree
@@ -193,17 +193,15 @@ class ImmunityPanel(ttk.Frame):
 
         summaries = self.immunity_query_service.get_target_damage_type_summary(target)
         natural_order = self._is_natural_order_active()
-        order_token = tuple(str(summary["damage_type"]) for summary in summaries)
+        order_token = tuple(summary.damage_type for summary in summaries)
         new_rows = {}
         for summary in summaries:
-            damage_type = str(summary["damage_type"])
-            max_event_damage = int(summary["max_event_damage"])
-            max_damage_from_immunity = int(summary["max_immunity_damage"])
-            immunity_absorbed = int(summary["immunity_absorbed"])
-            sample_count = int(summary["sample_count"])
-            suppress_temporary_full_immunity = bool(
-                summary.get("suppress_temporary_full_immunity", False)
-            )
+            damage_type = summary.damage_type
+            max_event_damage = summary.max_event_damage
+            max_damage_from_immunity = summary.max_immunity_damage
+            immunity_absorbed = summary.immunity_absorbed
+            sample_count = summary.sample_count
+            suppress_temporary_full_immunity = summary.suppress_temporary_full_immunity
 
             if (
                 self.parser.parse_immunity
@@ -380,14 +378,14 @@ class ImmunityPanel(ttk.Frame):
     def _incremental_refresh(
         self,
         target: str,
-        summaries: list[dict[str, Any]],
+        summaries: list[ImmunitySummaryRow],
         new_rows: Dict[str, tuple],
         changed_damage_types: set[str],
         natural_order: bool,
     ) -> None:
         """Update existing immunity rows without rebuilding the tree."""
         for summary in summaries:
-            damage_type = str(summary["damage_type"])
+            damage_type = summary.damage_type
             if damage_type not in changed_damage_types:
                 continue
             row_values = new_rows[damage_type]
@@ -397,7 +395,7 @@ class ImmunityPanel(ttk.Frame):
 
         if natural_order:
             for index, summary in enumerate(summaries):
-                item_id = self._item_ids.get(str(summary["damage_type"]))
+                item_id = self._item_ids.get(summary.damage_type)
                 if item_id:
                     self.tree.move(item_id, "", index)
 

@@ -9,7 +9,7 @@ from tkinter import ttk
 from typing import Any, Iterable, Optional
 
 from ...storage import DataStore
-from ...services.queries import DpsQueryService
+from ...services.queries import DpsQueryService, DpsRow
 from ..formatters import damage_type_to_color, apply_tag_to_tree, format_time
 from ..tooltips import TooltipManager
 from .sorted_treeview import SortedTreeview
@@ -172,7 +172,7 @@ class DPSPanel(ttk.Frame):
 
         dps_list = self.dps_query_service.get_dps_display_data(target_filter=selected_target)
         natural_order = self._is_natural_order_active()
-        order_token = tuple(item["character"] for item in dps_list)
+        order_token = tuple(item.character for item in dps_list)
         characters_in_view = set(order_token)
 
         current_characters = set(self._cached_row_tokens.keys())
@@ -189,9 +189,9 @@ class DPSPanel(ttk.Frame):
         new_breakdown_tokens: dict[str, tuple[tuple[str, int], ...]] = {}
 
         for dps_info in dps_list:
-            character = dps_info["character"]
+            character = dps_info.character
             row_token = self._build_row_token(dps_info)
-            breakdown_token = tuple(dps_info.get("breakdown_token", ()))
+            breakdown_token = tuple(dps_info.breakdown_token)
             new_row_tokens[character] = row_token
             new_breakdown_tokens[character] = breakdown_token
             if row_token != self._cached_row_tokens.get(character):
@@ -214,7 +214,7 @@ class DPSPanel(ttk.Frame):
             return
 
         new_data = {
-            dps_info["character"]: self._build_row_cache_entry(dps_info)
+            dps_info.character: self._build_row_cache_entry(dps_info)
             for dps_info in dps_list
         }
 
@@ -230,7 +230,7 @@ class DPSPanel(ttk.Frame):
             new_data = dict(self._cached_data)
 
             for dps_info in dps_list:
-                character = dps_info["character"]
+                character = dps_info.character
                 if character in changed_characters:
                     new_data[character] = self._build_row_cache_entry(dps_info)
 
@@ -271,23 +271,23 @@ class DPSPanel(ttk.Frame):
         """Return whether the active tree sort matches the service's natural order."""
         return self.tree._last_sorted_col == "DPS" and self.tree._sort_reverse
 
-    def _build_row_token(self, dps_info: dict[str, Any]) -> tuple[Any, ...]:
+    def _build_row_token(self, dps_info: DpsRow) -> tuple[Any, ...]:
         """Build a stable token for one top-level DPS row."""
         return (
-            dps_info["dps"],
-            dps_info["total_damage"],
-            dps_info["hit_rate"],
-            dps_info["time_seconds"],
+            dps_info.dps,
+            dps_info.total_damage,
+            dps_info.hit_rate,
+            dps_info.time_seconds,
         )
 
-    def _build_row_cache_entry(self, dps_info: dict[str, Any]) -> dict[str, Any]:
+    def _build_row_cache_entry(self, dps_info: DpsRow) -> dict[str, Any]:
         """Build the cached row data for one character."""
         return {
-            "dps": dps_info["dps"],
-            "total_damage": dps_info["total_damage"],
-            "hit_rate": dps_info["hit_rate"],
-            "time_seconds": dps_info["time_seconds"],
-            "breakdown_token": tuple(dps_info.get("breakdown_token", ())),
+            "dps": dps_info.dps,
+            "total_damage": dps_info.total_damage,
+            "hit_rate": dps_info.hit_rate,
+            "time_seconds": dps_info.time_seconds,
+            "breakdown_token": tuple(dps_info.breakdown_token),
         }
 
     def _build_breakdown_cache(self, characters: Iterable[str], selected_target: str) -> dict:
@@ -303,12 +303,12 @@ class DPSPanel(ttk.Frame):
         breakdown_cache = {}
         for character in requested_characters:
             breakdown_cache[character] = [
-                (d["damage_type"], d["total_damage"], d["dps"])
+                (d.damage_type, d.total_damage, d.dps)
                 for d in breakdowns_by_character.get(character, [])
             ]
         return breakdown_cache
 
-    def _full_refresh(self, dps_list: list, new_data: dict, new_breakdown: dict) -> None:
+    def _full_refresh(self, dps_list: list[DpsRow], new_data: dict, new_breakdown: dict) -> None:
         """Perform a full tree rebuild when structure changes.
 
         Args:
@@ -341,11 +341,11 @@ class DPSPanel(ttk.Frame):
         items_to_select = []
 
         for dps_info in dps_list:
-            character = dps_info["character"]
-            total_damage = dps_info["total_damage"]
-            time_seconds = dps_info["time_seconds"]
-            dps = dps_info["dps"]
-            hit_rate = dps_info["hit_rate"]
+            character = dps_info.character
+            total_damage = dps_info.total_damage
+            time_seconds = dps_info.time_seconds
+            dps = dps_info.dps
+            hit_rate = dps_info.hit_rate
 
             # Format values for display
             time_display = format_time(time_seconds)
@@ -402,7 +402,7 @@ class DPSPanel(ttk.Frame):
 
     def _incremental_refresh(
         self,
-        dps_list: list[dict[str, Any]],
+        dps_list: list[DpsRow],
         new_data: dict,
         new_breakdown: dict,
         changed_characters: set[str],
@@ -418,9 +418,8 @@ class DPSPanel(ttk.Frame):
             natural_order: True if the current sort already matches service order
         """
         for dps_info in dps_list:
-            character = dps_info["character"]
+            character = dps_info.character
             data = new_data.get(character, self._cached_data.get(character, {}))
-            cached = self._cached_data.get(character, {})
 
             # Check if parent row needs update
             if character in changed_characters:
@@ -494,10 +493,10 @@ class DPSPanel(ttk.Frame):
         if not natural_order and self.tree._last_sorted_col:
             self.tree.apply_current_sort()
 
-    def _apply_authoritative_order(self, dps_list: list[dict[str, Any]]) -> None:
+    def _apply_authoritative_order(self, dps_list: list[DpsRow]) -> None:
         """Move top-level items to match service-provided order."""
         for index, dps_info in enumerate(dps_list):
-            parent_id = self._item_ids.get(dps_info["character"])
+            parent_id = self._item_ids.get(dps_info.character)
             if parent_id:
                 self.tree.move(parent_id, "", index)
 

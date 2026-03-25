@@ -5,7 +5,7 @@ from tkinter import ttk
 from unittest.mock import Mock
 
 from app.parser import ParserSession
-from app.services.queries import ImmunityQueryService
+from app.services.queries import ImmunityQueryService, ImmunitySummaryRow
 from app.storage import DataStore
 from app.ui.widgets.immunity_panel import ImmunityPanel
 from tests.helpers.store_mutations import apply, damage_row
@@ -90,12 +90,12 @@ class TestImmunityPanelIncrementalRefresh:
     def test_incremental_refresh_reorders_natural_damage_type_order_without_rebuild(self, immunity_panel) -> None:
         panel, _store, _ = immunity_panel
         initial_summary = [
-            {"damage_type": "Fire", "max_event_damage": 50, "max_immunity_damage": 0, "immunity_absorbed": 0, "sample_count": 0},
-            {"damage_type": "Cold", "max_event_damage": 20, "max_immunity_damage": 0, "immunity_absorbed": 0, "sample_count": 0},
+            ImmunitySummaryRow("Fire", 50, 0, 0, 0, False),
+            ImmunitySummaryRow("Cold", 20, 0, 0, 0, False),
         ]
         reordered_summary = [
-            {"damage_type": "Cold", "max_event_damage": 20, "max_immunity_damage": 0, "immunity_absorbed": 0, "sample_count": 0},
-            {"damage_type": "Fire", "max_event_damage": 50, "max_immunity_damage": 0, "immunity_absorbed": 0, "sample_count": 0},
+            ImmunitySummaryRow("Cold", 20, 0, 0, 0, False),
+            ImmunitySummaryRow("Fire", 50, 0, 0, 0, False),
         ]
 
         panel.immunity_query_service.get_target_damage_type_summary = lambda _target: initial_summary  # type: ignore[assignment]

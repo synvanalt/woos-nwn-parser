@@ -2,10 +2,20 @@
 
 from .dps_query_service import DpsQueryService
 from .immunity_query_service import ImmunityQueryService
+from .models import (
+    DpsBreakdownRow,
+    DpsRow,
+    ImmunitySummaryRow,
+    TargetSummaryRow,
+)
 from .target_summary_query_service import TargetSummaryQueryService
 
 __all__ = [
+    "DpsBreakdownRow",
+    "DpsRow",
     "DpsQueryService",
     "ImmunityQueryService",
+    "ImmunitySummaryRow",
+    "TargetSummaryRow",
     "TargetSummaryQueryService",
 ]

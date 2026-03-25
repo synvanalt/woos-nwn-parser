@@ -58,33 +58,33 @@ class TestCompleteCombatSession:
         dps_list = dps_service.get_dps_display_data(target_filter="Goblin Chief")
 
         # Should have DPS for Warrior, Rogue, and Mage
-        characters = {d['character'] for d in dps_list}
+        characters = {d.character for d in dps_list}
         assert 'Warrior' in characters
         assert 'Rogue' in characters
         assert 'Mage' in characters
         assert 'Cleric' not in characters  # Cleric missed, no damage
 
         # Verify total damage
-        warrior_dps = next((d for d in dps_list if d['character'] == 'Warrior'), None)
+        warrior_dps = next((d for d in dps_list if d.character == 'Warrior'), None)
         assert warrior_dps is not None
-        assert warrior_dps['total_damage'] == 95  # 45 + 50
+        assert warrior_dps.total_damage == 95  # 45 + 50
 
-        rogue_dps = next((d for d in dps_list if d['character'] == 'Rogue'), None)
+        rogue_dps = next((d for d in dps_list if d.character == 'Rogue'), None)
         assert rogue_dps is not None
-        assert rogue_dps['total_damage'] == 150  # 60 + 90
+        assert rogue_dps.total_damage == 150  # 60 + 90
 
-        mage_dps = next((d for d in dps_list if d['character'] == 'Mage'), None)
+        mage_dps = next((d for d in dps_list if d.character == 'Mage'), None)
         assert mage_dps is not None
-        assert mage_dps['total_damage'] == 80
+        assert mage_dps.total_damage == 80
 
         # 3. Hit Rates
-        warrior_hit_rate = warrior_dps['hit_rate']
+        warrior_hit_rate = warrior_dps.hit_rate
         assert warrior_hit_rate == 100.0  # 2 hits, 0 misses
 
-        rogue_hit_rate = rogue_dps['hit_rate']
+        rogue_hit_rate = rogue_dps.hit_rate
         assert rogue_hit_rate == 100.0  # 1 hit, 1 crit, 0 misses
 
-        mage_hit_rate = mage_dps['hit_rate']
+        mage_hit_rate = mage_dps.hit_rate
         assert mage_hit_rate == 100.0  # 1 hit, 0 misses
 
         # 4. Attack Stats
@@ -97,18 +97,18 @@ class TestCompleteCombatSession:
 
         # 5. AC Estimation
         summary = TargetSummaryQueryService(database).get_all_targets_summary()
-        goblin_summary = next((item for item in summary if item["target"] == "Goblin Chief"), None)
+        goblin_summary = next((item for item in summary if item.target == "Goblin Chief"), None)
         assert goblin_summary is not None
-        ac_estimate = goblin_summary['ac']
+        ac_estimate = goblin_summary.ac
         # Should be between 14 (miss) and 19 (min hit)
         assert ac_estimate != "?"
 
         # 6. Attack Bonus Tracking
-        ab_display = goblin_summary['ab']
+        ab_display = goblin_summary.ab
         assert ab_display == "12"
 
         # 7. Saves Tracking
-        assert goblin_summary['fortitude'] == '5'
+        assert goblin_summary.fortitude == '5'
 
         # 8. Immunity Tracking
         immunity_info = database.get_immunity_for_target_and_type("Goblin Chief", "Fire")
@@ -127,21 +127,21 @@ class TestCompleteCombatSession:
         rogue_breakdown = dps_service.get_damage_type_breakdown("Rogue", target_filter="Goblin Chief")
         assert len(rogue_breakdown) == 2
 
-        physical = next((b for b in rogue_breakdown if b['damage_type'] == 'Physical'), None)
-        acid = next((b for b in rogue_breakdown if b['damage_type'] == 'Acid'), None)
+        physical = next((b for b in rogue_breakdown if b.damage_type == 'Physical'), None)
+        acid = next((b for b in rogue_breakdown if b.damage_type == 'Acid'), None)
 
         assert physical is not None
-        assert physical['total_damage'] == 125  # 50 + 75
+        assert physical.total_damage == 125  # 50 + 75
         assert acid is not None
-        assert acid['total_damage'] == 25  # 10 + 15
+        assert acid.total_damage == 25  # 10 + 15
 
         # 10. Target Summary
         summary = TargetSummaryQueryService(database).get_all_targets_summary()
-        goblin_summary = next((s for s in summary if s['target'] == 'Goblin Chief'), None)
+        goblin_summary = next((s for s in summary if s.target == 'Goblin Chief'), None)
 
         assert goblin_summary is not None
-        assert goblin_summary['ab'] == '12'
-        assert goblin_summary['fortitude'] == '5'
+        assert goblin_summary.ab == '12'
+        assert goblin_summary.fortitude == '5'
 
     def test_multi_target_combat(self, temp_log_dir: Path) -> None:
         """Test combat session with multiple targets."""
@@ -169,17 +169,17 @@ class TestCompleteCombatSession:
 
         # Goblin1 only
         dps_g1 = dps_service.get_dps_display_data(target_filter="Goblin1")
-        g1_chars = {d['character'] for d in dps_g1}
+        g1_chars = {d.character for d in dps_g1}
         assert 'Warrior' in g1_chars
         assert 'Rogue' in g1_chars
 
-        warrior_g1 = next((d for d in dps_g1 if d['character'] == 'Warrior'), None)
-        assert warrior_g1['total_damage'] == 40
+        warrior_g1 = next((d for d in dps_g1 if d.character == 'Warrior'), None)
+        assert warrior_g1.total_damage == 40
 
         # Goblin2 only
         dps_g2 = dps_service.get_dps_display_data(target_filter="Goblin2")
-        warrior_g2 = next((d for d in dps_g2 if d['character'] == 'Warrior'), None)
-        assert warrior_g2['total_damage'] == 35
+        warrior_g2 = next((d for d in dps_g2 if d.character == 'Warrior'), None)
+        assert warrior_g2.total_damage == 35
 
     def test_complex_immunity_scenario(self, temp_log_dir: Path) -> None:
         """Test complex scenario with multiple damage types and immunities."""
@@ -219,7 +219,7 @@ class TestCompleteCombatSession:
         dps_list = dps_service.get_dps_display_data()
 
         assert len(dps_list) == 1
-        assert dps_list[0]['total_damage'] == 400
+        assert dps_list[0].total_damage == 400
 
     def test_edge_case_natural_1_miss(self, temp_log_dir: Path) -> None:
         """Test that natural 1 misses don't affect AC estimation."""
@@ -236,9 +236,9 @@ class TestCompleteCombatSession:
 
         # Natural 1 should be ignored for AC
         summary = TargetSummaryQueryService(database).get_all_targets_summary()
-        dragon_summary = next((item for item in summary if item["target"] == "Dragon"), None)
+        dragon_summary = next((item for item in summary if item.target == "Dragon"), None)
         assert dragon_summary is not None
-        assert dragon_summary['ac'] == "21-25"
+        assert dragon_summary.ac == "21-25"
 
     def test_time_tracking_modes_comparison(self, temp_log_dir: Path) -> None:
         """Test both time tracking modes produce consistent results."""
@@ -259,14 +259,14 @@ class TestCompleteCombatSession:
         dps_by_char = dps_service.get_dps_display_data()
 
         assert len(dps_by_char) == 1
-        assert dps_by_char[0]['total_damage'] == 150
+        assert dps_by_char[0].total_damage == 150
 
         # Global mode
         dps_service.set_time_tracking_mode("global")
         dps_global = dps_service.get_dps_display_data()
 
         assert len(dps_global) == 1
-        assert dps_global[0]['total_damage'] == 150  # Same total damage
+        assert dps_global[0].total_damage == 150  # Same total damage
 
         # DPS might differ due to different time windows, but damage is consistent
 
@@ -295,7 +295,7 @@ This is a completely invalid line
         dps_list = dps_service.get_dps_display_data()
 
         assert len(dps_list) == 1
-        assert dps_list[0]['total_damage'] == 150
+        assert dps_list[0].total_damage == 150
 
     def test_empty_combat_session(self, temp_log_dir: Path) -> None:
         """Test handling of empty combat session."""

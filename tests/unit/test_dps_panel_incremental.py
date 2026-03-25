@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import ttk
 from unittest.mock import Mock
 
+from app.services.queries import DpsBreakdownRow, DpsRow
 from app.ui.widgets.dps_panel import DPSPanel
 from app.storage import DataStore
 from app.services.queries import DpsQueryService
@@ -54,20 +55,20 @@ class TestIncrementalRefresh:
         """Test that first refresh triggers full rebuild."""
         # Mock the service to return data
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
-            {
-                'character': 'Woo',
-                'total_damage': 500,
-                'time_seconds': 10,
-                'dps': 50.0,
-                'hit_rate': 75.0,
-                'breakdown_token': (('Physical', 500),),
-            }
+            DpsRow(
+                character='Woo',
+                total_damage=500,
+                time_seconds=10,
+                dps=50.0,
+                hit_rate=75.0,
+                breakdown_token=(('Physical', 500),),
+            )
         ])
 
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={
             'Woo': [
-                {'damage_type': 'Physical', 'total_damage': 300, 'dps': 30.0},
-                {'damage_type': 'Fire', 'total_damage': 200, 'dps': 20.0},
+                DpsBreakdownRow(damage_type='Physical', total_damage=300, dps=30.0),
+                DpsBreakdownRow(damage_type='Fire', total_damage=200, dps=20.0),
             ]
         })
 
@@ -86,17 +87,20 @@ class TestIncrementalRefresh:
     def test_incremental_refresh_when_values_change(self, dps_panel) -> None:
         """Test that incremental refresh updates only changed values."""
         # Initial data
-        initial_data = [{
-            'character': 'Woo',
-            'total_damage': 500,
-            'time_seconds': 10,
-            'dps': 50.0,
-            'hit_rate': 75.0
-        }]
+        initial_data = [
+            DpsRow(
+                character='Woo',
+                total_damage=500,
+                time_seconds=10,
+                dps=50.0,
+                hit_rate=75.0,
+                breakdown_token=(),
+            )
+        ]
 
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=initial_data)
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={
-            'Woo': [{'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}]
+            'Woo': [DpsBreakdownRow(damage_type='Physical', total_damage=500, dps=50.0)]
         })
 
         # First refresh
@@ -104,17 +108,20 @@ class TestIncrementalRefresh:
         initial_tree_size = len(dps_panel.tree.get_children())
 
         # Update data (damage increased)
-        updated_data = [{
-            'character': 'Woo',
-            'total_damage': 600,
-            'time_seconds': 10,
-            'dps': 60.0,
-            'hit_rate': 75.0
-        }]
+        updated_data = [
+            DpsRow(
+                character='Woo',
+                total_damage=600,
+                time_seconds=10,
+                dps=60.0,
+                hit_rate=75.0,
+                breakdown_token=(),
+            )
+        ]
 
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=updated_data)
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={
-            'Woo': [{'damage_type': 'Physical', 'total_damage': 600, 'dps': 60.0}]
+            'Woo': [DpsBreakdownRow(damage_type='Physical', total_damage=600, dps=60.0)]
         })
 
         # Second refresh should use incremental update
@@ -131,13 +138,7 @@ class TestIncrementalRefresh:
         """Test that full refresh occurs when new characters appear."""
         # Initial data - one character
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
-            {
-                'character': 'Woo',
-                'total_damage': 500,
-                'time_seconds': 10,
-                'dps': 50.0,
-                'hit_rate': 75.0
-            }
+            DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=())
         ])
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={})
 
@@ -147,20 +148,8 @@ class TestIncrementalRefresh:
 
         # Add second character
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
-            {
-                'character': 'Woo',
-                'total_damage': 500,
-                'time_seconds': 10,
-                'dps': 50.0,
-                'hit_rate': 75.0
-            },
-            {
-                'character': 'Ally',
-                'total_damage': 300,
-                'time_seconds': 10,
-                'dps': 30.0,
-                'hit_rate': 80.0
-            }
+            DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=()),
+            DpsRow(character='Ally', total_damage=300, time_seconds=10, dps=30.0, hit_rate=80.0, breakdown_token=()),
         ])
 
         # Second refresh should trigger full rebuild
@@ -175,20 +164,8 @@ class TestIncrementalRefresh:
         """Test that full refresh occurs when characters are removed."""
         # Initial data - two characters
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
-            {
-                'character': 'Woo',
-                'total_damage': 500,
-                'time_seconds': 10,
-                'dps': 50.0,
-                'hit_rate': 75.0
-            },
-            {
-                'character': 'Ally',
-                'total_damage': 300,
-                'time_seconds': 10,
-                'dps': 30.0,
-                'hit_rate': 80.0
-            }
+            DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=()),
+            DpsRow(character='Ally', total_damage=300, time_seconds=10, dps=30.0, hit_rate=80.0, breakdown_token=()),
         ])
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={})
 
@@ -198,13 +175,7 @@ class TestIncrementalRefresh:
 
         # Remove one character
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
-            {
-                'character': 'Woo',
-                'total_damage': 500,
-                'time_seconds': 10,
-                'dps': 50.0,
-                'hit_rate': 75.0
-            }
+            DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=())
         ])
 
         # Second refresh should trigger full rebuild
@@ -219,16 +190,10 @@ class TestIncrementalRefresh:
         """Test handling when new damage type is added."""
         # Initial data - one damage type
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
-            {
-                'character': 'Woo',
-                'total_damage': 500,
-                'time_seconds': 10,
-                'dps': 50.0,
-                'hit_rate': 75.0
-            }
+            DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=())
         ])
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={
-            'Woo': [{'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}]
+            'Woo': [DpsBreakdownRow(damage_type='Physical', total_damage=500, dps=50.0)]
         })
 
         # First refresh
@@ -236,19 +201,19 @@ class TestIncrementalRefresh:
 
         # Add new damage type
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
-            {
-                'character': 'Woo',
-                'total_damage': 500,
-                'time_seconds': 10,
-                'dps': 50.0,
-                'hit_rate': 75.0,
-                'breakdown_token': (('Fire', 200), ('Physical', 300)),
-            }
+            DpsRow(
+                character='Woo',
+                total_damage=500,
+                time_seconds=10,
+                dps=50.0,
+                hit_rate=75.0,
+                breakdown_token=(('Fire', 200), ('Physical', 300)),
+            )
         ])
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={
             'Woo': [
-                {'damage_type': 'Physical', 'total_damage': 300, 'dps': 30.0},
-                {'damage_type': 'Fire', 'total_damage': 200, 'dps': 20.0},
+                DpsBreakdownRow(damage_type='Physical', total_damage=300, dps=30.0),
+                DpsBreakdownRow(damage_type='Fire', total_damage=200, dps=20.0),
             ]
         })
 
@@ -287,14 +252,16 @@ class TestIncrementalRefresh:
     def test_incremental_refresh_no_changes(self, dps_panel) -> None:
         """Test that no updates occur when data hasn't changed."""
         # Initial data
-        data = [{
-            'character': 'Woo',
-            'total_damage': 500,
-            'time_seconds': 10,
-            'dps': 50.0,
-            'hit_rate': 75.0,
-            'breakdown_token': (('Physical', 500),),
-        }]
+        data = [
+            DpsRow(
+                character='Woo',
+                total_damage=500,
+                time_seconds=10,
+                dps=50.0,
+                hit_rate=75.0,
+                breakdown_token=(('Physical', 500),),
+            )
+        ]
 
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=data)
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={})
@@ -313,18 +280,20 @@ class TestIncrementalRefresh:
 
     def test_incremental_refresh_skips_breakdown_fetch_for_unchanged_character(self, dps_panel) -> None:
         """Unchanged characters should reuse cached breakdowns."""
-        data = [{
-            'character': 'Woo',
-            'total_damage': 500,
-            'time_seconds': 10,
-            'dps': 50.0,
-            'hit_rate': 75.0,
-            'breakdown_token': (('Physical', 500),),
-        }]
+        data = [
+            DpsRow(
+                character='Woo',
+                total_damage=500,
+                time_seconds=10,
+                dps=50.0,
+                hit_rate=75.0,
+                breakdown_token=(('Physical', 500),),
+            )
+        ]
 
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=data)
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={
-            'Woo': [{'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}]
+            'Woo': [DpsBreakdownRow(damage_type='Physical', total_damage=500, dps=50.0)]
         })
 
         dps_panel.refresh()
@@ -337,18 +306,20 @@ class TestIncrementalRefresh:
 
     def test_refresh_skips_unchanged_view_after_unrelated_store_change(self, dps_panel) -> None:
         """Store version bumps with identical DPS view should not rebuild caches."""
-        data = [{
-            'character': 'Woo',
-            'total_damage': 500,
-            'time_seconds': 10,
-            'dps': 50.0,
-            'hit_rate': 75.0,
-            'breakdown_token': (('Physical', 500),),
-        }]
+        data = [
+            DpsRow(
+                character='Woo',
+                total_damage=500,
+                time_seconds=10,
+                dps=50.0,
+                hit_rate=75.0,
+                breakdown_token=(('Physical', 500),),
+            )
+        ]
 
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=data)
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={
-            'Woo': [{'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}]
+            'Woo': [DpsBreakdownRow(damage_type='Physical', total_damage=500, dps=50.0)]
         })
 
         dps_panel.refresh()
@@ -367,54 +338,26 @@ class TestIncrementalRefresh:
     def test_incremental_refresh_reorders_natural_dps_order_without_rebuild(self, dps_panel) -> None:
         """Natural DPS ordering should move existing rows instead of rebuilding them."""
         initial_data = [
-            {
-                'character': 'Woo',
-                'total_damage': 500,
-                'time_seconds': 10,
-                'dps': 50.0,
-                'hit_rate': 75.0,
-                'breakdown_token': (('Physical', 500),),
-            },
-            {
-                'character': 'Ally',
-                'total_damage': 300,
-                'time_seconds': 10,
-                'dps': 30.0,
-                'hit_rate': 80.0,
-                'breakdown_token': (('Fire', 300),),
-            },
+            DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=(('Physical', 500),)),
+            DpsRow(character='Ally', total_damage=300, time_seconds=10, dps=30.0, hit_rate=80.0, breakdown_token=(('Fire', 300),)),
         ]
 
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=initial_data)
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={
-            'Woo': [{'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}],
-            'Ally': [{'damage_type': 'Fire', 'total_damage': 300, 'dps': 30.0}],
+            'Woo': [DpsBreakdownRow(damage_type='Physical', total_damage=500, dps=50.0)],
+            'Ally': [DpsBreakdownRow(damage_type='Fire', total_damage=300, dps=30.0)],
         })
         dps_panel.refresh()
         initial_item_ids = dict(dps_panel._item_ids)
 
         reordered_data = [
-            {
-                'character': 'Ally',
-                'total_damage': 600,
-                'time_seconds': 10,
-                'dps': 60.0,
-                'hit_rate': 80.0,
-                'breakdown_token': (('Fire', 600),),
-            },
-            {
-                'character': 'Woo',
-                'total_damage': 500,
-                'time_seconds': 10,
-                'dps': 50.0,
-                'hit_rate': 75.0,
-                'breakdown_token': (('Physical', 500),),
-            },
+            DpsRow(character='Ally', total_damage=600, time_seconds=10, dps=60.0, hit_rate=80.0, breakdown_token=(('Fire', 600),)),
+            DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=(('Physical', 500),)),
         ]
 
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=reordered_data)
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={
-            'Ally': [{'damage_type': 'Fire', 'total_damage': 600, 'dps': 60.0}],
+            'Ally': [DpsBreakdownRow(damage_type='Fire', total_damage=600, dps=60.0)],
         })
         dps_panel.refresh()
 
@@ -428,17 +371,10 @@ class TestIncrementalRefresh:
     def test_refresh_rebuilds_when_view_key_changes(self, dps_panel) -> None:
         """Changing target filter or mode should force a safe full refresh."""
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
-            {
-                'character': 'Woo',
-                'total_damage': 500,
-                'time_seconds': 10,
-                'dps': 50.0,
-                'hit_rate': 75.0,
-                'breakdown_token': (('Physical', 500),),
-            }
+            DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=(('Physical', 500),))
         ])
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={
-            'Woo': [{'damage_type': 'Physical', 'total_damage': 500, 'dps': 50.0}]
+            'Woo': [DpsBreakdownRow(damage_type='Physical', total_damage=500, dps=50.0)]
         })
 
         dps_panel.refresh()
@@ -461,13 +397,7 @@ class TestRefreshSelectionPreservation:
 
         # Initial data
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
-            {
-                'character': 'Woo',
-                'total_damage': 500,
-                'time_seconds': 10,
-                'dps': 50.0,
-                'hit_rate': 75.0
-            }
+            DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=())
         ])
         dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={})
 

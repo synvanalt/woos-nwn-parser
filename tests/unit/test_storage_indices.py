@@ -160,8 +160,8 @@ class TestEventIndices:
         )
 
         assert len(dps_list) == 2
-        assert any(d["character"] == "Woo" for d in dps_list)
-        assert any(d["character"] == "Ally" for d in dps_list)
+        assert any(d.character == "Woo" for d in dps_list)
+        assert any(d.character == "Ally" for d in dps_list)
 
 
 class TestCacheOptimizations:
