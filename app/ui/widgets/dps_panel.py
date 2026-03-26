@@ -48,14 +48,8 @@ class DPSPanel(ttk.Frame):
         # Cache for incremental updates
         self._cached_data: dict = {}  # character -> {dps, total_damage, hit_rate, time}
         self._cached_breakdown: dict = {}  # character -> [(damage_type, total_damage, dps), ...]
-        self._item_ids: dict = {}  # character -> tree item id
         self._child_ids: dict = {}  # character -> {damage_type -> tree item id}
-        self._cached_view_key = None
-        self._cached_row_tokens: dict[str, tuple[Any, ...]] = {}
         self._cached_breakdown_tokens: dict[str, tuple[tuple[str, int], ...]] = {}
-        self._cached_order_token: tuple[str, ...] = ()
-        self._last_refresh_version: int = -1
-        self._last_refresh_used_store_query: bool = False
         self._tree_refresh_state = FlatTreeRefreshState()
         self.setup_ui()
 
@@ -170,8 +164,7 @@ class DPSPanel(ttk.Frame):
         if self._tree_refresh.can_skip_refresh(
             self._tree_refresh_state,
             current_version=current_version,
-            uses_store_query=uses_store_query,
-            item_ids_present=bool(self._item_ids),
+            item_ids_present=bool(self._tree_refresh_state.item_ids),
             view_key=view_key,
         ):
             return
@@ -181,12 +174,12 @@ class DPSPanel(ttk.Frame):
         order_token = tuple(item.character for item in dps_list)
         characters_in_view = set(order_token)
 
-        current_characters = set(self._cached_row_tokens.keys())
+        current_characters = set(self._tree_refresh_state.row_tokens.keys())
 
         needs_full_refresh = (
-            self._cached_view_key != view_key or  # Target filter / time mode changed
+            self._tree_refresh_state.view_key != view_key or  # Target filter / time mode changed
             current_characters != characters_in_view or  # Characters added/removed
-            not self._item_ids  # First refresh
+            not self._tree_refresh_state.item_ids  # First refresh
         )
 
         changed_characters: set[str] = set()
@@ -200,25 +193,23 @@ class DPSPanel(ttk.Frame):
             breakdown_token = tuple(dps_info.breakdown_token)
             new_row_tokens[character] = row_token
             new_breakdown_tokens[character] = breakdown_token
-            if row_token != self._cached_row_tokens.get(character):
+            if row_token != self._tree_refresh_state.row_tokens.get(character):
                 changed_characters.add(character)
             if breakdown_token != self._cached_breakdown_tokens.get(character):
                 breakdown_changed_characters.add(character)
 
         if (
             not needs_full_refresh
-            and order_token == self._cached_order_token
+            and order_token == self._tree_refresh_state.order_token
             and not changed_characters
             and not breakdown_changed_characters
         ):
-            self._sync_refresh_state(
-                view_key=view_key,
-                row_tokens=new_row_tokens,
-                breakdown_tokens=new_breakdown_tokens,
-                order_token=order_token,
-                current_version=current_version,
-                uses_store_query=uses_store_query,
-            )
+            self._tree_refresh_state.view_key = view_key
+            self._tree_refresh_state.row_tokens = new_row_tokens
+            self._tree_refresh_state.order_token = order_token
+            self._tree_refresh_state.last_refresh_version = current_version
+            self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
+            self._cached_breakdown_tokens = new_breakdown_tokens
             return
 
         new_data = {
@@ -258,14 +249,12 @@ class DPSPanel(ttk.Frame):
                 if not natural_order and self.tree._last_sorted_col:
                     self.tree.apply_current_sort()
 
-        self._sync_refresh_state(
-            view_key=view_key,
-            row_tokens=new_row_tokens,
-            breakdown_tokens=new_breakdown_tokens,
-            order_token=order_token,
-            current_version=current_version,
-            uses_store_query=uses_store_query,
-        )
+        self._tree_refresh_state.view_key = view_key
+        self._tree_refresh_state.row_tokens = new_row_tokens
+        self._tree_refresh_state.order_token = order_token
+        self._tree_refresh_state.last_refresh_version = current_version
+        self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
+        self._cached_breakdown_tokens = new_breakdown_tokens
 
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether the service output is controlled by the store/version state."""
@@ -386,8 +375,6 @@ class DPSPanel(ttk.Frame):
             state=self._tree_refresh_state,
             natural_order_active=True,
         )
-        self._item_ids = self._tree_refresh_state.item_ids
-
         # Restore child-row selections after the top-level rebuild.
         child_items_to_select = []
         for damage_type in selected_keys:
@@ -446,8 +433,7 @@ class DPSPanel(ttk.Frame):
 
         for dps_info in dps_list:
             character = dps_info.character
-            data = new_data.get(character, self._cached_data.get(character, {}))
-            parent_id = self._item_ids.get(character)
+            parent_id = self._tree_refresh_state.item_ids.get(character)
 
             # Check if child rows need update
             new_bd = new_breakdown.get(character, [])
@@ -459,7 +445,7 @@ class DPSPanel(ttk.Frame):
 
             # Check for new damage types or changed values
             if new_bd_dict != cached_bd_dict:
-                parent_id = self._item_ids.get(character)
+                parent_id = self._tree_refresh_state.item_ids.get(character)
                 if parent_id:
                     # Check if we need to add new damage types
                     existing_types = set(self._child_ids.get(character, {}).keys())
@@ -499,7 +485,6 @@ class DPSPanel(ttk.Frame):
         # Update caches
         self._cached_data = new_data
         self._cached_breakdown = new_breakdown
-        self._item_ids = self._tree_refresh_state.item_ids
         return False
 
     def get_time_tracking_mode(self) -> str:
@@ -533,41 +518,12 @@ class DPSPanel(ttk.Frame):
         """Clear the cached data to force a full refresh on next update."""
         self._cached_data.clear()
         self._cached_breakdown.clear()
-        self._item_ids.clear()
         self._child_ids.clear()
-        self._cached_view_key = None
-        self._cached_row_tokens.clear()
         self._cached_breakdown_tokens.clear()
-        self._cached_order_token = ()
-        self._last_refresh_version = -1
-        self._last_refresh_used_store_query = False
         self._tree_refresh_state = FlatTreeRefreshState()
 
     def reset_target_filter(self) -> None:
         """Reset the target filter selection to default 'All'."""
         self.target_filter_var.set("All")
 
-    def _sync_refresh_state(
-        self,
-        *,
-        view_key: tuple[object, ...],
-        row_tokens: dict[str, tuple[Any, ...]],
-        breakdown_tokens: dict[str, tuple[tuple[str, int], ...]],
-        order_token: tuple[str, ...],
-        current_version: int,
-        uses_store_query: bool,
-    ) -> None:
-        """Keep legacy cache fields aligned with shared refresh state."""
-        self._cached_view_key = view_key
-        self._cached_row_tokens = row_tokens
-        self._cached_breakdown_tokens = breakdown_tokens
-        self._cached_order_token = order_token
-        self._last_refresh_version = current_version
-        self._last_refresh_used_store_query = uses_store_query
-        self._tree_refresh_state.view_key = view_key
-        self._tree_refresh_state.row_tokens = row_tokens
-        self._tree_refresh_state.order_token = order_token
-        self._tree_refresh_state.last_refresh_version = current_version
-        self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
-        self._tree_refresh_state.item_ids = self._item_ids
 

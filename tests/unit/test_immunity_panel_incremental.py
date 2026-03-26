@@ -34,16 +34,16 @@ class TestImmunityPanelIncrementalRefresh:
 
         panel.refresh_target_details("Goblin")
 
-        assert panel._cached_target == "Goblin"
-        assert "Fire" in panel._cached_rows
-        assert "Fire" in panel._item_ids
+        assert panel._tree_refresh_state.view_key == ("Goblin", bool(panel.parser.parse_immunity))
+        assert "Fire" in panel._tree_refresh_state.row_tokens
+        assert "Fire" in panel._tree_refresh_state.item_ids
 
     def test_incremental_refresh_updates_existing_row(self, immunity_panel) -> None:
         panel, store, _ = immunity_panel
         apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
         panel.refresh_target_details("Goblin")
 
-        item_id = panel._item_ids["Fire"]
+        item_id = panel._tree_refresh_state.item_ids["Fire"]
         before = panel.tree.item(item_id, "values")
 
         apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=75, attacker="Woo"))
@@ -51,7 +51,7 @@ class TestImmunityPanelIncrementalRefresh:
 
         after = panel.tree.item(item_id, "values")
         assert before != after
-        assert panel._item_ids["Fire"] == item_id
+        assert panel._tree_refresh_state.item_ids["Fire"] == item_id
 
     def test_refresh_skips_noop_when_store_version_and_view_unchanged(self, immunity_panel) -> None:
         panel, store, _ = immunity_panel
@@ -79,13 +79,13 @@ class TestImmunityPanelIncrementalRefresh:
         apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
         panel.refresh_target_details("Goblin")
 
-        initial_item_id = panel._item_ids["Fire"]
+        initial_item_id = panel._tree_refresh_state.item_ids["Fire"]
 
         apply(store, damage_row(target="Goblin", damage_type="Cold", total_damage=20, attacker="Woo"))
         panel.refresh_target_details("Goblin")
 
-        assert "Cold" in panel._item_ids
-        assert panel._item_ids["Fire"] != initial_item_id
+        assert "Cold" in panel._tree_refresh_state.item_ids
+        assert panel._tree_refresh_state.item_ids["Fire"] != initial_item_id
 
     def test_incremental_refresh_reorders_natural_damage_type_order_without_rebuild(self, immunity_panel) -> None:
         panel, _store, _ = immunity_panel
@@ -100,7 +100,7 @@ class TestImmunityPanelIncrementalRefresh:
 
         panel.immunity_query_service.get_target_damage_type_summary = lambda _target: initial_summary  # type: ignore[assignment]
         panel.refresh_target_details("Goblin")
-        initial_item_ids = dict(panel._item_ids)
+        initial_item_ids = dict(panel._tree_refresh_state.item_ids)
 
         panel.immunity_query_service.get_target_damage_type_summary = lambda _target: reordered_summary  # type: ignore[assignment]
         panel.refresh_target_details("Goblin")
@@ -110,4 +110,4 @@ class TestImmunityPanelIncrementalRefresh:
             for item_id in panel.tree.get_children()
         ]
         assert ordered_damage_types == ["Cold", "Fire"]
-        assert panel._item_ids == initial_item_ids
+        assert panel._tree_refresh_state.item_ids == initial_item_ids

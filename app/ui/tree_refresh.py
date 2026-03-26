@@ -45,7 +45,6 @@ class FlatTreeRefreshCoordinator:
         state: FlatTreeRefreshState,
         *,
         current_version: int,
-        uses_store_query: bool,
         item_ids_present: bool,
         natural_order_active: bool = True,
         require_natural_order: bool = False,

@@ -106,7 +106,7 @@ def test_cached_immunity_percentage_none_displays_dash(panel_ctx, monkeypatch) -
     monkeypatch.setattr(immunity_module, "calculate_immunity_percentage", lambda *_args, **_kwargs: None)
     panel.refresh_target_details("Goblin")
 
-    item_id = panel._item_ids["Fire"]
+    item_id = panel._tree_refresh_state.item_ids["Fire"]
     values = panel.tree.item(item_id, "values")
     assert values[3] == "-"
 
@@ -122,7 +122,7 @@ def test_refresh_uses_best_effort_immunity_percentage_when_exact_match_missing(p
 
     panel.refresh_target_details("Goblin")
 
-    item_id = panel._item_ids["Physical"]
+    item_id = panel._tree_refresh_state.item_ids["Physical"]
     values = panel.tree.item(item_id, "values")
     assert values[3] == "18%"
 
