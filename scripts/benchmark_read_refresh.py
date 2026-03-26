@@ -158,7 +158,7 @@ def _build_immunity_query_service(
         return runtime.immunity_query_service_cls(store)
 
     class BenchmarkNoCacheImmunityQueryService(runtime.immunity_query_service_cls):
-        """Disable immunity-summary cache reuse for benchmark comparison."""
+        """Disable immunity display-row cache reuse for benchmark comparison."""
 
         def _reset_caches_if_needed(self) -> None:
             super()._reset_caches_if_needed()
@@ -816,3 +816,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

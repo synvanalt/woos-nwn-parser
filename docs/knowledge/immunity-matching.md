@@ -101,7 +101,7 @@ Important semantics:
 This coupling matters because the immunity percentage display assumes the absorbed value and damage value came from the same hit.
 
 ## Panel Semantics
-The `Target Immunities` panel uses store summaries, not ad hoc log scans.
+The `Target Immunities` panel renders query-prepared display rows built from store summaries, not ad hoc log scans.
 
 Important consequences:
 - displayed immunity percentages are derived from matched samples only
