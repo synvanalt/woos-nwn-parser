@@ -5,6 +5,7 @@ from .immunity_query_service import ImmunityQueryService
 from .models import (
     DpsBreakdownRow,
     DpsRow,
+    ImmunityDisplayRow,
     ImmunitySummaryRow,
     TargetSummaryRow,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "DpsBreakdownRow",
     "DpsRow",
     "DpsQueryService",
+    "ImmunityDisplayRow",
     "ImmunityQueryService",
     "ImmunitySummaryRow",
     "TargetSummaryRow",

@@ -7,12 +7,11 @@ tracking and percentage calculations for each target and damage type.
 import re
 import tkinter as tk
 from tkinter import ttk
-from typing import Any, Callable, Dict, Optional
+from typing import Callable, Dict, Optional
 
 from ...storage import DataStore
-from ...services.queries import ImmunityQueryService, ImmunitySummaryRow
+from ...services.queries import ImmunityDisplayRow, ImmunityQueryService
 from ...parser import ParserSession
-from ...utils import calculate_immunity_percentage
 from ..formatters import damage_type_to_color, apply_tag_to_tree
 from ..tree_refresh import FlatTreeRefreshCoordinator, FlatTreeRefreshState
 from ..tooltips import TooltipManager
@@ -62,7 +61,6 @@ class ImmunityPanel(ttk.Frame):
         self.immunity_query_service = immunity_query_service
         self.tooltip_manager = tooltip_manager
         self.on_parse_immunity_changed = on_parse_immunity_changed
-        self.immunity_pct_cache: Dict[str, Dict[str, Optional[int]]] = {}
         self._tree_refresh_state = FlatTreeRefreshState(view_key=("", False))
         self.setup_ui()
 
@@ -184,76 +182,22 @@ class ImmunityPanel(ttk.Frame):
         ):
             return
 
-        # Initialize cache for this target if needed
-        if target not in self.immunity_pct_cache:
-            self.immunity_pct_cache[target] = {}
-
-        summaries = self.immunity_query_service.get_target_damage_type_summary(target)
-        order_token = tuple(summary.damage_type for summary in summaries)
-        new_rows = {}
-        for summary in summaries:
-            damage_type = summary.damage_type
-            max_event_damage = summary.max_event_damage
-            max_damage_from_immunity = summary.max_immunity_damage
-            immunity_absorbed = summary.immunity_absorbed
-            sample_count = summary.sample_count
-            suppress_temporary_full_immunity = summary.suppress_temporary_full_immunity
-
-            if (
-                self.parser.parse_immunity
-                and sample_count > 0
-                and not suppress_temporary_full_immunity
-            ):
-                max_damage = max_damage_from_immunity
-            else:
-                max_damage = max_event_damage
-
-            if (
-                self.parser.parse_immunity
-                and sample_count > 0
-                and not suppress_temporary_full_immunity
-            ):
-                max_damage_display = str(max_damage)
-                absorbed_display = str(immunity_absorbed)
-            elif self.parser.parse_immunity and suppress_temporary_full_immunity:
-                max_damage_display = str(max_damage)
-                absorbed_display = "-"
-            else:
-                max_damage_display = str(max_damage) if max_damage > 0 else "-"
-                absorbed_display = str(immunity_absorbed) if immunity_absorbed > 0 else "-"
-            samples_display = str(sample_count) if sample_count > 0 else "-"
-
-            immunity_pct_display = "-"
-            if damage_type in self.immunity_pct_cache[target]:
-                cached_pct = self.immunity_pct_cache[target][damage_type]
-                if cached_pct is not None:
-                    immunity_pct_display = f"{cached_pct}%"
-
-            if self.parser.parse_immunity and suppress_temporary_full_immunity:
-                immunity_pct_display = "-"
-                self.immunity_pct_cache[target][damage_type] = None
-            elif self.parser.parse_immunity and sample_count > 0 and max_damage == 0:
-                immunity_pct_display = "100%"
-                self.immunity_pct_cache[target][damage_type] = 100
-            elif self.parser.parse_immunity and max_damage > 0 and immunity_absorbed > 0:
-                immunity_pct = calculate_immunity_percentage(max_damage, immunity_absorbed)
-                if immunity_pct is not None:
-                    immunity_pct_display = f"{immunity_pct}%"
-                    self.immunity_pct_cache[target][damage_type] = immunity_pct
-                else:
-                    self.immunity_pct_cache[target][damage_type] = None
-
-            new_rows[damage_type] = (
-                damage_type,
-                max_damage_display,
-                absorbed_display,
-                immunity_pct_display,
-                samples_display,
+        rows = self.immunity_query_service.get_target_immunity_display_rows(
+            target,
+            bool(self.parser.parse_immunity),
+        )
+        order_token = tuple(row.damage_type for row in rows)
+        new_rows = {
+            row.damage_type: (
+                row.damage_type,
+                row.max_damage_display,
+                row.absorbed_display,
+                row.immunity_pct_display,
+                row.samples_display,
             )
-        new_row_tokens = {
-            damage_type: row_values
-            for damage_type, row_values in new_rows.items()
+            for row in rows
         }
+        new_row_tokens = dict(new_rows)
         current_target = ""
         if isinstance(self._tree_refresh_state.view_key, tuple) and self._tree_refresh_state.view_key:
             current_target = str(self._tree_refresh_state.view_key[0])
@@ -293,7 +237,7 @@ class ImmunityPanel(ttk.Frame):
         else:
             rebuilt = self._incremental_refresh(
                 target,
-                summaries,
+                rows,
                 new_rows,
                 changed_damage_types,
                 natural_order,
@@ -309,11 +253,15 @@ class ImmunityPanel(ttk.Frame):
 
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether refresh data is sourced from the live store method."""
-        service_method = getattr(self.immunity_query_service, "get_target_damage_type_summary", None)
+        service_method = getattr(
+            self.immunity_query_service,
+            "get_target_immunity_display_rows",
+            None,
+        )
         return (
             getattr(service_method, "__self__", None) is self.immunity_query_service
             and getattr(service_method, "__func__", None)
-            is ImmunityQueryService.get_target_damage_type_summary
+            is ImmunityQueryService.get_target_immunity_display_rows
         )
 
     def _is_natural_order_active(self) -> bool:
@@ -345,14 +293,14 @@ class ImmunityPanel(ttk.Frame):
     def _incremental_refresh(
         self,
         target: str,
-        summaries: list[ImmunitySummaryRow],
+        rows: list[ImmunityDisplayRow],
         new_rows: Dict[str, tuple],
         changed_damage_types: set[str],
         natural_order: bool,
     ) -> bool:
         """Update existing immunity rows without rebuilding the tree."""
         rebuilt = self._tree_refresh.incremental_refresh(
-            ordered_keys=[summary.damage_type for summary in summaries],
+            ordered_keys=[row.damage_type for row in rows],
             row_values_by_key=new_rows,
             changed_keys=changed_damage_types,
             state=self._tree_refresh_state,
@@ -395,5 +343,5 @@ class ImmunityPanel(ttk.Frame):
 
         Called when data is reset to ensure old cached values don't persist.
         """
-        self.immunity_pct_cache.clear()
+        self.immunity_query_service.clear_caches()
         self._tree_refresh_state = FlatTreeRefreshState(view_key=("", False))

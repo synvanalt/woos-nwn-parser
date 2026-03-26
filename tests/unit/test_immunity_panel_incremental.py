@@ -5,7 +5,7 @@ from tkinter import ttk
 from unittest.mock import Mock
 
 from app.parser import ParserSession
-from app.services.queries import ImmunityQueryService, ImmunitySummaryRow
+from app.services.queries import ImmunityDisplayRow, ImmunityQueryService
 from app.storage import DataStore
 from app.ui.widgets.immunity_panel import ImmunityPanel
 from tests.helpers.store_mutations import apply, damage_row
@@ -58,7 +58,7 @@ class TestImmunityPanelIncrementalRefresh:
         apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
         panel.refresh_target_details("Goblin")
 
-        panel.immunity_query_service.get_target_damage_type_summary = Mock(  # type: ignore[assignment]
+        panel.immunity_query_service.get_target_immunity_display_rows = Mock(  # type: ignore[assignment]
             side_effect=AssertionError("should not be called")
         )
         panel.refresh_target_details("Goblin")
@@ -90,19 +90,23 @@ class TestImmunityPanelIncrementalRefresh:
     def test_incremental_refresh_reorders_natural_damage_type_order_without_rebuild(self, immunity_panel) -> None:
         panel, _store, _ = immunity_panel
         initial_summary = [
-            ImmunitySummaryRow("Fire", 50, 0, 0, 0, False),
-            ImmunitySummaryRow("Cold", 20, 0, 0, 0, False),
+            ImmunityDisplayRow("Fire", "50", "-", "-", "-"),
+            ImmunityDisplayRow("Cold", "20", "-", "-", "-"),
         ]
         reordered_summary = [
-            ImmunitySummaryRow("Cold", 20, 0, 0, 0, False),
-            ImmunitySummaryRow("Fire", 50, 0, 0, 0, False),
+            ImmunityDisplayRow("Cold", "20", "-", "-", "-"),
+            ImmunityDisplayRow("Fire", "50", "-", "-", "-"),
         ]
 
-        panel.immunity_query_service.get_target_damage_type_summary = lambda _target: initial_summary  # type: ignore[assignment]
+        panel.immunity_query_service.get_target_immunity_display_rows = (  # type: ignore[assignment]
+            lambda _target, _parse_immunity: initial_summary
+        )
         panel.refresh_target_details("Goblin")
         initial_item_ids = dict(panel._tree_refresh_state.item_ids)
 
-        panel.immunity_query_service.get_target_damage_type_summary = lambda _target: reordered_summary  # type: ignore[assignment]
+        panel.immunity_query_service.get_target_immunity_display_rows = (  # type: ignore[assignment]
+            lambda _target, _parse_immunity: reordered_summary
+        )
         panel.refresh_target_details("Goblin")
 
         ordered_damage_types = [

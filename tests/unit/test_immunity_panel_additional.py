@@ -5,7 +5,7 @@ from tkinter import ttk
 
 import pytest
 
-import app.ui.widgets.immunity_panel as immunity_module
+import app.services.queries.immunity_query_service as immunity_query_module
 from app.parser import ParserSession
 from app.services.queries import ImmunityQueryService
 from app.storage import DataStore
@@ -103,7 +103,11 @@ def test_cached_immunity_percentage_none_displays_dash(panel_ctx, monkeypatch) -
         immunity(target="Goblin", damage_type="Fire", immunity_points=10, damage_dealt=50),
     )
 
-    monkeypatch.setattr(immunity_module, "calculate_immunity_percentage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        immunity_query_module,
+        "calculate_immunity_percentage",
+        lambda *_args, **_kwargs: None,
+    )
     panel.refresh_target_details("Goblin")
 
     item_id = panel._tree_refresh_state.item_ids["Fire"]

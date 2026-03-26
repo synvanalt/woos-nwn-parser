@@ -129,8 +129,9 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 **Query Services** (`services/queries/`)
 - `DpsQueryService` builds DPS rows, hit-rate display data, and damage-type breakdowns from store indices
 - `TargetSummaryQueryService` builds `Target Stats` rows from indexed target state
-- `ImmunityQueryService` builds `Target Immunities` rows from indexed damage and immunity summaries
+- `ImmunityQueryService` builds both indexed immunity summary rows and prepared `Target Immunities` display rows from store-owned damage/immunity snapshots
 - Keep read-side projection caching out of `DataStore`, while consuming store-owned immutable snapshots and returning typed read-model DTOs for UI consumers
+- UI-facing display semantics such as immunity-percent formatting, absorbed-value suppression, and parse-toggle-specific row presentation belong here rather than in Tk widgets
 
 **WoosNwnParserApp** (`ui/main_window.py`)
 - Wires together parser, storage, widgets, query services, and UI controllers

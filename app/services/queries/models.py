@@ -40,6 +40,17 @@ class ImmunitySummaryRow:
 
 
 @dataclass(frozen=True, slots=True)
+class ImmunityDisplayRow:
+    """One prepared target immunity display row for the UI."""
+
+    damage_type: str
+    max_damage_display: str
+    absorbed_display: str
+    immunity_pct_display: str
+    samples_display: str
+
+
+@dataclass(frozen=True, slots=True)
 class TargetSummaryRow:
     """One Target Stats display row."""
 
