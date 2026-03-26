@@ -27,6 +27,7 @@ woos-nwn-parser/
 |       |-- __init__.py
 |       |-- main_window.py         # Main application window
 |       |-- formatters.py          # Data formatting utilities
+|       |-- tree_refresh.py        # Shared treeview refresh/diff helpers
 |       |-- presenters/            # Pure render-preparation helpers for widgets
 |       |-- window_style.py        # Window styling helpers
 |       `-- widgets/               # UI components
@@ -74,6 +75,7 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 - `DataStore` also owns store-facing immutable read snapshots for query consumption, including atomic projection snapshots when query timing state must stay consistent with indexed summaries
 - Query services own read-side row construction, memoization, and typed immutable DTO return semantics for the UI
 - UI controllers coordinate workflows such as monitoring, import, queue draining, coalesced refreshes, and persisted session settings
+- `app/ui/tree_refresh.py` owns shared top-level tree diffing, selection preservation, stale-item fallback, and sort-preservation behavior for the heavy table widgets
 - UI presenters/formatters own pure display-data preparation that widgets can consume without Tk dependencies
 - Panels should consume query services, not build projections directly from low-level store state
 - Parser and matcher semantics should stay aligned across live monitoring and historic import
@@ -134,6 +136,11 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 - Wires together parser, storage, widgets, query services, and UI controllers
 - Owns high-level Tk callbacks such as target selection, settings-triggered refreshes, and shutdown
 - Keeps debug console hidden by default and reveals it through the DPS-tab click gesture
+
+**Tree Refresh Helpers** (`ui/tree_refresh.py`)
+- Own shared top-level tree rebuild and incremental-update mechanics for `DPSPanel`, `TargetStatsPanel`, and `ImmunityPanel`
+- Preserve selected rows across full rebuilds, recover safely from stale cached item ids, and distinguish authoritative natural order from user-selected sorts
+- Keep nested DPS child-row handling in the widget layer so the shared helper stays focused on flat top-level rows
 
 **DeathSnippetPresenter** (`ui/presenters/death_snippet_presenter.py`)
 - Owns pure death-snippet render preparation outside Tk widgets

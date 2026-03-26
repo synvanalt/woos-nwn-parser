@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 25, 2026 (typed query DTO migration and shim removal)
+**Last Updated:** March 26, 2026 (DPS full-refresh performance regression test added)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after the death-snippet presenter test split and current suite recollection.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **669 tests collected**
+- Result: **670 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 41 modules, 618 tests
+- `tests/unit/`: 41 modules, 619 tests
 - `tests/integration/`: 7 modules, 44 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 49 test modules, 669 tests
+- Total: 49 test modules, 670 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -42,7 +42,7 @@ Notes:
 - `test_immunity_panel_additional.py` (10)
 - `test_immunity_panel_edge_cases.py` (9)
 - `test_selection_preservation.py` (4)
-- `test_dps_panel_incremental.py` (13)
+- `test_dps_panel_incremental.py` (14)
 - `test_immunity_panel_incremental.py` (6)
 - `test_target_stats_panel_incremental.py` (11)
 - `test_ui_optimizations.py` (19)
@@ -100,7 +100,7 @@ Notes:
   - Query-service, integration, queue-processor, and e2e tests now consume typed DTO attributes directly instead of legacy dict-like row access
 - UI widget/main-window behavior and refresh optimizations:
   - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_message_dialogs.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
-  - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, tree-sort scan bypass when callers already control order, and Target Stats staying empty after Clear Data-style store clears
+  - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, tree-sort scan bypass when callers already control order, Target Stats staying empty after Clear Data-style store clears, and a DPS full-refresh regression guard that catches per-row rescans of the ordered DPS row list
   - Includes main-window orchestration coverage for target-list fanout, app-level delegation into controllers, and shutdown ordering across settings, import, monitor, storage, and tooltip teardown
   - Includes controller-first monitoring coverage for switch state, active-file label updates, deferred restart behavior, and retention of the last known filename when monitoring is paused
   - Includes dark modal dialog coverage for app-owned warning popups and bottom-right action-row alignment shared by warning and import-progress modals

@@ -1,14 +1,11 @@
-"""Target stats panel widget for Woo's NWN Parser UI.
-
-This module contains the TargetStatsPanel widget that displays target
-statistics including AC, AB, and save values.
-"""
+"""Target stats panel widget for Woo's NWN Parser UI."""
 
 from typing import Any, Optional
 from tkinter import ttk
 
 from ...storage import DataStore
 from ...services.queries import TargetSummaryQueryService, TargetSummaryRow
+from ..tree_refresh import FlatTreeRefreshCoordinator, FlatTreeRefreshState
 from ..tooltips import TooltipManager
 from .sorted_treeview import SortedTreeview
 
@@ -47,6 +44,7 @@ class TargetStatsPanel(ttk.Frame):
         self._cached_order_token: tuple[str, ...] = ()
         self._last_refresh_version: int = -1
         self._last_refresh_used_store_query: bool = False
+        self._tree_refresh_state = FlatTreeRefreshState()
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -78,21 +76,24 @@ class TargetStatsPanel(ttk.Frame):
 
         # Set default sort by Target name ascending
         self.tree.set_default_sort("Target", reverse=False)
+        self._tree_refresh = FlatTreeRefreshCoordinator(self.tree)
 
     def refresh(self) -> None:
         """Refresh the target stats display with current data."""
         current_version = self.data_store.version
         uses_store_query = self._can_use_store_version_fast_path()
-        if (
-            self._last_refresh_used_store_query
-            and self._last_refresh_version == current_version
-            and self._item_ids
-            and self._is_natural_order_active()
+        natural_order = self._is_natural_order_active()
+        if self._tree_refresh.can_skip_refresh(
+            self._tree_refresh_state,
+            current_version=current_version,
+            uses_store_query=uses_store_query,
+            item_ids_present=bool(self._item_ids),
+            natural_order_active=natural_order,
+            require_natural_order=True,
         ):
             return
 
         summary_data = self.target_summary_query_service.get_all_targets_summary()
-        natural_order = self._is_natural_order_active()
         order_token = tuple(item.target for item in summary_data)
         new_rows = {
             item.target: self._build_row_values(item)
@@ -122,21 +123,32 @@ class TargetStatsPanel(ttk.Frame):
             and order_token == self._cached_order_token
             and not changed_targets
         ):
-            self._cached_row_tokens = new_row_tokens
-            self._cached_order_token = order_token
-            self._last_refresh_version = current_version
-            self._last_refresh_used_store_query = uses_store_query
+            self._sync_refresh_state(
+                row_tokens=new_row_tokens,
+                order_token=order_token,
+                current_version=current_version,
+                uses_store_query=uses_store_query,
+            )
             return
 
         if needs_full_refresh:
-            self._full_refresh(summary_data)
+            self._full_refresh(summary_data, natural_order)
         else:
-            self._incremental_refresh(summary_data, new_rows, changed_targets, natural_order)
+            rebuilt = self._incremental_refresh(
+                summary_data,
+                new_rows,
+                changed_targets,
+                natural_order,
+            )
+            if rebuilt:
+                self._full_refresh(summary_data, natural_order)
 
-        self._cached_row_tokens = new_row_tokens
-        self._cached_order_token = order_token
-        self._last_refresh_version = current_version
-        self._last_refresh_used_store_query = uses_store_query
+        self._sync_refresh_state(
+            row_tokens=new_row_tokens,
+            order_token=order_token,
+            current_version=current_version,
+            uses_store_query=uses_store_query,
+        )
 
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether refresh data is sourced from the live store method."""
@@ -175,61 +187,26 @@ class TargetStatsPanel(ttk.Frame):
         self._cached_order_token = ()
         self._last_refresh_version = -1
         self._last_refresh_used_store_query = False
+        self._tree_refresh_state = FlatTreeRefreshState()
 
-    def _full_refresh(self, summary_data: list[TargetSummaryRow]) -> None:
+    def _full_refresh(self, summary_data: list[TargetSummaryRow], natural_order: bool) -> None:
         """Rebuild the tree when targets are added, removed, or reordered."""
-        # Save the currently selected target names
-        selected_targets = set()
-        for item in self.tree.selection():
-            values = self.tree.item(item, "values")
-            if values and len(values) > 0:
-                selected_targets.add(values[0])  # Target name is first column
-
-        # Suppress visual updates during bulk operations
-        original_show = self.tree.cget("show")
-        self.tree.configure(show="")
-
-        try:
-            # Clear existing data
-            self.tree.delete(*self.tree.get_children())
-            self._item_ids.clear()
-
-            # Track items to restore selection
-            items_to_select = []
-
-            # Populate treeview with target data
-            for item in summary_data:
-                row_values = self._build_row_values(item)
-                item_id = self.tree.insert(
-                    "",
-                    "end",
-                    values=row_values,
-                )
-                self._item_ids[item.target] = item_id
-
-                # Check if this target should be selected
-                if item.target in selected_targets:
-                    items_to_select.append(item_id)
-
-            # Apply sort only if needed:
-            # - If user has never sorted, apply default sort
-            # - If user has sorted, maintain their sort preference
-            # This is efficient: only sorts when structure changes, not on every update
-            if self.tree._last_sorted_col and not self._is_natural_order_active():
-                self.tree.apply_current_sort()
-
-        finally:
-            # Restore visual updates
-            self.tree.configure(show=original_show)
-
-        # Restore selection (after show is restored)
-        if items_to_select:
-            self.tree.selection_set(items_to_select)
-
+        ordered_targets = [item.target for item in summary_data]
+        row_values_by_target = {
+            item.target: self._build_row_values(item)
+            for item in summary_data
+        }
+        self._tree_refresh.full_refresh(
+            ordered_keys=ordered_targets,
+            insert_row=lambda target: self.tree.insert("", "end", values=row_values_by_target[target]),
+            state=self._tree_refresh_state,
+            natural_order_active=natural_order,
+        )
         self._cached_rows = {
             item.target: self._build_row_values(item)
             for item in summary_data
         }
+        self._item_ids = self._tree_refresh_state.item_ids
 
     def _incremental_refresh(
         self,
@@ -237,31 +214,34 @@ class TargetStatsPanel(ttk.Frame):
         new_rows: dict,
         changed_targets: set[str],
         natural_order: bool,
-    ) -> None:
+    ) -> bool:
         """Update existing rows without rebuilding the whole tree."""
-        known_items = set(self.tree.get_children())
-        for item in summary_data:
-            target = item.target
-            if target not in changed_targets:
-                continue
-            row_values = new_rows[target]
-            item_id = self._item_ids.get(target)
-            if item_id not in known_items:
-                self._full_refresh(summary_data)
-                return
-            if item_id:
-                self.tree.item(item_id, values=row_values)
-
-        if natural_order:
-            for index, item in enumerate(summary_data):
-                item_id = self._item_ids.get(item.target)
-                if item_id not in known_items:
-                    self._full_refresh(summary_data)
-                    return
-                if item_id:
-                    self.tree.move(item_id, "", index)
-
+        rebuilt = self._tree_refresh.incremental_refresh(
+            ordered_keys=[item.target for item in summary_data],
+            row_values_by_key=new_rows,
+            changed_keys=changed_targets,
+            state=self._tree_refresh_state,
+            natural_order_active=natural_order,
+        )
         self._cached_rows = new_rows
+        self._item_ids = self._tree_refresh_state.item_ids
+        return rebuilt
 
-        if not natural_order and self.tree._last_sorted_col:
-            self.tree.apply_current_sort()
+    def _sync_refresh_state(
+        self,
+        *,
+        row_tokens: dict[str, tuple[Any, ...]],
+        order_token: tuple[str, ...],
+        current_version: int,
+        uses_store_query: bool,
+    ) -> None:
+        """Keep legacy panel cache fields aligned with the shared refresh state."""
+        self._cached_row_tokens = row_tokens
+        self._cached_order_token = order_token
+        self._last_refresh_version = current_version
+        self._last_refresh_used_store_query = uses_store_query
+        self._tree_refresh_state.row_tokens = row_tokens
+        self._tree_refresh_state.order_token = order_token
+        self._tree_refresh_state.last_refresh_version = current_version
+        self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
+        self._tree_refresh_state.item_ids = self._item_ids

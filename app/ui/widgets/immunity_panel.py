@@ -14,6 +14,7 @@ from ...services.queries import ImmunityQueryService, ImmunitySummaryRow
 from ...parser import ParserSession
 from ...utils import calculate_immunity_percentage
 from ..formatters import damage_type_to_color, apply_tag_to_tree
+from ..tree_refresh import FlatTreeRefreshCoordinator, FlatTreeRefreshState
 from ..tooltips import TooltipManager
 from .sorted_treeview import SortedTreeview
 
@@ -70,6 +71,7 @@ class ImmunityPanel(ttk.Frame):
         self._cached_view_key: tuple[str, bool] = ("", False)
         self._last_refresh_version: int = -1
         self._last_refresh_used_store_query: bool = False
+        self._tree_refresh_state = FlatTreeRefreshState(view_key=self._cached_view_key)
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -148,6 +150,7 @@ class ImmunityPanel(ttk.Frame):
         )
         self.disclaimer_label.pack(fill="x", padx=(10, 10), pady=(8, 0))
         self.bind("<Configure>", self._on_panel_resize)
+        self._tree_refresh = FlatTreeRefreshCoordinator(self.tree)
         self._register_tooltips()
 
     def _register_tooltips(self) -> None:
@@ -178,12 +181,15 @@ class ImmunityPanel(ttk.Frame):
         view_key = (target, bool(self.parser.parse_immunity))
         current_version = self.data_store.version
         uses_store_query = self._can_use_store_version_fast_path()
-        if (
-            self._last_refresh_used_store_query
-            and self._cached_view_key == view_key
-            and self._last_refresh_version == current_version
-            and self._item_ids
-            and self._is_natural_order_active()
+        natural_order = self._is_natural_order_active()
+        if self._tree_refresh.can_skip_refresh(
+            self._tree_refresh_state,
+            current_version=current_version,
+            uses_store_query=uses_store_query,
+            item_ids_present=bool(self._item_ids),
+            natural_order_active=natural_order,
+            require_natural_order=True,
+            view_key=view_key,
         ):
             return
 
@@ -192,7 +198,6 @@ class ImmunityPanel(ttk.Frame):
             self.immunity_pct_cache[target] = {}
 
         summaries = self.immunity_query_service.get_target_damage_type_summary(target)
-        natural_order = self._is_natural_order_active()
         order_token = tuple(summary.damage_type for summary in summaries)
         new_rows = {}
         for summary in summaries:
@@ -282,28 +287,35 @@ class ImmunityPanel(ttk.Frame):
                 and self.tree._last_sorted_col
             ):
                 self.tree.apply_current_sort()
-            self._cached_row_tokens = new_row_tokens
-            self._cached_order_token = order_token
-            self._last_refresh_version = current_version
-            self._last_refresh_used_store_query = uses_store_query
+            self._sync_refresh_state(
+                view_key=view_key,
+                row_tokens=new_row_tokens,
+                order_token=order_token,
+                current_version=current_version,
+                uses_store_query=uses_store_query,
+            )
             return
 
         if needs_full_refresh:
-            self._full_refresh(target, new_rows)
+            self._full_refresh(target, new_rows, natural_order)
         else:
-            self._incremental_refresh(
+            rebuilt = self._incremental_refresh(
                 target,
                 summaries,
                 new_rows,
                 changed_damage_types,
                 natural_order,
             )
+            if rebuilt:
+                self._full_refresh(target, new_rows, natural_order)
 
-        self._cached_view_key = view_key
-        self._cached_row_tokens = new_row_tokens
-        self._cached_order_token = order_token
-        self._last_refresh_version = current_version
-        self._last_refresh_used_store_query = uses_store_query
+        self._sync_refresh_state(
+            view_key=view_key,
+            row_tokens=new_row_tokens,
+            order_token=order_token,
+            current_version=current_version,
+            uses_store_query=uses_store_query,
+        )
 
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether refresh data is sourced from the live store method."""
@@ -318,62 +330,30 @@ class ImmunityPanel(ttk.Frame):
         """Return whether the active tree sort matches store immunity order."""
         return self.tree._last_sorted_col == "Damage Type" and not self.tree._sort_reverse
 
-    def _full_refresh(self, target: str, new_rows: Dict[str, tuple]) -> None:
+    def _full_refresh(self, target: str, new_rows: Dict[str, tuple], natural_order: bool) -> None:
         """Rebuild the tree when target or damage-type structure changes."""
-        # Save the currently selected damage types
-        selected_damage_types = set()
-        for item in self.tree.selection():
-            values = self.tree.item(item, "values")
-            if values and len(values) > 0:
-                selected_damage_types.add(values[0])
+        ordered_damage_types = list(new_rows.keys())
 
-        # Suppress visual updates during bulk operations
-        original_show = self.tree.cget("show")
-        self.tree.configure(show="")
+        def _insert_row(damage_type: str) -> str:
+            tag_name = f"dt_{re.sub(r'[^0-9a-zA-Z]+', '_', damage_type.lower())}"
+            color = damage_type_to_color(damage_type)
+            apply_tag_to_tree(self.tree, tag_name, color)
+            return self.tree.insert(
+                "",
+                "end",
+                values=new_rows[damage_type],
+                tags=(tag_name,),
+            )
 
-        try:
-            # Clear existing data
-            self.tree.delete(*self.tree.get_children())
-            self._item_ids.clear()
-
-            # Track items to restore selection
-            items_to_select = []
-
-            for damage_type, row_values in new_rows.items():
-                tag_name = f"dt_{re.sub(r'[^0-9a-zA-Z]+', '_', damage_type.lower())}"
-                color = damage_type_to_color(damage_type)
-                apply_tag_to_tree(self.tree, tag_name, color)
-
-                # Display in simplified column format
-                item_id = self.tree.insert(
-                    "",
-                    "end",
-                    values=row_values,
-                    tags=(tag_name,),
-                )
-                self._item_ids[damage_type] = item_id
-
-                # Check if this damage type should be selected
-                if damage_type in selected_damage_types:
-                    items_to_select.append(item_id)
-
-            # Apply sort only if needed:
-            # - If user has never sorted, apply default sort
-            # - If user has sorted, maintain their sort preference
-            # This is efficient: only sorts when structure changes, not on every update
-            if self.tree._last_sorted_col and not self._is_natural_order_active():
-                self.tree.apply_current_sort()
-
-        finally:
-            # Restore visual updates
-            self.tree.configure(show=original_show)
-
-        # Restore selection (after show is restored)
-        if items_to_select:
-            self.tree.selection_set(items_to_select)
-
+        self._tree_refresh.full_refresh(
+            ordered_keys=ordered_damage_types,
+            insert_row=_insert_row,
+            state=self._tree_refresh_state,
+            natural_order_active=natural_order,
+        )
         self._cached_target = target
         self._cached_rows = new_rows
+        self._item_ids = self._tree_refresh_state.item_ids
 
     def _incremental_refresh(
         self,
@@ -382,28 +362,19 @@ class ImmunityPanel(ttk.Frame):
         new_rows: Dict[str, tuple],
         changed_damage_types: set[str],
         natural_order: bool,
-    ) -> None:
+    ) -> bool:
         """Update existing immunity rows without rebuilding the tree."""
-        for summary in summaries:
-            damage_type = summary.damage_type
-            if damage_type not in changed_damage_types:
-                continue
-            row_values = new_rows[damage_type]
-            item_id = self._item_ids.get(damage_type)
-            if item_id:
-                self.tree.item(item_id, values=row_values)
-
-        if natural_order:
-            for index, summary in enumerate(summaries):
-                item_id = self._item_ids.get(summary.damage_type)
-                if item_id:
-                    self.tree.move(item_id, "", index)
-
+        rebuilt = self._tree_refresh.incremental_refresh(
+            ordered_keys=[summary.damage_type for summary in summaries],
+            row_values_by_key=new_rows,
+            changed_keys=changed_damage_types,
+            state=self._tree_refresh_state,
+            natural_order_active=natural_order,
+        )
         self._cached_target = target
         self._cached_rows = new_rows
-
-        if not natural_order and self.tree._last_sorted_col:
-            self.tree.apply_current_sort()
+        self._item_ids = self._tree_refresh_state.item_ids
+        return rebuilt
 
     def update_target_list(self, targets: list) -> None:
         """Update the target selector combobox.
@@ -449,3 +420,26 @@ class ImmunityPanel(ttk.Frame):
         self._cached_view_key = ("", False)
         self._last_refresh_version = -1
         self._last_refresh_used_store_query = False
+        self._tree_refresh_state = FlatTreeRefreshState(view_key=self._cached_view_key)
+
+    def _sync_refresh_state(
+        self,
+        *,
+        view_key: tuple[str, bool],
+        row_tokens: dict[str, tuple[Any, ...]],
+        order_token: tuple[str, ...],
+        current_version: int,
+        uses_store_query: bool,
+    ) -> None:
+        """Keep legacy cache fields aligned with shared refresh state."""
+        self._cached_view_key = view_key
+        self._cached_row_tokens = row_tokens
+        self._cached_order_token = order_token
+        self._last_refresh_version = current_version
+        self._last_refresh_used_store_query = uses_store_query
+        self._tree_refresh_state.view_key = view_key
+        self._tree_refresh_state.row_tokens = row_tokens
+        self._tree_refresh_state.order_token = order_token
+        self._tree_refresh_state.last_refresh_version = current_version
+        self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
+        self._tree_refresh_state.item_ids = self._item_ids

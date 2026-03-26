@@ -11,6 +11,7 @@ from typing import Any, Iterable, Optional
 from ...storage import DataStore
 from ...services.queries import DpsQueryService, DpsRow
 from ..formatters import damage_type_to_color, apply_tag_to_tree, format_time
+from ..tree_refresh import FlatTreeRefreshCoordinator, FlatTreeRefreshState
 from ..tooltips import TooltipManager
 from .sorted_treeview import SortedTreeview
 
@@ -55,6 +56,7 @@ class DPSPanel(ttk.Frame):
         self._cached_order_token: tuple[str, ...] = ()
         self._last_refresh_version: int = -1
         self._last_refresh_used_store_query: bool = False
+        self._tree_refresh_state = FlatTreeRefreshState()
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -93,6 +95,10 @@ class DPSPanel(ttk.Frame):
 
         # Set default sort by DPS descending (matches storage default)
         self.tree.set_default_sort("DPS", reverse=True)
+        self._tree_refresh = FlatTreeRefreshCoordinator(
+            self.tree,
+            selection_key_getter=lambda values: str(values[0]).strip() if values else None,
+        )
 
         self.tree.pack(fill="both", expand=True)
         dps_scrollbar.config(command=self.tree.yview)
@@ -161,12 +167,12 @@ class DPSPanel(ttk.Frame):
         )
         current_version = self.data_store.version
         uses_store_query = self._can_use_store_version_fast_path()
-        if (
-            self._last_refresh_used_store_query
-            and
-            self._cached_view_key == view_key
-            and self._last_refresh_version == current_version
-            and self._item_ids
+        if self._tree_refresh.can_skip_refresh(
+            self._tree_refresh_state,
+            current_version=current_version,
+            uses_store_query=uses_store_query,
+            item_ids_present=bool(self._item_ids),
+            view_key=view_key,
         ):
             return
 
@@ -205,12 +211,14 @@ class DPSPanel(ttk.Frame):
             and not changed_characters
             and not breakdown_changed_characters
         ):
-            self._cached_view_key = view_key
-            self._cached_order_token = order_token
-            self._cached_row_tokens = new_row_tokens
-            self._cached_breakdown_tokens = new_breakdown_tokens
-            self._last_refresh_version = current_version
-            self._last_refresh_used_store_query = uses_store_query
+            self._sync_refresh_state(
+                view_key=view_key,
+                row_tokens=new_row_tokens,
+                breakdown_tokens=new_breakdown_tokens,
+                order_token=order_token,
+                current_version=current_version,
+                uses_store_query=uses_store_query,
+            )
             return
 
         new_data = {
@@ -238,25 +246,26 @@ class DPSPanel(ttk.Frame):
                 self._build_breakdown_cache(breakdown_fetch_characters, selected_target)
             )
             # Incremental update - only update changed values
-            self._incremental_refresh(
+            rebuilt = self._incremental_refresh(
                 dps_list=dps_list,
                 new_data=new_data,
                 new_breakdown=new_breakdown,
                 changed_characters=changed_characters,
                 natural_order=natural_order,
             )
+            if rebuilt:
+                self._full_refresh(dps_list, new_data, new_breakdown)
+                if not natural_order and self.tree._last_sorted_col:
+                    self.tree.apply_current_sort()
 
-        if needs_full_refresh:
-            self._cached_row_tokens = new_row_tokens
-            self._cached_breakdown_tokens = new_breakdown_tokens
-        else:
-            self._cached_row_tokens = new_row_tokens
-            self._cached_breakdown_tokens = new_breakdown_tokens
-
-        self._cached_view_key = view_key
-        self._cached_order_token = order_token
-        self._last_refresh_version = current_version
-        self._last_refresh_used_store_query = uses_store_query
+        self._sync_refresh_state(
+            view_key=view_key,
+            row_tokens=new_row_tokens,
+            breakdown_tokens=new_breakdown_tokens,
+            order_token=order_token,
+            current_version=current_version,
+            uses_store_query=uses_store_query,
+        )
 
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether the service output is controlled by the store/version state."""
@@ -324,50 +333,35 @@ class DPSPanel(ttk.Frame):
                 if values:
                     expanded_nodes.add(values[0])
 
-        # Save the currently selected items (by their character name)
-        selected_characters = set()
-        for item in self.tree.selection():
-            values = self.tree.item(item, "values")
-            if values and len(values) > 0:
-                char_name = values[0].strip()
-                selected_characters.add(char_name)
+        selected_keys = self._tree_refresh.capture_selection_keys()
 
         # Clear the tree and caches
-        self.tree.delete(*self.tree.get_children())
-        self._item_ids.clear()
         self._child_ids.clear()
+        ordered_characters = [dps_info.character for dps_info in dps_list]
+        dps_info_by_character = {
+            dps_info.character: dps_info
+            for dps_info in dps_list
+        }
 
-        # Track items to restore selection
-        items_to_select = []
-
-        for dps_info in dps_list:
-            character = dps_info.character
+        def _insert_row(character: str) -> str:
+            dps_info = dps_info_by_character[character]
             total_damage = dps_info.total_damage
             time_seconds = dps_info.time_seconds
             dps = dps_info.dps
             hit_rate = dps_info.hit_rate
-
-            # Format values for display
             time_display = format_time(time_seconds)
             dps_display = f"{dps:.2f}"
             hit_rate_display = f"{hit_rate:.1f}%"
 
-            # Insert parent row for character
             parent_id = self.tree.insert(
                 "",
                 "end",
                 text="",
                 values=(character, dps_display, total_damage, hit_rate_display, time_display),
             )
-            self._item_ids[character] = parent_id
             self._child_ids[character] = {}
 
-            if character in selected_characters:
-                items_to_select.append(parent_id)
-
-            # Insert child rows for each damage type
             for damage_type, type_damage, type_dps in new_breakdown.get(character, []):
-
                 color = damage_type_to_color(damage_type)
                 tag = f"damage_type_{damage_type.replace(' ', '_').lower()}"
                 apply_tag_to_tree(self.tree, tag, color)
@@ -381,16 +375,28 @@ class DPSPanel(ttk.Frame):
                 )
                 self._child_ids[character][damage_type] = child_id
 
-                if damage_type in selected_characters:
-                    items_to_select.append(child_id)
-
-            # Restore expanded state
             if character in expanded_nodes:
                 self.tree.item(parent_id, open=True)
 
-        # Restore selection
-        if items_to_select:
-            self.tree.selection_set(items_to_select)
+            return parent_id
+
+        self._tree_refresh.full_refresh(
+            ordered_keys=ordered_characters,
+            insert_row=_insert_row,
+            state=self._tree_refresh_state,
+            natural_order_active=True,
+        )
+        self._item_ids = self._tree_refresh_state.item_ids
+
+        # Restore child-row selections after the top-level rebuild.
+        child_items_to_select = []
+        for damage_type in selected_keys:
+            for child_ids in self._child_ids.values():
+                child_id = child_ids.get(damage_type)
+                if child_id:
+                    child_items_to_select.append(child_id)
+        if child_items_to_select:
+            self.tree.selection_add(child_items_to_select)
 
         # Update caches
         self._cached_data = new_data
@@ -407,7 +413,7 @@ class DPSPanel(ttk.Frame):
         new_breakdown: dict,
         changed_characters: set[str],
         natural_order: bool,
-    ) -> None:
+    ) -> bool:
         """Update only changed values without rebuilding the tree.
 
         Args:
@@ -417,24 +423,31 @@ class DPSPanel(ttk.Frame):
             changed_characters: Characters with changed top-level row data
             natural_order: True if the current sort already matches service order
         """
+        parent_rows = {}
+        for dps_info in dps_list:
+            character = dps_info.character
+            row_data = new_data.get(character, self._cached_data.get(character, {}))
+            parent_rows[character] = (
+                character,
+                f"{row_data.get('dps', dps_info.dps):.2f}",
+                row_data.get("total_damage", dps_info.total_damage),
+                f"{row_data.get('hit_rate', dps_info.hit_rate):.1f}%",
+                format_time(row_data.get("time_seconds", dps_info.time_seconds)),
+            )
+        rebuilt = self._tree_refresh.incremental_refresh(
+            ordered_keys=[dps_info.character for dps_info in dps_list],
+            row_values_by_key=parent_rows,
+            changed_keys=changed_characters,
+            state=self._tree_refresh_state,
+            natural_order_active=natural_order,
+        )
+        if rebuilt:
+            return True
+
         for dps_info in dps_list:
             character = dps_info.character
             data = new_data.get(character, self._cached_data.get(character, {}))
-
-            # Check if parent row needs update
-            if character in changed_characters:
-
-                # Update parent row values
-                parent_id = self._item_ids.get(character)
-                if parent_id:
-                    time_display = format_time(data['time_seconds'])
-                    dps_display = f"{data['dps']:.2f}"
-                    hit_rate_display = f"{data['hit_rate']:.1f}%"
-
-                    self.tree.item(
-                        parent_id,
-                        values=(character, dps_display, data['total_damage'], hit_rate_display, time_display)
-                    )
+            parent_id = self._item_ids.get(character)
 
             # Check if child rows need update
             new_bd = new_breakdown.get(character, [])
@@ -483,22 +496,11 @@ class DPSPanel(ttk.Frame):
                                         values=(f"  {dt}", f"{dps:.2f}", dmg, "", "")
                                     )
 
-        if natural_order:
-            self._apply_authoritative_order(dps_list)
-
         # Update caches
         self._cached_data = new_data
         self._cached_breakdown = new_breakdown
-
-        if not natural_order and self.tree._last_sorted_col:
-            self.tree.apply_current_sort()
-
-    def _apply_authoritative_order(self, dps_list: list[DpsRow]) -> None:
-        """Move top-level items to match service-provided order."""
-        for index, dps_info in enumerate(dps_list):
-            parent_id = self._item_ids.get(dps_info.character)
-            if parent_id:
-                self.tree.move(parent_id, "", index)
+        self._item_ids = self._tree_refresh_state.item_ids
+        return False
 
     def get_time_tracking_mode(self) -> str:
         """Get selected first timestamp mode.
@@ -539,8 +541,33 @@ class DPSPanel(ttk.Frame):
         self._cached_order_token = ()
         self._last_refresh_version = -1
         self._last_refresh_used_store_query = False
+        self._tree_refresh_state = FlatTreeRefreshState()
 
     def reset_target_filter(self) -> None:
         """Reset the target filter selection to default 'All'."""
         self.target_filter_var.set("All")
+
+    def _sync_refresh_state(
+        self,
+        *,
+        view_key: tuple[object, ...],
+        row_tokens: dict[str, tuple[Any, ...]],
+        breakdown_tokens: dict[str, tuple[tuple[str, int], ...]],
+        order_token: tuple[str, ...],
+        current_version: int,
+        uses_store_query: bool,
+    ) -> None:
+        """Keep legacy cache fields aligned with shared refresh state."""
+        self._cached_view_key = view_key
+        self._cached_row_tokens = row_tokens
+        self._cached_breakdown_tokens = breakdown_tokens
+        self._cached_order_token = order_token
+        self._last_refresh_version = current_version
+        self._last_refresh_used_store_query = uses_store_query
+        self._tree_refresh_state.view_key = view_key
+        self._tree_refresh_state.row_tokens = row_tokens
+        self._tree_refresh_state.order_token = order_token
+        self._tree_refresh_state.last_refresh_version = current_version
+        self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
+        self._tree_refresh_state.item_ids = self._item_ids
 
