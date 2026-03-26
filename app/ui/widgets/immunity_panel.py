@@ -1,7 +1,7 @@
 """Target immunity panel widget for Woo's NWN Parser UI.
 
-This module contains the ImmunityPanel widget that displays immunity
-tracking and percentage calculations for each target and damage type.
+This module contains the ImmunityPanel widget that renders prepared
+immunity display rows for each target and damage type.
 """
 
 import re
@@ -25,7 +25,7 @@ class ImmunityPanel(ttk.Frame):
     - Target selection via combobox
     - Parse Immunities toggle checkbox
     - Treeview showing damage type immunity data
-    - Immunity percentage calculations and caching
+    - Presentation and incremental refresh of prepared immunity display rows
 
     This is a reusable widget that can be placed in any notebook or frame.
     """
@@ -236,7 +236,6 @@ class ImmunityPanel(ttk.Frame):
             self._full_refresh(target, new_rows, natural_order)
         else:
             rebuilt = self._incremental_refresh(
-                target,
                 rows,
                 new_rows,
                 changed_damage_types,
@@ -292,7 +291,6 @@ class ImmunityPanel(ttk.Frame):
 
     def _incremental_refresh(
         self,
-        target: str,
         rows: list[ImmunityDisplayRow],
         new_rows: Dict[str, tuple],
         changed_damage_types: set[str],
@@ -339,9 +337,6 @@ class ImmunityPanel(ttk.Frame):
             self.refresh_target_details(selected)
 
     def clear_cache(self) -> None:
-        """Clear the immunity percentage cache.
-
-        Called when data is reset to ensure old cached values don't persist.
-        """
+        """Reset panel refresh state and clear query-side immunity row caches."""
         self.immunity_query_service.clear_caches()
         self._tree_refresh_state = FlatTreeRefreshState(view_key=("", False))
