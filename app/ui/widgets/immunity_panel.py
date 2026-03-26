@@ -63,15 +63,7 @@ class ImmunityPanel(ttk.Frame):
         self.tooltip_manager = tooltip_manager
         self.on_parse_immunity_changed = on_parse_immunity_changed
         self.immunity_pct_cache: Dict[str, Dict[str, Optional[int]]] = {}
-        self._cached_target: str = ""
-        self._cached_rows: Dict[str, tuple] = {}
-        self._item_ids: Dict[str, str] = {}
-        self._cached_row_tokens: Dict[str, tuple[Any, ...]] = {}
-        self._cached_order_token: tuple[str, ...] = ()
-        self._cached_view_key: tuple[str, bool] = ("", False)
-        self._last_refresh_version: int = -1
-        self._last_refresh_used_store_query: bool = False
-        self._tree_refresh_state = FlatTreeRefreshState(view_key=self._cached_view_key)
+        self._tree_refresh_state = FlatTreeRefreshState(view_key=("", False))
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -185,8 +177,7 @@ class ImmunityPanel(ttk.Frame):
         if self._tree_refresh.can_skip_refresh(
             self._tree_refresh_state,
             current_version=current_version,
-            uses_store_query=uses_store_query,
-            item_ids_present=bool(self._item_ids),
+            item_ids_present=bool(self._tree_refresh_state.item_ids),
             natural_order_active=natural_order,
             require_natural_order=True,
             view_key=view_key,
@@ -263,37 +254,38 @@ class ImmunityPanel(ttk.Frame):
             damage_type: row_values
             for damage_type, row_values in new_rows.items()
         }
+        current_target = ""
+        if isinstance(self._tree_refresh_state.view_key, tuple) and self._tree_refresh_state.view_key:
+            current_target = str(self._tree_refresh_state.view_key[0])
 
         needs_full_refresh = (
-            self._cached_target != target
-            or not self._item_ids
-            or set(self._cached_rows.keys()) != set(new_rows.keys())
+            current_target != target
+            or not self._tree_refresh_state.item_ids
+            or set(self._tree_refresh_state.row_tokens.keys()) != set(new_rows.keys())
         )
         changed_damage_types = {
             damage_type
             for damage_type, row_token in new_row_tokens.items()
-            if row_token != self._cached_row_tokens.get(damage_type)
+            if row_token != self._tree_refresh_state.row_tokens.get(damage_type)
         }
 
         if (
             not needs_full_refresh
-            and self._cached_view_key == view_key
-            and order_token == self._cached_order_token
+            and self._tree_refresh_state.view_key == view_key
+            and order_token == self._tree_refresh_state.order_token
             and not changed_damage_types
         ):
             if (
-                current_version != self._last_refresh_version
+                current_version != self._tree_refresh_state.last_refresh_version
                 and not natural_order
                 and self.tree._last_sorted_col
             ):
                 self.tree.apply_current_sort()
-            self._sync_refresh_state(
-                view_key=view_key,
-                row_tokens=new_row_tokens,
-                order_token=order_token,
-                current_version=current_version,
-                uses_store_query=uses_store_query,
-            )
+            self._tree_refresh_state.view_key = view_key
+            self._tree_refresh_state.row_tokens = new_row_tokens
+            self._tree_refresh_state.order_token = order_token
+            self._tree_refresh_state.last_refresh_version = current_version
+            self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
             return
 
         if needs_full_refresh:
@@ -309,13 +301,11 @@ class ImmunityPanel(ttk.Frame):
             if rebuilt:
                 self._full_refresh(target, new_rows, natural_order)
 
-        self._sync_refresh_state(
-            view_key=view_key,
-            row_tokens=new_row_tokens,
-            order_token=order_token,
-            current_version=current_version,
-            uses_store_query=uses_store_query,
-        )
+        self._tree_refresh_state.view_key = view_key
+        self._tree_refresh_state.row_tokens = new_row_tokens
+        self._tree_refresh_state.order_token = order_token
+        self._tree_refresh_state.last_refresh_version = current_version
+        self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
 
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether refresh data is sourced from the live store method."""
@@ -351,9 +341,6 @@ class ImmunityPanel(ttk.Frame):
             state=self._tree_refresh_state,
             natural_order_active=natural_order,
         )
-        self._cached_target = target
-        self._cached_rows = new_rows
-        self._item_ids = self._tree_refresh_state.item_ids
 
     def _incremental_refresh(
         self,
@@ -371,9 +358,6 @@ class ImmunityPanel(ttk.Frame):
             state=self._tree_refresh_state,
             natural_order_active=natural_order,
         )
-        self._cached_target = target
-        self._cached_rows = new_rows
-        self._item_ids = self._tree_refresh_state.item_ids
         return rebuilt
 
     def update_target_list(self, targets: list) -> None:
@@ -412,34 +396,4 @@ class ImmunityPanel(ttk.Frame):
         Called when data is reset to ensure old cached values don't persist.
         """
         self.immunity_pct_cache.clear()
-        self._cached_target = ""
-        self._cached_rows.clear()
-        self._item_ids.clear()
-        self._cached_row_tokens.clear()
-        self._cached_order_token = ()
-        self._cached_view_key = ("", False)
-        self._last_refresh_version = -1
-        self._last_refresh_used_store_query = False
-        self._tree_refresh_state = FlatTreeRefreshState(view_key=self._cached_view_key)
-
-    def _sync_refresh_state(
-        self,
-        *,
-        view_key: tuple[str, bool],
-        row_tokens: dict[str, tuple[Any, ...]],
-        order_token: tuple[str, ...],
-        current_version: int,
-        uses_store_query: bool,
-    ) -> None:
-        """Keep legacy cache fields aligned with shared refresh state."""
-        self._cached_view_key = view_key
-        self._cached_row_tokens = row_tokens
-        self._cached_order_token = order_token
-        self._last_refresh_version = current_version
-        self._last_refresh_used_store_query = uses_store_query
-        self._tree_refresh_state.view_key = view_key
-        self._tree_refresh_state.row_tokens = row_tokens
-        self._tree_refresh_state.order_token = order_token
-        self._tree_refresh_state.last_refresh_version = current_version
-        self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
-        self._tree_refresh_state.item_ids = self._item_ids
+        self._tree_refresh_state = FlatTreeRefreshState(view_key=("", False))

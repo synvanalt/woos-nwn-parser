@@ -49,7 +49,7 @@ class TestIncrementalRefresh:
         """Test that cache structures are initialized empty."""
         assert len(dps_panel._cached_data) == 0
         assert len(dps_panel._cached_breakdown) == 0
-        assert len(dps_panel._item_ids) == 0
+        assert len(dps_panel._tree_refresh_state.item_ids) == 0
         assert len(dps_panel._child_ids) == 0
 
     def test_full_refresh_on_first_call(self, dps_panel) -> None:
@@ -79,7 +79,7 @@ class TestIncrementalRefresh:
         # Cache should now be populated
         assert 'Woo' in dps_panel._cached_data
         assert 'Woo' in dps_panel._cached_breakdown
-        assert 'Woo' in dps_panel._item_ids
+        assert 'Woo' in dps_panel._tree_refresh_state.item_ids
 
         # Tree should have items
         children = dps_panel.tree.get_children()
@@ -230,12 +230,12 @@ class TestIncrementalRefresh:
         # Populate cache
         dps_panel._cached_data['Woo'] = {'dps': 50.0}
         dps_panel._cached_breakdown['Woo'] = []
-        dps_panel._item_ids['Woo'] = 'item1'
+        dps_panel._tree_refresh_state.item_ids['Woo'] = 'item1'
         dps_panel._child_ids['Woo'] = {}
-        dps_panel._cached_row_tokens['Woo'] = (50.0, 500, 75.0, 10)
+        dps_panel._tree_refresh_state.row_tokens['Woo'] = (50.0, 500, 75.0, 10)
         dps_panel._cached_breakdown_tokens['Woo'] = (('Physical', 500),)
-        dps_panel._cached_order_token = ('Woo',)
-        dps_panel._last_refresh_version = 3
+        dps_panel._tree_refresh_state.order_token = ('Woo',)
+        dps_panel._tree_refresh_state.last_refresh_version = 3
 
         # Clear cache
         dps_panel.clear_cache()
@@ -243,12 +243,12 @@ class TestIncrementalRefresh:
         # All caches should be empty
         assert len(dps_panel._cached_data) == 0
         assert len(dps_panel._cached_breakdown) == 0
-        assert len(dps_panel._item_ids) == 0
+        assert len(dps_panel._tree_refresh_state.item_ids) == 0
         assert len(dps_panel._child_ids) == 0
-        assert len(dps_panel._cached_row_tokens) == 0
+        assert len(dps_panel._tree_refresh_state.row_tokens) == 0
         assert len(dps_panel._cached_breakdown_tokens) == 0
-        assert dps_panel._cached_order_token == ()
-        assert dps_panel._last_refresh_version == -1
+        assert dps_panel._tree_refresh_state.order_token == ()
+        assert dps_panel._tree_refresh_state.last_refresh_version == -1
 
     def test_incremental_refresh_no_changes(self, dps_panel) -> None:
         """Test that no updates occur when data hasn't changed."""
@@ -325,7 +325,7 @@ class TestIncrementalRefresh:
 
         dps_panel.refresh()
         cached_snapshot = dict(dps_panel._cached_data)
-        item_id = dps_panel._item_ids['Woo']
+        item_id = dps_panel._tree_refresh_state.item_ids['Woo']
 
         apply(dps_panel.data_store, attack(attacker="Ally", target="Goblin", outcome="miss"))
 
@@ -333,7 +333,7 @@ class TestIncrementalRefresh:
         dps_panel.refresh()
 
         assert dps_panel._cached_data == cached_snapshot
-        assert dps_panel._item_ids['Woo'] == item_id
+        assert dps_panel._tree_refresh_state.item_ids['Woo'] == item_id
         dps_panel.dps_query_service.get_damage_type_breakdowns.assert_not_called()
 
     def test_incremental_refresh_reorders_natural_dps_order_without_rebuild(self, dps_panel) -> None:
@@ -349,7 +349,7 @@ class TestIncrementalRefresh:
             'Ally': [DpsBreakdownRow(damage_type='Fire', total_damage=300, dps=30.0)],
         })
         dps_panel.refresh()
-        initial_item_ids = dict(dps_panel._item_ids)
+        initial_item_ids = dict(dps_panel._tree_refresh_state.item_ids)
 
         reordered_data = [
             DpsRow(character='Ally', total_damage=600, time_seconds=10, dps=60.0, hit_rate=80.0, breakdown_token=(('Fire', 600),)),
@@ -367,7 +367,7 @@ class TestIncrementalRefresh:
             for item_id in dps_panel.tree.get_children()
         ]
         assert ordered_names == ["Ally", "Woo"]
-        assert dps_panel._item_ids == initial_item_ids
+        assert dps_panel._tree_refresh_state.item_ids == initial_item_ids
 
     def test_refresh_rebuilds_when_view_key_changes(self, dps_panel) -> None:
         """Changing target filter or mode should force a safe full refresh."""
@@ -379,13 +379,13 @@ class TestIncrementalRefresh:
         })
 
         dps_panel.refresh()
-        initial_item_id = dps_panel._item_ids['Woo']
+        initial_item_id = dps_panel._tree_refresh_state.item_ids['Woo']
 
         dps_panel.target_filter_var.set("Goblin")
         dps_panel.refresh()
 
-        assert dps_panel._cached_view_key[0] == "Goblin"
-        assert dps_panel._item_ids['Woo'] != initial_item_id
+        assert dps_panel._tree_refresh_state.view_key[0] == "Goblin"
+        assert dps_panel._tree_refresh_state.item_ids['Woo'] != initial_item_id
 
     def test_full_refresh_does_not_rescan_dps_rows_per_character(self, dps_panel) -> None:
         """Full refresh should iterate DPS rows linearly, not rescan them per insert."""

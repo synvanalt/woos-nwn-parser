@@ -33,24 +33,22 @@ def test_get_selected_target_returns_combobox_value(immunity_panel_ctx) -> None:
 def test_clear_cache_resets_internal_structures(immunity_panel_ctx) -> None:
     panel, _store, _parser = immunity_panel_ctx
     panel.immunity_pct_cache["Goblin"] = {"Fire": 50}
-    panel._cached_target = "Goblin"
-    panel._cached_rows = {"Fire": ("Fire", "10", "5", "50%", "1")}
-    panel._item_ids = {"Fire": "iid1"}
-    panel._cached_row_tokens = {"Fire": ("Fire", "10", "5", "50%", "1")}
-    panel._cached_order_token = ("Fire",)
-    panel._cached_view_key = ("Goblin", False)
-    panel._last_refresh_version = 3
+    panel._tree_refresh_state = panel._tree_refresh_state.__class__(
+        view_key=("Goblin", False),
+        row_tokens={"Fire": ("Fire", "10", "5", "50%", "1")},
+        order_token=("Fire",),
+        item_ids={"Fire": "iid1"},
+        last_refresh_version=3,
+    )
 
     panel.clear_cache()
 
     assert panel.immunity_pct_cache == {}
-    assert panel._cached_target == ""
-    assert panel._cached_rows == {}
-    assert panel._item_ids == {}
-    assert panel._cached_row_tokens == {}
-    assert panel._cached_order_token == ()
-    assert panel._cached_view_key == ("", False)
-    assert panel._last_refresh_version == -1
+    assert panel._tree_refresh_state.view_key == ("", False)
+    assert panel._tree_refresh_state.item_ids == {}
+    assert panel._tree_refresh_state.row_tokens == {}
+    assert panel._tree_refresh_state.order_token == ()
+    assert panel._tree_refresh_state.last_refresh_version == -1
 
 
 def test_refresh_uses_cached_immunity_pct_when_parse_disabled(immunity_panel_ctx) -> None:
@@ -62,7 +60,7 @@ def test_refresh_uses_cached_immunity_pct_when_parse_disabled(immunity_panel_ctx
 
     panel.refresh_target_details(target)
 
-    row = panel.tree.item(panel._item_ids["Fire"], "values")
+    row = panel.tree.item(panel._tree_refresh_state.item_ids["Fire"], "values")
     assert row[3] == "60%"
 
 
@@ -104,7 +102,7 @@ def test_refresh_shows_zero_damage_immunity_match(immunity_panel_ctx) -> None:
 
     panel.refresh_target_details("DRAMMAGAR")
 
-    row = panel.tree.item(panel._item_ids["Acid"], "values")
+    row = panel.tree.item(panel._tree_refresh_state.item_ids["Acid"], "values")
     assert row == ("Acid", "0", "50", "100%", "1")
 
 
@@ -120,7 +118,7 @@ def test_refresh_shows_highest_absorbed_for_zero_damage_tie(immunity_panel_ctx) 
 
     panel.refresh_target_details("DRAMMAGAR")
 
-    row = panel.tree.item(panel._item_ids["Acid"], "values")
+    row = panel.tree.item(panel._tree_refresh_state.item_ids["Acid"], "values")
     assert row == ("Acid", "0", "55", "100%", "2")
 
 
@@ -137,7 +135,7 @@ def test_refresh_suppresses_temporary_full_immunity_after_later_positive_damage(
 
     panel.refresh_target_details("DRAMMAGAR")
 
-    row = panel.tree.item(panel._item_ids["Acid"], "values")
+    row = panel.tree.item(panel._tree_refresh_state.item_ids["Acid"], "values")
     assert row == ("Acid", "45", "-", "-", "1")
 
 
@@ -151,7 +149,7 @@ def test_full_refresh_restores_selection_for_surviving_damage_type(immunity_pane
     )
     panel.refresh_target_details(target)
 
-    fire_id = panel._item_ids["Fire"]
+    fire_id = panel._tree_refresh_state.item_ids["Fire"]
     panel.tree.selection_set((fire_id,))
 
     apply(store, damage_row(target=target, damage_type="Acid", total_damage=20, attacker="Woo"))

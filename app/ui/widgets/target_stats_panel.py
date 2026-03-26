@@ -38,12 +38,6 @@ class TargetStatsPanel(ttk.Frame):
         self.data_store = data_store
         self.target_summary_query_service = target_summary_query_service
         self.tooltip_manager = tooltip_manager
-        self._cached_rows: dict = {}
-        self._item_ids: dict = {}
-        self._cached_row_tokens: dict[str, tuple[Any, ...]] = {}
-        self._cached_order_token: tuple[str, ...] = ()
-        self._last_refresh_version: int = -1
-        self._last_refresh_used_store_query: bool = False
         self._tree_refresh_state = FlatTreeRefreshState()
         self.setup_ui()
 
@@ -86,8 +80,7 @@ class TargetStatsPanel(ttk.Frame):
         if self._tree_refresh.can_skip_refresh(
             self._tree_refresh_state,
             current_version=current_version,
-            uses_store_query=uses_store_query,
-            item_ids_present=bool(self._item_ids),
+            item_ids_present=bool(self._tree_refresh_state.item_ids),
             natural_order_active=natural_order,
             require_natural_order=True,
         ):
@@ -104,31 +97,29 @@ class TargetStatsPanel(ttk.Frame):
             for target, row_values in new_rows.items()
         }
 
-        current_targets = set(self._cached_row_tokens.keys())
+        current_targets = set(self._tree_refresh_state.row_tokens.keys())
         new_targets = set(new_rows.keys())
 
         needs_full_refresh = (
-            not self._item_ids or
+            not self._tree_refresh_state.item_ids or
             current_targets != new_targets
         )
 
         changed_targets = {
             target
             for target, row_token in new_row_tokens.items()
-            if row_token != self._cached_row_tokens.get(target)
+            if row_token != self._tree_refresh_state.row_tokens.get(target)
         }
 
         if (
             not needs_full_refresh
-            and order_token == self._cached_order_token
+            and order_token == self._tree_refresh_state.order_token
             and not changed_targets
         ):
-            self._sync_refresh_state(
-                row_tokens=new_row_tokens,
-                order_token=order_token,
-                current_version=current_version,
-                uses_store_query=uses_store_query,
-            )
+            self._tree_refresh_state.row_tokens = new_row_tokens
+            self._tree_refresh_state.order_token = order_token
+            self._tree_refresh_state.last_refresh_version = current_version
+            self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
             return
 
         if needs_full_refresh:
@@ -143,12 +134,10 @@ class TargetStatsPanel(ttk.Frame):
             if rebuilt:
                 self._full_refresh(summary_data, natural_order)
 
-        self._sync_refresh_state(
-            row_tokens=new_row_tokens,
-            order_token=order_token,
-            current_version=current_version,
-            uses_store_query=uses_store_query,
-        )
+        self._tree_refresh_state.row_tokens = new_row_tokens
+        self._tree_refresh_state.order_token = order_token
+        self._tree_refresh_state.last_refresh_version = current_version
+        self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
 
     def _can_use_store_version_fast_path(self) -> bool:
         """Return whether refresh data is sourced from the live store method."""
@@ -181,12 +170,6 @@ class TargetStatsPanel(ttk.Frame):
 
     def clear_cache(self) -> None:
         """Clear cached row and tree state to force a full refresh next time."""
-        self._cached_rows.clear()
-        self._item_ids.clear()
-        self._cached_row_tokens.clear()
-        self._cached_order_token = ()
-        self._last_refresh_version = -1
-        self._last_refresh_used_store_query = False
         self._tree_refresh_state = FlatTreeRefreshState()
 
     def _full_refresh(self, summary_data: list[TargetSummaryRow], natural_order: bool) -> None:
@@ -202,11 +185,6 @@ class TargetStatsPanel(ttk.Frame):
             state=self._tree_refresh_state,
             natural_order_active=natural_order,
         )
-        self._cached_rows = {
-            item.target: self._build_row_values(item)
-            for item in summary_data
-        }
-        self._item_ids = self._tree_refresh_state.item_ids
 
     def _incremental_refresh(
         self,
@@ -223,25 +201,4 @@ class TargetStatsPanel(ttk.Frame):
             state=self._tree_refresh_state,
             natural_order_active=natural_order,
         )
-        self._cached_rows = new_rows
-        self._item_ids = self._tree_refresh_state.item_ids
         return rebuilt
-
-    def _sync_refresh_state(
-        self,
-        *,
-        row_tokens: dict[str, tuple[Any, ...]],
-        order_token: tuple[str, ...],
-        current_version: int,
-        uses_store_query: bool,
-    ) -> None:
-        """Keep legacy panel cache fields aligned with the shared refresh state."""
-        self._cached_row_tokens = row_tokens
-        self._cached_order_token = order_token
-        self._last_refresh_version = current_version
-        self._last_refresh_used_store_query = uses_store_query
-        self._tree_refresh_state.row_tokens = row_tokens
-        self._tree_refresh_state.order_token = order_token
-        self._tree_refresh_state.last_refresh_version = current_version
-        self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
-        self._tree_refresh_state.item_ids = self._item_ids
