@@ -338,9 +338,13 @@ class DPSPanel(ttk.Frame):
         # Clear the tree and caches
         self._child_ids.clear()
         ordered_characters = [dps_info.character for dps_info in dps_list]
+        dps_info_by_character = {
+            dps_info.character: dps_info
+            for dps_info in dps_list
+        }
 
         def _insert_row(character: str) -> str:
-            dps_info = next(item for item in dps_list if item.character == character)
+            dps_info = dps_info_by_character[character]
             total_damage = dps_info.total_damage
             time_seconds = dps_info.time_seconds
             dps = dps_info.dps

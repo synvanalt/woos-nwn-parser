@@ -6,6 +6,7 @@ Tests the new incremental tree update logic that avoids full rebuilds.
 import pytest
 import tkinter as tk
 from tkinter import ttk
+from collections.abc import Iterator
 from unittest.mock import Mock
 
 from app.services.queries import DpsBreakdownRow, DpsRow
@@ -385,6 +386,41 @@ class TestIncrementalRefresh:
 
         assert dps_panel._cached_view_key[0] == "Goblin"
         assert dps_panel._item_ids['Woo'] != initial_item_id
+
+    def test_full_refresh_does_not_rescan_dps_rows_per_character(self, dps_panel) -> None:
+        """Full refresh should iterate DPS rows linearly, not rescan them per insert."""
+
+        class CountingList(list[DpsRow]):
+            def __init__(self, items: list[DpsRow]) -> None:
+                super().__init__(items)
+                self.iterations = 0
+                self.items_yielded = 0
+
+            def __iter__(self) -> Iterator[DpsRow]:
+                self.iterations += 1
+                for item in super().__iter__():
+                    self.items_yielded += 1
+                    yield item
+
+        rows = CountingList([
+            DpsRow(
+                character=f'Player {index}',
+                total_damage=500 - index,
+                time_seconds=10,
+                dps=50.0 - index,
+                hit_rate=75.0,
+                breakdown_token=(),
+            )
+            for index in range(25)
+        ])
+
+        dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=rows)
+        dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={})
+
+        dps_panel.refresh()
+
+        assert rows.iterations <= 6
+        assert rows.items_yielded <= len(rows) * 6
 
 
 class TestRefreshSelectionPreservation:
