@@ -32,7 +32,6 @@ def test_get_selected_target_returns_combobox_value(immunity_panel_ctx) -> None:
 
 def test_clear_cache_resets_internal_structures(immunity_panel_ctx) -> None:
     panel, _store, _parser = immunity_panel_ctx
-    panel.immunity_pct_cache["Goblin"] = {"Fire": 50}
     panel._tree_refresh_state = panel._tree_refresh_state.__class__(
         view_key=("Goblin", False),
         row_tokens={"Fire": ("Fire", "10", "5", "50%", "1")},
@@ -43,7 +42,6 @@ def test_clear_cache_resets_internal_structures(immunity_panel_ctx) -> None:
 
     panel.clear_cache()
 
-    assert panel.immunity_pct_cache == {}
     assert panel._tree_refresh_state.view_key == ("", False)
     assert panel._tree_refresh_state.item_ids == {}
     assert panel._tree_refresh_state.row_tokens == {}
@@ -51,17 +49,22 @@ def test_clear_cache_resets_internal_structures(immunity_panel_ctx) -> None:
     assert panel._tree_refresh_state.last_refresh_version == -1
 
 
-def test_refresh_uses_cached_immunity_pct_when_parse_disabled(immunity_panel_ctx) -> None:
+def test_refresh_keeps_last_known_immunity_pct_when_parse_disabled(immunity_panel_ctx) -> None:
     panel, store, parser = immunity_panel_ctx
     target = "Goblin"
-    parser.parse_immunity = False
-    panel.immunity_pct_cache[target] = {"Fire": 60}
-    apply(store, damage_row(target=target, damage_type="Fire", immunity_absorbed=10, total_damage=50, attacker="Woo"))
+    apply(
+        store,
+        damage_row(target=target, damage_type="Fire", immunity_absorbed=10, total_damage=50, attacker="Woo"),
+        immunity(target=target, damage_type="Fire", immunity_points=10, damage_dealt=50),
+    )
 
+    parser.parse_immunity = True
+    panel.refresh_target_details(target)
+    parser.parse_immunity = False
     panel.refresh_target_details(target)
 
     row = panel.tree.item(panel._tree_refresh_state.item_ids["Fire"], "values")
-    assert row[3] == "60%"
+    assert row[3] == "17%"
 
 
 def test_incremental_refresh_applies_sort_when_non_damage_column_sorted(immunity_panel_ctx) -> None:

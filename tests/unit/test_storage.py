@@ -14,7 +14,6 @@ from app.models import AttackMutation, DamageMutation, ImmunityMutation
 from app.services.queries import (
     DpsBreakdownRow,
     DpsQueryService,
-    ImmunityQueryService,
     TargetSummaryQueryService,
 )
 from app.storage import DataStore
@@ -23,11 +22,6 @@ from tests.helpers.store_mutations import apply, attack, damage_row, dps_update,
 
 def _dps_query(store: DataStore) -> DpsQueryService:
     return DpsQueryService(store)
-
-
-def _immunity_query(store: DataStore) -> ImmunityQueryService:
-    return ImmunityQueryService(store)
-
 
 def _target_summary_query(store: DataStore) -> TargetSummaryQueryService:
     return TargetSummaryQueryService(store)
@@ -516,8 +510,8 @@ class TestTargetFiltering:
         stats = data_store.get_target_stats("NonExistent")
         assert stats is None
 
-    def test_get_target_damage_type_summary_uses_indexed_values(self, data_store: DataStore) -> None:
-        """Test combined target damage-type summaries from indexed store data."""
+    def test_get_target_damage_type_snapshots_use_indexed_values(self, data_store: DataStore) -> None:
+        """Target damage-type snapshots should expose indexed event and immunity data."""
         apply(
             data_store,
             damage_row(target="Goblin", damage_type="Fire", total_damage=20, attacker="Woo"),
@@ -526,80 +520,77 @@ class TestTargetFiltering:
             immunity(target="Goblin", damage_type="Fire", immunity_points=10, damage_dealt=50),
         )
 
-        summary = _immunity_query(data_store).get_target_damage_type_summary("Goblin")
+        snapshots = data_store.get_target_damage_type_snapshots("Goblin")
 
-        assert len(summary) == 2
-        fire = next(item for item in summary if item.damage_type == "Fire")
-        cold = next(item for item in summary if item.damage_type == "Cold")
+        assert len(snapshots) == 2
+        fire = next(item for item in snapshots if item.damage_type == "Fire")
+        cold = next(item for item in snapshots if item.damage_type == "Cold")
 
         assert fire.max_event_damage == 50
         assert fire.max_immunity_damage == 50
         assert fire.immunity_absorbed == 10
         assert fire.sample_count == 1
-        assert fire.suppress_temporary_full_immunity is False
 
         assert cold.max_event_damage == 15
         assert cold.max_immunity_damage == 0
         assert cold.immunity_absorbed == 0
         assert cold.sample_count == 0
-        assert cold.suppress_temporary_full_immunity is False
 
-    def test_get_target_damage_type_summary_flags_temporary_full_immunity_invalidated(
+    def test_get_target_damage_type_snapshots_preserve_zero_damage_full_absorb_sample(
         self,
         data_store: DataStore,
     ) -> None:
-        """Later positive same-type damage should suppress zero-damage-only immunity display."""
+        """Store snapshots should preserve zero-damage absorbed samples without display policy."""
         apply(
             data_store,
             damage_row(target="Goblin", damage_type="Acid", total_damage=45, attacker="Woo"),
             immunity(target="Goblin", damage_type="Acid", immunity_points=50, damage_dealt=0),
         )
 
-        summary = _immunity_query(data_store).get_target_damage_type_summary("Goblin")
-        acid = next(item for item in summary if item.damage_type == "Acid")
+        snapshots = data_store.get_target_damage_type_snapshots("Goblin")
+        acid = next(item for item in snapshots if item.damage_type == "Acid")
 
         assert acid.max_event_damage == 45
         assert acid.max_immunity_damage == 0
         assert acid.immunity_absorbed == 50
         assert acid.sample_count == 1
-        assert acid.suppress_temporary_full_immunity is True
 
-    def test_get_target_damage_type_summary_keeps_zero_damage_only_full_immunity_visible(
+    def test_get_target_damage_type_snapshots_keep_zero_damage_only_full_immunity_visible(
         self,
         data_store: DataStore,
     ) -> None:
-        """Zero-damage-only matched immunity should remain displayable as 100%."""
+        """Store snapshots should retain zero-damage matched full-immunity data."""
         apply(
             data_store,
             damage_row(target="Goblin", damage_type="Acid", total_damage=0, attacker="Woo"),
             immunity(target="Goblin", damage_type="Acid", immunity_points=50, damage_dealt=0),
         )
 
-        summary = _immunity_query(data_store).get_target_damage_type_summary("Goblin")
-        acid = next(item for item in summary if item.damage_type == "Acid")
+        snapshots = data_store.get_target_damage_type_snapshots("Goblin")
+        acid = next(item for item in snapshots if item.damage_type == "Acid")
 
         assert acid.max_event_damage == 0
         assert acid.max_immunity_damage == 0
+        assert acid.immunity_absorbed == 50
         assert acid.sample_count == 1
-        assert acid.suppress_temporary_full_immunity is False
 
-    def test_get_target_damage_type_summary_returns_defensive_copies(self, data_store: DataStore) -> None:
-        """Returned summary rows should be immutable cached DTOs."""
+    def test_get_target_damage_type_snapshots_return_immutable_copies(self, data_store: DataStore) -> None:
+        """Returned target damage-type snapshots should be immutable defensive copies."""
         apply(
             data_store,
             damage_row(target="Goblin", damage_type="Fire", total_damage=20, attacker="Woo"),
             immunity(target="Goblin", damage_type="Fire", immunity_points=5, damage_dealt=20),
         )
 
-        first = _immunity_query(data_store).get_target_damage_type_summary("Goblin")
+        first = data_store.get_target_damage_type_snapshots("Goblin")
         with pytest.raises(FrozenInstanceError):
             first[0].max_event_damage = 999  # type: ignore[misc]
         with pytest.raises(FrozenInstanceError):
-            first[0].suppress_temporary_full_immunity = True  # type: ignore[misc]
+            first[0].immunity_absorbed = 999  # type: ignore[misc]
 
-        second = _immunity_query(data_store).get_target_damage_type_summary("Goblin")
+        second = data_store.get_target_damage_type_snapshots("Goblin")
         assert second[0].max_event_damage == 20
-        assert second[0].suppress_temporary_full_immunity is False
+        assert second[0].immunity_absorbed == 5
 
     def test_get_dps_data_for_target(self, data_store: DataStore) -> None:
         """Test getting DPS data filtered by target."""
@@ -1032,7 +1023,7 @@ class TestClearData:
         assert len(data_store.attacks) == 0
         assert len(data_store.dps_data) == 0
         assert len(data_store.immunity_data) == 0
-        assert _immunity_query(data_store).get_target_damage_type_summary("Goblin") == []
+        assert data_store.get_target_damage_type_snapshots("Goblin") == ()
         assert data_store.last_damage_timestamp is None
 
     def test_clear_all_data_increments_version(self, data_store: DataStore) -> None:

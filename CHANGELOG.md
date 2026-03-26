@@ -11,6 +11,7 @@
 
 ### Fixed
 - `Target Immunities` no longer keeps showing a stale temporary `100%` immunity after later hits prove that damage type is being dealt again; those rows now fall back to the real max damage and show `-` for absorbed amount and immunity percentage
+- `Target Immunities` now keeps learned immunity percentages consistent when you toggle `Parse Immunities` off and back on during the same session
 - Choosing a log directory now updates the `File` field more reliably: it shows the newest active NWN log when one exists, shows `N/A` when none exists yet, and automatically starts parsing once a new log file appears while monitoring is on
 - Improved log-monitoring reliability in edge-case file-read scenarios
 - `Death Snippets` now reuses name-highlighting work while rendering, which keeps larger snippets and line-wrap toggles more responsive

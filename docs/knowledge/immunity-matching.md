@@ -101,7 +101,7 @@ Important semantics:
 This coupling matters because the immunity percentage display assumes the absorbed value and damage value came from the same hit.
 
 ## Panel Semantics
-The `Target Immunities` panel uses store summaries, not ad hoc log scans.
+The `Target Immunities` panel renders query-prepared display rows built from store summaries, not ad hoc log scans.
 
 Important consequences:
 - displayed immunity percentages are derived from matched samples only
@@ -113,7 +113,7 @@ Important consequences:
 - closest-match ties resolve to the lower immunity percentage
 - displayed immunity percentages can still be overstated if the target also has damage resistance or damage reduction
 
-This suppression rule is a store-summary interpretation rule, not matcher behavior. Live monitoring and historic import still store the same matched immunity samples; only the panel-facing summary changes.
+The temporary-full-immunity suppression flag is derived from the store summary, while the final UI-facing string formatting now lives in the immunity query layer rather than the Tk widget. Live monitoring and historic import still store the same matched immunity samples; only the panel-facing projection changes.
 
 ## Known Limitations
 - Dense same-second combat still relies on heuristic nearest-match behavior; the log format does not provide a perfect hit identifier.
@@ -147,3 +147,4 @@ Current regression tests touching this area include:
 - `tests/integration/test_parser_storage_integration.py`
 
 Report benchmark medians before and after any matcher-path performance change.
+

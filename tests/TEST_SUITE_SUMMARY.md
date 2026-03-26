@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 26, 2026 (DPS full-refresh performance regression test added)
+**Last Updated:** March 26, 2026 (immunity display-query coverage added)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after the death-snippet presenter test split and current suite recollection.
 
 Collection baseline used for this update:
 - Command: `pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **670 tests collected**
+- Result: **677 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 41 modules, 619 tests
+- `tests/unit/`: 42 modules, 626 tests
 - `tests/integration/`: 7 modules, 44 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 49 test modules, 670 tests
+- Total: 50 test modules, 677 tests
 
 Notes:
 - All active `test_*.py` files are now under `unit/`, `integration/`, or `e2e/`.
@@ -38,6 +38,7 @@ Notes:
 - `test_queue_processor_batched.py` (10)
 - `test_queue_processor.py` (10)
 - `test_dps_query_service.py` (16)
+- `test_immunity_query_service.py` (7)
 - `test_formatters.py` (22)
 - `test_immunity_panel_additional.py` (10)
 - `test_immunity_panel_edge_cases.py` (9)
@@ -98,6 +99,9 @@ Notes:
   - `test_dps_query_service.py`, `test_dps_pipeline_integration.py`
   - Includes direct coverage that DPS table rows and damage-type breakdowns consume one atomic store projection snapshot instead of stitching together timing and summary reads across multiple lock acquisitions
   - Query-service, integration, queue-processor, and e2e tests now consume typed DTO attributes directly instead of legacy dict-like row access
+- Immunity query service/display preparation:
+  - `test_immunity_query_service.py`
+  - Includes direct coverage for prepared `Target Immunities` display rows, including zero-damage full absorbs, absorbed-value tie winners, temporary full-immunity suppression, best-effort reverse-immunity inference, parse-toggle remembered percentage display, same-version parse-off cache invalidation after a later parse-on read, and immutable cached row DTOs
 - UI widget/main-window behavior and refresh optimizations:
   - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_message_dialogs.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
   - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, tree-sort scan bypass when callers already control order, Target Stats staying empty after Clear Data-style store clears, and a DPS full-refresh regression guard that catches per-row rescans of the ordered DPS row list

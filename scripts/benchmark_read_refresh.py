@@ -158,11 +158,11 @@ def _build_immunity_query_service(
         return runtime.immunity_query_service_cls(store)
 
     class BenchmarkNoCacheImmunityQueryService(runtime.immunity_query_service_cls):
-        """Disable immunity-summary cache reuse for benchmark comparison."""
+        """Disable immunity display-row cache reuse for benchmark comparison."""
 
         def _reset_caches_if_needed(self) -> None:
             super()._reset_caches_if_needed()
-            self._summary_cache.clear()
+            self._display_cache.clear()
 
     return BenchmarkNoCacheImmunityQueryService(store)
 
@@ -185,28 +185,37 @@ def _select_primary_target(target_summary_query_service: Any) -> Optional[str]:
     summary = target_summary_query_service.get_all_targets_summary()
     if not summary:
         return None
-    best_row = max(summary, key=lambda row: int(row.get("damage_taken", "0")))
-    return str(best_row["target"])
+    best_row = max(summary, key=lambda row: int(row.damage_taken))
+    return str(best_row.target)
 
 
 def _select_mutation_character(store: Any, service: Any, target: Optional[str]) -> str:
     if target:
         dps_rows = service.get_dps_display_data(target_filter=target)
         if dps_rows:
-            return str(dps_rows[0]["character"])
+            return str(dps_rows[0].character)
     dps_rows = service.get_dps_display_data(target_filter="All")
     if dps_rows:
-        return str(dps_rows[0]["character"])
+        return str(dps_rows[0].character)
     if store.dps_data:
         return str(next(iter(store.dps_data)))
     return "BenchmarkAttacker"
 
 
-def _select_mutation_damage_type(store: Any, immunity_query_service: Any, target: Optional[str]) -> str:
+def _select_mutation_damage_type(
+    store: Any,
+    immunity_query_service: Any,
+    target: Optional[str],
+    *,
+    parse_immunity: bool,
+) -> str:
     if target:
-        summary = immunity_query_service.get_target_damage_type_summary(target)
-        if summary:
-            return str(summary[0]["damage_type"])
+        rows = immunity_query_service.get_target_immunity_display_rows(
+            target,
+            parse_immunity=parse_immunity,
+        )
+        if rows:
+            return str(rows[0].damage_type)
     damage_types = store.get_all_damage_types()
     if damage_types:
         return str(damage_types[0])
@@ -216,10 +225,10 @@ def _select_mutation_damage_type(store: Any, immunity_query_service: Any, target
 def _count_bundle_result(payload: Any) -> RefreshCounts:
     if isinstance(payload, list):
         characters_seen = 0
-        if payload and isinstance(payload[0], dict):
-            if "character" in payload[0]:
+        if payload:
+            if hasattr(payload[0], "character"):
                 characters_seen = len(payload)
-            elif "target" in payload[0]:
+            elif hasattr(payload[0], "target"):
                 return RefreshCounts(
                     rows_seen=len(payload),
                     targets_seen=len(payload),
@@ -247,7 +256,7 @@ def _count_bundle_result(payload: Any) -> RefreshCounts:
 
 def _run_dps_all_bundle(service: Any) -> RefreshCounts:
     dps_rows = service.get_dps_display_data(target_filter="All")
-    characters = [str(row["character"]) for row in dps_rows]
+    characters = [str(row.character) for row in dps_rows]
     breakdowns = service.get_damage_type_breakdowns(characters, target_filter="All")
     dps_counts = _count_bundle_result(dps_rows)
     breakdown_counts = _count_bundle_result(breakdowns)
@@ -262,7 +271,7 @@ def _run_dps_target_bundle(service: Any, target: Optional[str]) -> Optional[Refr
     if not target:
         return None
     dps_rows = service.get_dps_display_data(target_filter=target)
-    characters = [str(row["character"]) for row in dps_rows]
+    characters = [str(row.character) for row in dps_rows]
     breakdowns = service.get_damage_type_breakdowns(characters, target_filter=target)
     dps_counts = _count_bundle_result(dps_rows)
     breakdown_counts = _count_bundle_result(breakdowns)
@@ -277,10 +286,20 @@ def _run_target_summary_bundle(target_summary_query_service: Any) -> RefreshCoun
     return _count_bundle_result(target_summary_query_service.get_all_targets_summary())
 
 
-def _run_immunity_target_bundle(immunity_query_service: Any, target: Optional[str]) -> Optional[RefreshCounts]:
+def _run_immunity_target_bundle(
+    immunity_query_service: Any,
+    target: Optional[str],
+    *,
+    parse_immunity: bool,
+) -> Optional[RefreshCounts]:
     if not target:
         return None
-    counts = _count_bundle_result(immunity_query_service.get_target_damage_type_summary(target))
+    counts = _count_bundle_result(
+        immunity_query_service.get_target_immunity_display_rows(
+            target,
+            parse_immunity=parse_immunity,
+        )
+    )
     return RefreshCounts(
         rows_seen=counts.rows_seen,
         targets_seen=1,
@@ -293,6 +312,8 @@ def _build_bundle_callbacks(
     target_summary_query_service: Any,
     immunity_query_service: Any,
     target: Optional[str],
+    *,
+    parse_immunity: bool,
 ) -> list[tuple[str, Callable[[], Optional[RefreshCounts]]]]:
     callbacks: list[tuple[str, Callable[[], Optional[RefreshCounts]]]] = [
         ("dps_all_bundle", lambda: _run_dps_all_bundle(dps_query_service)),
@@ -301,7 +322,14 @@ def _build_bundle_callbacks(
     if target:
         callbacks.append(("dps_target_bundle", lambda: _run_dps_target_bundle(dps_query_service, target)))
         callbacks.append(
-            ("immunity_target_bundle", lambda: _run_immunity_target_bundle(immunity_query_service, target))
+            (
+                "immunity_target_bundle",
+                lambda: _run_immunity_target_bundle(
+                    immunity_query_service,
+                    target,
+                    parse_immunity=parse_immunity,
+                ),
+            )
         )
     return callbacks
 
@@ -419,6 +447,7 @@ def _run_case(
                 warm_target_summary_query_service,
                 warm_immunity_query_service,
                 warm_target,
+                parse_immunity=parse_immunity,
             )
             if name == bundle_name
         )
@@ -469,6 +498,7 @@ def _run_case(
                 target_summary_query_service,
                 immunity_query_service,
                 target,
+                parse_immunity=parse_immunity,
             )
             if name == bundle_name
         )
@@ -614,6 +644,7 @@ def main() -> None:
                                 store,
                                 immunity_query_service,
                                 target,
+                                parse_immunity=parse_immunity,
                             ),
                             cycle_index=cycle_index,
                         )
@@ -653,6 +684,7 @@ def main() -> None:
                     probe_target_summary_query_service,
                     probe_immunity_query_service,
                     probe_target,
+                    parse_immunity=parse_immunity,
                 )
             ]
 
@@ -784,3 +816,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

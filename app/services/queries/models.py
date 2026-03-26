@@ -28,15 +28,14 @@ class DpsBreakdownRow:
 
 
 @dataclass(frozen=True, slots=True)
-class ImmunitySummaryRow:
-    """One target immunity summary row."""
+class ImmunityDisplayRow:
+    """One prepared target immunity display row for the UI."""
 
     damage_type: str
-    max_event_damage: int
-    max_immunity_damage: int
-    immunity_absorbed: int
-    sample_count: int
-    suppress_temporary_full_immunity: bool
+    max_damage_display: str
+    absorbed_display: str
+    immunity_pct_display: str
+    samples_display: str
 
 
 @dataclass(frozen=True, slots=True)
