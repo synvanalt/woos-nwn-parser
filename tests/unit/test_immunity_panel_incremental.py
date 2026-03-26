@@ -34,7 +34,7 @@ class TestImmunityPanelIncrementalRefresh:
 
         panel.refresh_target_details("Goblin")
 
-        assert panel._tree_refresh_state.view_key == ("Goblin", False)
+        assert panel._tree_refresh_state.view_key == ("Goblin", bool(panel.parser.parse_immunity))
         assert "Fire" in panel._tree_refresh_state.row_tokens
         assert "Fire" in panel._tree_refresh_state.item_ids
 
