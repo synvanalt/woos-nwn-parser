@@ -95,6 +95,31 @@ def test_get_target_immunity_display_rows_keeps_last_known_pct_when_parse_disabl
     assert rows == [immunity_query_module.ImmunityDisplayRow("Fire", "50", "10", "17%", "1")]
 
 
+def test_parse_disabled_cache_refreshes_after_parse_enabled_learns_percentage(
+    query_service: tuple[DataStore, ImmunityQueryService],
+) -> None:
+    store, service = query_service
+    apply(
+        store,
+        damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"),
+        immunity(target="Goblin", damage_type="Fire", immunity_points=10, damage_dealt=50),
+    )
+
+    parse_off_before = service.get_target_immunity_display_rows("Goblin", False)
+    parse_on = service.get_target_immunity_display_rows("Goblin", True)
+    parse_off_after = service.get_target_immunity_display_rows("Goblin", False)
+
+    assert parse_off_before == [
+        immunity_query_module.ImmunityDisplayRow("Fire", "50", "10", "-", "1")
+    ]
+    assert parse_on == [
+        immunity_query_module.ImmunityDisplayRow("Fire", "50", "10", "17%", "1")
+    ]
+    assert parse_off_after == [
+        immunity_query_module.ImmunityDisplayRow("Fire", "50", "10", "17%", "1")
+    ]
+
+
 def test_get_target_immunity_display_rows_returns_dash_when_percentage_unknown(
     query_service: tuple[DataStore, ImmunityQueryService],
     monkeypatch: pytest.MonkeyPatch,

@@ -13,7 +13,7 @@ class ImmunityQueryService:
     def __init__(self, data_store: DataStore) -> None:
         self.data_store = data_store
         self._cache_version = -1
-        self._display_cache: dict[tuple[str, bool], tuple[ImmunityDisplayRow, ...]] = {}
+        self._display_cache: dict[tuple[str, bool, tuple[tuple[str, int | None], ...] | None], tuple[ImmunityDisplayRow, ...]] = {}
         self._immunity_pct_cache: dict[str, dict[str, int | None]] = {}
 
     def _reset_caches_if_needed(self) -> None:
@@ -29,12 +29,16 @@ class ImmunityQueryService:
         parse_immunity: bool,
     ) -> list[ImmunityDisplayRow]:
         self._reset_caches_if_needed()
-        cache_key = (target, parse_immunity)
+        remembered_pcts = self._immunity_pct_cache.setdefault(target, {})
+        cache_key = (
+            target,
+            parse_immunity,
+            None if parse_immunity else self._remembered_pct_token(remembered_pcts),
+        )
         cached = self._display_cache.get(cache_key)
         if cached is not None:
             return list(cached)
 
-        remembered_pcts = self._immunity_pct_cache.setdefault(target, {})
         rows: list[ImmunityDisplayRow] = []
         for snapshot in self.data_store.get_target_damage_type_snapshots(target):
             suppress_temporary_full_immunity = self._should_suppress_temporary_full_immunity(
@@ -121,12 +125,20 @@ class ImmunityQueryService:
             return "-"
 
         if snapshot.sample_count > 0 and max_damage == 0:
-            remembered_pcts[snapshot.damage_type] = 100
+            ImmunityQueryService._remember_immunity_pct(
+                remembered_pcts,
+                snapshot.damage_type,
+                100,
+            )
             return "100%"
 
         if max_damage > 0 and snapshot.immunity_absorbed > 0:
             immunity_pct = calculate_immunity_percentage(max_damage, snapshot.immunity_absorbed)
-            remembered_pcts[snapshot.damage_type] = immunity_pct
+            ImmunityQueryService._remember_immunity_pct(
+                remembered_pcts,
+                snapshot.damage_type,
+                immunity_pct,
+            )
             if immunity_pct is not None:
                 return f"{immunity_pct}%"
             return "-"
@@ -134,3 +146,22 @@ class ImmunityQueryService:
         if cached_pct is None:
             return "-"
         return f"{cached_pct}%"
+
+    @staticmethod
+    def _remember_immunity_pct(
+        remembered_pcts: dict[str, int | None],
+        damage_type: str,
+        value: int | None,
+    ) -> None:
+        """Store a remembered percentage and invalidate parse-off display rows if it changed."""
+        previous = remembered_pcts.get(damage_type)
+        if previous == value:
+            return
+        remembered_pcts[damage_type] = value
+
+    @staticmethod
+    def _remembered_pct_token(
+        remembered_pcts: dict[str, int | None],
+    ) -> tuple[tuple[str, int | None], ...]:
+        """Return a stable token for remembered percentages used by parse-off rows."""
+        return tuple(sorted(remembered_pcts.items()))
