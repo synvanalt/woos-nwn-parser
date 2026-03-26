@@ -177,6 +177,16 @@ class LineParser:
         if parts is None:
             return None
 
+        return self.build_timestamp_from_parts(parts, year=year)
+
+    @staticmethod
+    def build_timestamp_from_parts(
+        parts: tuple[int, int, int, int, int],
+        *,
+        year: int,
+    ) -> Optional[datetime]:
+        """Build a timestamp from pre-parsed timestamp components."""
+
         month, day, hour, minute, second = parts
         try:
             return datetime(year, month, day, hour, minute, second)
