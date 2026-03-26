@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, ClassVar, Literal, TypeAlias
+from typing import ClassVar, Literal, TypeAlias
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True)
 class ParsedEventBase:
     """Common fields for parsed events."""
 
@@ -19,13 +19,8 @@ class ParsedEventBase:
     def type(self) -> str:
         return self.EVENT_TYPE
 
-    def to_dict(self) -> dict[str, Any]:
-        payload = asdict(self)
-        payload["type"] = self.type
-        return payload
 
-
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True)
 class DamageDealtEvent(ParsedEventBase):
     EVENT_TYPE: ClassVar[Literal["damage_dealt"]] = "damage_dealt"
 
@@ -35,7 +30,7 @@ class DamageDealtEvent(ParsedEventBase):
     damage_types: dict[str, int] | None = None
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True)
 class ImmunityObservedEvent(ParsedEventBase):
     EVENT_TYPE: ClassVar[Literal["immunity"]] = "immunity"
 
@@ -45,7 +40,7 @@ class ImmunityObservedEvent(ParsedEventBase):
     dmg_reduced: int = 0
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True)
 class AttackHitEvent(ParsedEventBase):
     EVENT_TYPE: ClassVar[Literal["attack_hit"]] = "attack_hit"
 
@@ -58,7 +53,7 @@ class AttackHitEvent(ParsedEventBase):
     is_concealment: bool = False
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True)
 class AttackCriticalHitEvent(ParsedEventBase):
     EVENT_TYPE: ClassVar[Literal["attack_hit_critical"]] = "attack_hit_critical"
 
@@ -71,7 +66,7 @@ class AttackCriticalHitEvent(ParsedEventBase):
     is_concealment: bool = False
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True)
 class AttackMissEvent(ParsedEventBase):
     EVENT_TYPE: ClassVar[Literal["attack_miss"]] = "attack_miss"
 
@@ -84,7 +79,7 @@ class AttackMissEvent(ParsedEventBase):
     is_concealment: bool = False
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True)
 class SaveObservedEvent(ParsedEventBase):
     EVENT_TYPE: ClassVar[Literal["save"]] = "save"
 
@@ -93,14 +88,14 @@ class SaveObservedEvent(ParsedEventBase):
     bonus: int = 0
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True)
 class EpicDodgeEvent(ParsedEventBase):
     EVENT_TYPE: ClassVar[Literal["epic_dodge"]] = "epic_dodge"
 
     target: str = ""
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True)
 class DeathSnippetEvent(ParsedEventBase):
     EVENT_TYPE: ClassVar[Literal["death_snippet"]] = "death_snippet"
 
@@ -109,7 +104,7 @@ class DeathSnippetEvent(ParsedEventBase):
     lines: list[str] | None = None
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True)
 class DeathCharacterIdentifiedEvent(ParsedEventBase):
     EVENT_TYPE: ClassVar[Literal["death_character_identified"]] = "death_character_identified"
 

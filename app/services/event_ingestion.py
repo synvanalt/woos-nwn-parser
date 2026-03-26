@@ -94,6 +94,39 @@ class EventIngestionEngine:
 
         return IngestionResult(handled=False)
 
+    def append_import_mutations(
+        self,
+        parsed_event: ParsedEvent,
+        mutations: list[StoreMutation],
+    ) -> bool:
+        """Append only import-relevant mutations without wrapper allocation."""
+        if isinstance(parsed_event, DamageDealtEvent):
+            self._append_damage_mutations(parsed_event, mutations)
+            return True
+        if isinstance(parsed_event, ImmunityObservedEvent):
+            self._append_immunity_mutations(parsed_event, mutations)
+            return True
+        if isinstance(parsed_event, (AttackHitEvent, AttackCriticalHitEvent, AttackMissEvent)):
+            mutations.append(self._build_attack_mutation(parsed_event))
+            return True
+        if isinstance(parsed_event, EpicDodgeEvent):
+            if parsed_event.target:
+                mutations.append(EpicDodgeMutation(target=parsed_event.target))
+            return True
+        if isinstance(parsed_event, SaveObservedEvent):
+            if parsed_event.target and parsed_event.save_type and parsed_event.bonus is not None:
+                mutations.append(
+                    SaveMutation(
+                        target=parsed_event.target,
+                        save_key=str(parsed_event.save_type),
+                        bonus=int(parsed_event.bonus),
+                    )
+                )
+            return True
+        if isinstance(parsed_event, (DeathSnippetEvent, DeathCharacterIdentifiedEvent)):
+            return True
+        return False
+
     def cleanup_stale_immunities(self, max_age_seconds: float = 5.0) -> None:
         """Remove stale immunity observations when matcher support is enabled."""
         if self._matcher is None:
@@ -109,6 +142,19 @@ class EventIngestionEngine:
 
     def _consume_damage(self, parsed_event: DamageDealtEvent) -> IngestionResult:
         result = IngestionResult(handled=True)
+        result.dps_updated, matched_immunity = self._append_damage_mutations(parsed_event, result.mutations)
+        target = parsed_event.target
+        if matched_immunity:
+            result.immunity_target = target
+        result.target_to_refresh = target
+        result.damage_target = target
+        return result
+
+    def _append_damage_mutations(
+        self,
+        parsed_event: DamageDealtEvent,
+        mutations: list[StoreMutation],
+    ) -> tuple[bool, bool]:
         target = parsed_event.target
         attacker = parsed_event.attacker
         timestamp = parsed_event.timestamp
@@ -116,8 +162,10 @@ class EventIngestionEngine:
         damage_types = parsed_event.damage_types or {}
         line_number = self._event_line_number(parsed_event)
 
+        dps_updated = False
+        matched_immunity = False
         if attacker:
-            result.mutations.append(
+            mutations.append(
                 DamageMutation(
                     target=target,
                     damage_type="",
@@ -128,10 +176,10 @@ class EventIngestionEngine:
                     damage_types=damage_types,
                 )
             )
-            result.dps_updated = True
+            dps_updated = True
 
         for damage_type, amount in damage_types.items():
-            result.mutations.append(
+            mutations.append(
                 DamageMutation(
                     target=target,
                     damage_type=damage_type,
@@ -157,40 +205,57 @@ class EventIngestionEngine:
                 line_number=line_number,
                 attacker=attacker,
             )
-            result.mutations.extend(matched_mutations)
-            if matched_mutations:
-                result.immunity_target = target
-
-        result.target_to_refresh = target
-        result.damage_target = target
-        return result
+            mutations.extend(matched_mutations)
+            matched_immunity = bool(matched_mutations)
+        return dps_updated, matched_immunity
 
     def _consume_immunity(self, parsed_event: ImmunityObservedEvent) -> IngestionResult:
         result = IngestionResult(handled=True)
+        target = parsed_event.target
+        before_count = len(result.mutations)
+        self._append_immunity_mutations(parsed_event, result.mutations)
+        if len(result.mutations) > before_count:
+            result.target_to_refresh = target
+        return result
+
+    def _append_immunity_mutations(
+        self,
+        parsed_event: ImmunityObservedEvent,
+        mutations: list[StoreMutation],
+    ) -> None:
         if not self.parse_immunity or self._matcher is None:
-            return result
+            return
 
         target = parsed_event.target
         damage_type = parsed_event.damage_type
         if not damage_type:
-            return result
+            return
 
-        matched_mutations = self._matcher.queue_immunity(
-            target=target,
-            damage_type=str(damage_type),
-            immunity_points=int(parsed_event.immunity_points),
-            timestamp=parsed_event.timestamp,
-            line_number=self._event_line_number(parsed_event),
+        mutations.extend(
+            self._matcher.queue_immunity(
+                target=target,
+                damage_type=str(damage_type),
+                immunity_points=int(parsed_event.immunity_points),
+                timestamp=parsed_event.timestamp,
+                line_number=self._event_line_number(parsed_event),
+            )
         )
-        result.mutations.extend(matched_mutations)
-        if matched_mutations:
-            result.target_to_refresh = target
-        return result
 
     def _consume_attack(
         self,
         parsed_event: AttackHitEvent | AttackCriticalHitEvent | AttackMissEvent,
     ) -> IngestionResult:
+        target = parsed_event.target
+        return IngestionResult(
+            handled=True,
+            target_to_refresh=target,
+            mutations=[self._build_attack_mutation(parsed_event)],
+        )
+
+    def _build_attack_mutation(
+        self,
+        parsed_event: AttackHitEvent | AttackCriticalHitEvent | AttackMissEvent,
+    ) -> AttackMutation:
         if isinstance(parsed_event, AttackCriticalHitEvent):
             outcome = "critical_hit"
         elif isinstance(parsed_event, AttackHitEvent):
@@ -198,23 +263,16 @@ class EventIngestionEngine:
         else:
             outcome = "miss"
 
-        target = parsed_event.target
-        return IngestionResult(
-            handled=True,
-            target_to_refresh=target,
-            mutations=[
-                AttackMutation(
-                    attacker=parsed_event.attacker,
-                    target=target,
-                    outcome=outcome,
-                    roll=parsed_event.roll,
-                    bonus=parsed_event.bonus,
-                    total=parsed_event.total,
-                    was_nat1=bool(getattr(parsed_event, "was_nat1", False)),
-                    was_nat20=bool(getattr(parsed_event, "was_nat20", False)),
-                    is_concealment=bool(parsed_event.is_concealment),
-                )
-            ],
+        return AttackMutation(
+            attacker=parsed_event.attacker,
+            target=parsed_event.target,
+            outcome=outcome,
+            roll=parsed_event.roll,
+            bonus=parsed_event.bonus,
+            total=parsed_event.total,
+            was_nat1=bool(getattr(parsed_event, "was_nat1", False)),
+            was_nat20=bool(getattr(parsed_event, "was_nat20", False)),
+            is_concealment=bool(parsed_event.is_concealment),
         )
 
     def _consume_epic_dodge(self, parsed_event: EpicDodgeEvent) -> IngestionResult:

@@ -107,6 +107,7 @@ class LineParser:
             ),
         }
 
+        self._damage_marker = " damages "
         self._damage_immunity_marker = "Damage Immunity absorbs"
         self._attack_marker = " attacks "
         self._threat_roll_marker = "Threat Roll:"
@@ -214,7 +215,7 @@ class LineParser:
             attacker = attacker.rsplit(" : ", 1)[-1].strip()
         return attacker
 
-    def _parse_attack_threat_fast(self, s: str) -> tuple[Optional[Dict[str, Any]], bool]:
+    def _parse_attack_threat_fast(self, s: str) -> tuple[Optional[Dict[str, object]], bool]:
         if self._attack_marker not in s or self._threat_roll_marker not in s:
             return None, True
 
@@ -267,12 +268,12 @@ class LineParser:
             "attacker": attacker,
             "target": target,
             "outcome": outcome,
-            "roll": roll_str,
-            "bonus": bonus_str,
-            "total": total_tail[:total_end],
+            "roll": int(roll_str),
+            "bonus": int(bonus_str),
+            "total": int(total_tail[:total_end]),
         }, False
 
-    def _parse_attack_basic_fast(self, s: str) -> tuple[Optional[Dict[str, Any]], bool]:
+    def _parse_attack_basic_fast(self, s: str) -> tuple[Optional[Dict[str, object]], bool]:
         if self._attack_marker not in s:
             return None, True
 
@@ -327,12 +328,12 @@ class LineParser:
             "attacker": attacker,
             "target": target,
             "outcome": outcome,
-            "roll": roll_str,
-            "bonus": bonus_str,
-            "total": total_str,
+            "roll": int(roll_str),
+            "bonus": int(bonus_str),
+            "total": int(total_str),
         }, False
 
-    def _parse_attack_conceal_fast(self, s: str) -> tuple[Optional[Dict[str, Any]], bool]:
+    def _parse_attack_conceal_fast(self, s: str) -> tuple[Optional[Dict[str, object]], bool]:
         if " attacks " not in s or "*target concealed:" not in s:
             return None, True
         try:
@@ -376,7 +377,7 @@ class LineParser:
                 "target": target,
                 "outcome": outcome,
                 "roll": roll,
-                "bonus": str(bonus),
+                "bonus": bonus,
                 "total": total,
             }, False
         except ValueError:
@@ -408,7 +409,7 @@ class LineParser:
         """Parse a non-empty raw line without session history state."""
         patterns = self.patterns
 
-        damage_match = patterns["damage_dealt"].search(raw_line)
+        damage_match = patterns["damage_dealt"].search(raw_line) if self._damage_marker in raw_line else None
         if damage_match:
             return DamageDealtEvent(
                 attacker=damage_match.group(1).strip(),
@@ -449,7 +450,7 @@ class LineParser:
                     line_number=line_number,
                 )
 
-        attack_fast_data: Optional[Dict[str, Any]] = None
+        attack_fast_data: Optional[Dict[str, object]] = None
         if self._attack_marker in stripped_line:
             if self._target_concealed_marker in stripped_line:
                 attack_fast_data, should_fallback = self._parse_attack_conceal_fast(stripped_line)
@@ -466,36 +467,39 @@ class LineParser:
             attack_match = None
 
         if attack_fast_data is not None:
-            attacker = attack_fast_data["attacker"]
-            target = attack_fast_data["target"]
-            outcome = attack_fast_data["outcome"]
-            roll_str = str(attack_fast_data["roll"])
-            total_str = str(attack_fast_data["total"])
-            bonus_str = attack_fast_data["bonus"]
+            attacker = str(attack_fast_data["attacker"])
+            target = str(attack_fast_data["target"])
+            outcome = str(attack_fast_data["outcome"])
+            roll = attack_fast_data["roll"]
+            total = attack_fast_data["total"]
+            bonus = attack_fast_data["bonus"]
         elif attack_match:
             attacker = attack_match.group("attacker").strip()
             target = attack_match.group("target").strip()
             outcome = attack_match.group("outcome").lower() if "outcome" in attack_match.groupdict() else ""
-            roll_str = attack_match.group("roll")
-            total_str = attack_match.group("total")
-            bonus_str = attack_match.group("bonus")
+            roll = attack_match.group("roll")
+            total = attack_match.group("total")
+            bonus = attack_match.group("bonus")
         else:
             attacker = ""
             target = ""
             outcome = ""
-            roll_str = None
-            total_str = None
-            bonus_str = None
+            roll = None
+            total = None
+            bonus = None
 
         if attack_fast_data is not None or attack_match:
             is_hit = "hit" in outcome
             is_crit = "critical" in outcome
             is_miss = "miss" in outcome or "parried" in outcome or "resisted" in outcome
             is_concealment = "attacker miss chance" in outcome
-            if roll_str and total_str:
-                roll = int(roll_str)
-                total = int(total_str)
-                bonus = int(bonus_str) if bonus_str else None
+            if roll is not None and total is not None:
+                if isinstance(roll, str):
+                    roll = int(roll)
+                if isinstance(total, str):
+                    total = int(total)
+                if isinstance(bonus, str):
+                    bonus = int(bonus)
                 if is_hit:
                     event_cls = AttackCriticalHitEvent if is_crit else AttackHitEvent
                     return event_cls(

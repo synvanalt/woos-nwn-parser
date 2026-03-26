@@ -243,7 +243,7 @@ def parse_and_import_file(
                 lines_processed += 1
                 parsed_data = parser.parse_line(line)
                 if parsed_data:
-                    pending_mutations.extend(ingestion_engine.consume(parsed_data).mutations)
+                    ingestion_engine.append_import_mutations(parsed_data, pending_mutations)
 
                     if len(pending_mutations) >= IMPORT_MUTATION_BATCH_SIZE:
                         flush_mutations()
