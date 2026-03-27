@@ -15,6 +15,7 @@ from app.parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
 from app.parser import ParserSession
 from app.ui.controllers.import_controller import ImportController
 from app.ui.main_window import WoosNwnParserApp
+from app.ui.runtime_config import DEFAULT_APP_RUNTIME_CONFIG
 
 
 class _FakeImportToplevel:
@@ -112,6 +113,7 @@ def _make_controller() -> ImportController:
 
 def _make_app_shell() -> WoosNwnParserApp:
     app = WoosNwnParserApp.__new__(WoosNwnParserApp)
+    app.runtime_config = DEFAULT_APP_RUNTIME_CONFIG
     app.parser = ParserSession(parse_immunity=True)
     app.death_snippet_panel = Mock()
     app.dps_panel = Mock()
@@ -524,6 +526,18 @@ class TestMainWindowCallbacks:
 
         assert app.parser.parse_immunity is False
         app._schedule_session_settings_save.assert_called_once_with()
+
+    def test_debug_toggle_updates_monitor_controller_via_public_method(self) -> None:
+        app = _make_app_shell()
+        app.debug_panel = Mock()
+        app.debug_panel.debug_mode_var.get.return_value = True
+        app.monitor_controller = Mock(set_debug_enabled=Mock())
+        app.log_debug = Mock()
+
+        app._on_debug_toggle()
+
+        app.monitor_controller.set_debug_enabled.assert_called_once_with(True)
+        app.log_debug.assert_called_once_with("Debug output enabled")
 
     def test_build_session_settings_delegates_to_controller(self) -> None:
         app = _make_app_shell()

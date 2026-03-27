@@ -10,10 +10,12 @@ import pytest
 import app.ui.main_window as main_window_module
 from app.settings import AppSettings
 from app.ui.main_window import WoosNwnParserApp
+from app.ui.runtime_config import DEFAULT_APP_RUNTIME_CONFIG
 
 
 def _make_app_shell() -> WoosNwnParserApp:
     app = WoosNwnParserApp.__new__(WoosNwnParserApp)
+    app.runtime_config = DEFAULT_APP_RUNTIME_CONFIG
     app.data_store = Mock(get_all_targets=Mock(return_value=["Goblin", "Orc"]), close=Mock())
     app.immunity_panel = Mock()
     app.immunity_panel.target_combo.get.return_value = ""
@@ -163,3 +165,20 @@ def test_init_defaults_parse_immunity_on_when_setting_missing(monkeypatch) -> No
     app = WoosNwnParserApp(root)
 
     assert app.parser.parse_immunity is True
+
+
+def test_init_uses_runtime_config_for_queue_maxsize(monkeypatch) -> None:
+    root = Mock()
+    root.after = Mock()
+    root.title = Mock()
+    root.geometry = Mock()
+
+    monkeypatch.setattr(main_window_module, "load_app_settings", lambda: AppSettings())
+    monkeypatch.setattr(main_window_module, "get_default_log_directory", lambda: r"C:\default_logs")
+    monkeypatch.setattr(main_window_module.font, "nametofont", lambda _name: Mock())
+    monkeypatch.setattr(WoosNwnParserApp, "setup_ui", lambda self: None)
+    monkeypatch.setattr(WoosNwnParserApp, "_set_monitoring_switch_ui", lambda self, _value: None)
+
+    app = WoosNwnParserApp(root)
+
+    assert app.data_queue.maxsize == DEFAULT_APP_RUNTIME_CONFIG.queue.data_queue_maxsize

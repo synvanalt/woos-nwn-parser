@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import queue
-import time
-from collections import deque
 from pathlib import Path
 from typing import Optional
 
 import tkinter as tk
-from tkinter import filedialog, font, ttk
+from tkinter import font, ttk
 
 from ..parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
 from ..parser import ParserSession
@@ -18,6 +16,7 @@ from ..services.queries import DpsQueryService, ImmunityQueryService, TargetSumm
 from ..settings import load_app_settings, save_app_settings
 from ..storage import DataStore
 from .controllers import (
+    DebugUnlockController,
     ImportController,
     MonitorController,
     QueueDrainController,
@@ -25,6 +24,7 @@ from .controllers import (
     SessionSettingsController,
 )
 from .formatters import get_default_log_directory
+from .runtime_config import DEFAULT_APP_RUNTIME_CONFIG
 from .tooltips import TooltipManager
 from .widgets import DebugConsolePanel, DPSPanel, DeathSnippetPanel, ImmunityPanel, TargetStatsPanel
 
@@ -32,33 +32,11 @@ from .widgets import DebugConsolePanel, DPSPanel, DeathSnippetPanel, ImmunityPan
 class WoosNwnParserApp:
     """Main Tk application window."""
 
-    DATA_QUEUE_MAXSIZE = 4000
-    DATA_QUEUE_PRESSURED_THRESHOLD = 2000
-    DATA_QUEUE_SATURATED_THRESHOLD = 3400
-    QUEUE_TICK_MS_NORMAL = 50
-    QUEUE_TICK_MS_PRESSURED = 10
-    QUEUE_TICK_MS_SATURATED = 1
-    QUEUE_DRAIN_MAX_EVENTS_NORMAL = 1200
-    QUEUE_DRAIN_MAX_EVENTS_PRESSURED = 2000
-    QUEUE_DRAIN_MAX_EVENTS_SATURATED = 2600
-    QUEUE_DRAIN_MAX_TIME_MS_NORMAL = 8.0
-    QUEUE_DRAIN_MAX_TIME_MS_PRESSURED = 10.0
-    QUEUE_DRAIN_MAX_TIME_MS_SATURATED = 12.0
-    MONITOR_LINES_PER_POLL_NORMAL = 2000
-    MONITOR_LINES_PER_POLL_PRESSURED = 600
-    MONITOR_SLEEP_ACTIVE_NORMAL = 0.05
-    MONITOR_SLEEP_ACTIVE_PRESSURED = 0.08
-    MONITOR_SLEEP_ACTIVE_SATURATED = 0.12
-    MONITOR_SLEEP_IDLE_NORMAL = 0.5
-    MONITOR_SLEEP_IDLE_PRESSURED = 0.35
-    MONITOR_SLEEP_IDLE_SATURATED = 0.12
-    IMPORT_APPLY_FRAME_BUDGET_MS = 6.0
-    IMPORT_APPLY_MUTATION_BATCH_SIZE = 384
-
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("Woo's NWN Parser")
         self.root.geometry("730x550")
+        self.runtime_config = DEFAULT_APP_RUNTIME_CONFIG
 
         self.log_directory = ""
         self.window_icon_path: Optional[str] = None
@@ -71,8 +49,9 @@ class WoosNwnParserApp:
         self.dps_query_service = DpsQueryService(self.data_store)
         self.target_summary_query_service = TargetSummaryQueryService(self.data_store)
         self.immunity_query_service = ImmunityQueryService(self.data_store)
-        self.data_queue: queue.Queue = queue.Queue(maxsize=self.DATA_QUEUE_MAXSIZE)
-        self.dps_refresh_job = None
+        self.data_queue: queue.Queue = queue.Queue(
+            maxsize=self.runtime_config.queue.data_queue_maxsize
+        )
 
         self.settings_controller = SessionSettingsController(
             root=self.root,
@@ -99,12 +78,7 @@ class WoosNwnParserApp:
             configured_fallback_line or ParserSession.DEFAULT_DEATH_FALLBACK_LINE
         )
 
-        self.debug_mode = False
         self._debug_tab_visible = False
-        self._dps_tab_click_times: deque[float] = deque()
-        self._debug_unlock_click_target = 7
-        self._debug_unlock_window_seconds = 3.0
-        self._dps_tab_text = "Damage Per Second"
 
         self.theme_font = font.nametofont("SunValleyBodyFont")
         self.tooltip_manager = TooltipManager(self.root)
@@ -129,25 +103,25 @@ class WoosNwnParserApp:
                 get_debug_enabled=self.debug_panel.get_debug_enabled,
                 log_debug=self.log_debug,
                 refresh_coordinator=self.refresh_coordinator,
-                queue_tick_ms_normal=self.QUEUE_TICK_MS_NORMAL,
-                queue_tick_ms_pressured=self.QUEUE_TICK_MS_PRESSURED,
-                queue_tick_ms_saturated=self.QUEUE_TICK_MS_SATURATED,
-                queue_drain_max_events_normal=self.QUEUE_DRAIN_MAX_EVENTS_NORMAL,
-                queue_drain_max_events_pressured=self.QUEUE_DRAIN_MAX_EVENTS_PRESSURED,
-                queue_drain_max_events_saturated=self.QUEUE_DRAIN_MAX_EVENTS_SATURATED,
-                queue_drain_max_time_ms_normal=self.QUEUE_DRAIN_MAX_TIME_MS_NORMAL,
-                queue_drain_max_time_ms_pressured=self.QUEUE_DRAIN_MAX_TIME_MS_PRESSURED,
-                queue_drain_max_time_ms_saturated=self.QUEUE_DRAIN_MAX_TIME_MS_SATURATED,
-                data_queue_pressured_threshold=self.DATA_QUEUE_PRESSURED_THRESHOLD,
-                data_queue_saturated_threshold=self.DATA_QUEUE_SATURATED_THRESHOLD,
-                monitor_lines_per_poll_normal=self.MONITOR_LINES_PER_POLL_NORMAL,
-                monitor_lines_per_poll_pressured=self.MONITOR_LINES_PER_POLL_PRESSURED,
-                monitor_sleep_active_normal=self.MONITOR_SLEEP_ACTIVE_NORMAL,
-                monitor_sleep_active_pressured=self.MONITOR_SLEEP_ACTIVE_PRESSURED,
-                monitor_sleep_active_saturated=self.MONITOR_SLEEP_ACTIVE_SATURATED,
-                monitor_sleep_idle_normal=self.MONITOR_SLEEP_IDLE_NORMAL,
-                monitor_sleep_idle_pressured=self.MONITOR_SLEEP_IDLE_PRESSURED,
-                monitor_sleep_idle_saturated=self.MONITOR_SLEEP_IDLE_SATURATED,
+                queue_tick_ms_normal=self.runtime_config.queue.queue_tick_ms_normal,
+                queue_tick_ms_pressured=self.runtime_config.queue.queue_tick_ms_pressured,
+                queue_tick_ms_saturated=self.runtime_config.queue.queue_tick_ms_saturated,
+                queue_drain_max_events_normal=self.runtime_config.queue.queue_drain_max_events_normal,
+                queue_drain_max_events_pressured=self.runtime_config.queue.queue_drain_max_events_pressured,
+                queue_drain_max_events_saturated=self.runtime_config.queue.queue_drain_max_events_saturated,
+                queue_drain_max_time_ms_normal=self.runtime_config.queue.queue_drain_max_time_ms_normal,
+                queue_drain_max_time_ms_pressured=self.runtime_config.queue.queue_drain_max_time_ms_pressured,
+                queue_drain_max_time_ms_saturated=self.runtime_config.queue.queue_drain_max_time_ms_saturated,
+                data_queue_pressured_threshold=self.runtime_config.queue.data_queue_pressured_threshold,
+                data_queue_saturated_threshold=self.runtime_config.queue.data_queue_saturated_threshold,
+                monitor_lines_per_poll_normal=self.runtime_config.monitor.lines_per_poll_normal,
+                monitor_lines_per_poll_pressured=self.runtime_config.monitor.lines_per_poll_pressured,
+                monitor_sleep_active_normal=self.runtime_config.monitor.sleep_active_normal,
+                monitor_sleep_active_pressured=self.runtime_config.monitor.sleep_active_pressured,
+                monitor_sleep_active_saturated=self.runtime_config.monitor.sleep_active_saturated,
+                monitor_sleep_idle_normal=self.runtime_config.monitor.sleep_idle_normal,
+                monitor_sleep_idle_pressured=self.runtime_config.monitor.sleep_idle_pressured,
+                monitor_sleep_idle_saturated=self.runtime_config.monitor.sleep_idle_saturated,
             )
         if hasattr(self, "queue_drain_controller") and hasattr(self, "debug_panel") and hasattr(self, "dps_panel"):
             self.monitor_controller = MonitorController(
@@ -167,6 +141,7 @@ class WoosNwnParserApp:
                 get_monitor_max_lines_per_poll=self.queue_drain_controller.get_monitor_max_lines_per_poll,
                 get_monitor_sleep_seconds=self.queue_drain_controller.get_monitor_sleep_seconds,
             )
+            self.monitor_controller.configure_switch_style()
         if hasattr(self, "dps_panel") and hasattr(self, "death_snippet_panel"):
             self.import_controller = ImportController(
                 root=self.root,
@@ -182,8 +157,15 @@ class WoosNwnParserApp:
                 center_window_on_parent=self._center_window_on_parent,
                 apply_modal_icon=self._apply_modal_icon,
                 on_character_identified=self._on_death_character_identified,
-                import_apply_frame_budget_ms=self.IMPORT_APPLY_FRAME_BUDGET_MS,
-                import_apply_mutation_batch_size=self.IMPORT_APPLY_MUTATION_BATCH_SIZE,
+                import_apply_frame_budget_ms=self.runtime_config.import_.apply_frame_budget_ms,
+                import_apply_mutation_batch_size=self.runtime_config.import_.apply_mutation_batch_size,
+            )
+        if self.notebook is not None:
+            self.debug_unlock_controller = DebugUnlockController(
+                notebook=self.notebook,
+                policy=self.runtime_config.debug_unlock,
+                is_debug_tab_visible=lambda: self._debug_tab_visible,
+                on_unlock=self._show_debug_tab,
             )
 
         if hasattr(self, "queue_drain_controller"):
@@ -195,8 +177,6 @@ class WoosNwnParserApp:
             self._set_monitoring_switch_ui(False)
 
     def setup_ui(self) -> None:
-        self._configure_monitoring_switch_style()
-
         control_frame = ttk.Frame(self.root, padding="10")
         control_frame.pack(fill="x")
 
@@ -268,7 +248,7 @@ class WoosNwnParserApp:
             tooltip_manager=self.tooltip_manager,
         )
         self._restore_persisted_dps_panel_state()
-        self.notebook.add(self.dps_panel, text=self._dps_tab_text)
+        self.notebook.add(self.dps_panel, text=self.runtime_config.debug_unlock.dps_tab_text)
         self.dps_panel.time_tracking_combo.bind("<<ComboboxSelected>>", self._on_time_tracking_mode_changed)
         self.dps_panel.target_filter_combo.bind("<<ComboboxSelected>>", self._on_target_filter_changed)
 
@@ -388,15 +368,9 @@ class WoosNwnParserApp:
 
     def pause_monitoring(self) -> None:
         self.monitor_controller.pause()
-        if self.dps_refresh_job is not None:
-            self.root.after_cancel(self.dps_refresh_job)
-            self.dps_refresh_job = None
         self.refresh_coordinator.cancel()
 
     def clear_data(self) -> None:
-        if self.dps_refresh_job is not None:
-            self.root.after_cancel(self.dps_refresh_job)
-            self.dps_refresh_job = None
         self.refresh_coordinator.cancel()
         self.refresh_coordinator.clear_dirty_state()
 
@@ -520,30 +494,15 @@ class WoosNwnParserApp:
 
     def _on_debug_toggle(self, *args) -> None:
         del args
-        self.debug_mode = bool(self.debug_panel.debug_mode_var.get())
-        self.monitor_controller._debug_monitor_enabled = self.debug_mode
-        self.log_debug(f"Debug output {'enabled' if self.debug_mode else 'disabled'}")
+        debug_mode = bool(self.debug_panel.debug_mode_var.get())
+        self.monitor_controller.set_debug_enabled(debug_mode)
+        self.log_debug(f"Debug output {'enabled' if debug_mode else 'disabled'}")
 
     def _on_monitoring_switch_toggle(self) -> None:
         if self.monitoring_var.get():
             self.start_monitoring()
         else:
             self.pause_monitoring()
-
-    def _configure_monitoring_switch_style(self) -> None:
-        style = ttk.Style(self.root)
-        try:
-            style.layout("Monitoring.Switch.TCheckbutton", style.layout("Switch.TCheckbutton"))
-        except tk.TclError:
-            pass
-        style.map(
-            "Monitoring.Switch.TCheckbutton",
-            foreground=[
-                ("selected", "#56C9FF"),
-                ("!selected", "#FF99A4"),
-                ("disabled", "#808A93"),
-            ],
-        )
 
     def on_closing(self) -> None:
         if self._is_closing:
@@ -557,34 +516,12 @@ class WoosNwnParserApp:
         self.root.destroy()
 
     def _on_notebook_click(self, event: tk.Event) -> None:
-        if self._debug_tab_visible or self.notebook is None:
-            return
-        if self.notebook.identify(event.x, event.y) != "label":
-            self._dps_tab_click_times.clear()
-            return
-        try:
-            tab_index = self.notebook.index(f"@{event.x},{event.y}")
-        except tk.TclError:
-            self._dps_tab_click_times.clear()
-            return
-        clicked_tab_text = str(self.notebook.tab(tab_index, "text"))
-        if clicked_tab_text != self._dps_tab_text:
-            self._dps_tab_click_times.clear()
-            return
-        self._record_dps_tab_click_and_maybe_unlock()
-
-    def _record_dps_tab_click_and_maybe_unlock(self) -> None:
-        now = time.monotonic()
-        self._dps_tab_click_times.append(now)
-        window_start = now - self._debug_unlock_window_seconds
-        while self._dps_tab_click_times and self._dps_tab_click_times[0] < window_start:
-            self._dps_tab_click_times.popleft()
-        if len(self._dps_tab_click_times) >= self._debug_unlock_click_target:
-            self._show_debug_tab()
-            self._dps_tab_click_times.clear()
+        debug_unlock_controller = getattr(self, "debug_unlock_controller", None)
+        if debug_unlock_controller is not None:
+            debug_unlock_controller.handle_notebook_click(event)
 
     def _show_debug_tab(self) -> None:
         if self._debug_tab_visible or self.notebook is None:
             return
-        self.notebook.add(self.debug_panel, text="Debug Console")
+        self.notebook.add(self.debug_panel, text=self.runtime_config.debug_unlock.debug_tab_text)
         self._debug_tab_visible = True
