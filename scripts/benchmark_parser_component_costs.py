@@ -459,70 +459,6 @@ def run_damage_event_materialize_full(lines: list[str]) -> list[object]:
     ]
 
 
-def run_damage_event_construct_keywords(lines: list[str]) -> list[object]:
-    payloads, damage_type_maps = _build_damage_event_construction_inputs(lines)
-    event_cls = _GLOBAL_RUNTIME.damage_event_cls
-    fixed_timestamp = FIXED_TIMESTAMP
-    return [
-        event_cls(
-            timestamp=fixed_timestamp,
-            line_number=index,
-            attacker=payload.attacker,
-            target=payload.target,
-            total_damage=payload.total_damage,
-            damage_types=damage_types,
-        )
-        for index, (payload, damage_types) in enumerate(zip(payloads, damage_type_maps), start=1)
-    ]
-
-
-def run_damage_event_construct_positional(lines: list[str]) -> list[object]:
-    payloads, damage_type_maps = _build_damage_event_construction_inputs(lines)
-    event_cls = _GLOBAL_RUNTIME.damage_event_cls
-    fixed_timestamp = FIXED_TIMESTAMP
-    return [
-        event_cls(
-            fixed_timestamp,
-            index,
-            payload.attacker,
-            payload.target,
-            payload.total_damage,
-            damage_types,
-        )
-        for index, (payload, damage_types) in enumerate(zip(payloads, damage_type_maps), start=1)
-    ]
-
-
-def run_damage_event_construct_prebound_cls(lines: list[str]) -> list[object]:
-    payloads, damage_type_maps = _build_damage_event_construction_inputs(lines)
-    event_cls = _GLOBAL_RUNTIME.damage_event_cls
-    fixed_timestamp = FIXED_TIMESTAMP
-    return [
-        event_cls(fixed_timestamp, index, payload.attacker, payload.target, payload.total_damage, damage_types)
-        for index, (payload, damage_types) in enumerate(zip(payloads, damage_type_maps), start=1)
-    ]
-
-
-def run_damage_event_construct_prebound_timestamp(lines: list[str]) -> list[object]:
-    payloads, damage_type_maps = _build_damage_event_construction_inputs(lines)
-    event_cls = _GLOBAL_RUNTIME.damage_event_cls
-    timestamp = FIXED_TIMESTAMP
-    return [
-        event_cls(timestamp, index, payload.attacker, payload.target, payload.total_damage, damage_types)
-        for index, (payload, damage_types) in enumerate(zip(payloads, damage_type_maps), start=1)
-    ]
-
-
-def run_damage_event_construct_without_line_number(lines: list[str]) -> list[object]:
-    payloads, damage_type_maps = _build_damage_event_construction_inputs(lines)
-    event_cls = _GLOBAL_RUNTIME.damage_event_cls
-    timestamp = FIXED_TIMESTAMP
-    return [
-        event_cls(timestamp, None, payload.attacker, payload.target, payload.total_damage, damage_types)
-        for payload, damage_types in zip(payloads, damage_type_maps)
-    ]
-
-
 def run_damage_parse_plus_materialize(lines: list[str]) -> list[object]:
     parser = _GLOBAL_RUNTIME.line_parser_cls(parse_immunity=True)
     pattern = parser.patterns["damage_dealt"]
@@ -721,26 +657,6 @@ def main() -> None:
                             lambda lines=subset_lines: run_damage_event_materialize_full(lines),
                         ),
                         (
-                            "damage_event_construct_keywords",
-                            lambda lines=subset_lines: run_damage_event_construct_keywords(lines),
-                        ),
-                        (
-                            "damage_event_construct_positional",
-                            lambda lines=subset_lines: run_damage_event_construct_positional(lines),
-                        ),
-                        (
-                            "damage_event_construct_prebound_cls",
-                            lambda lines=subset_lines: run_damage_event_construct_prebound_cls(lines),
-                        ),
-                        (
-                            "damage_event_construct_prebound_timestamp",
-                            lambda lines=subset_lines: run_damage_event_construct_prebound_timestamp(lines),
-                        ),
-                        (
-                            "damage_event_construct_without_line_number",
-                            lambda lines=subset_lines: run_damage_event_construct_without_line_number(lines),
-                        ),
-                        (
                             "damage_parse_plus_materialize",
                             lambda lines=subset_lines: run_damage_parse_plus_materialize(lines),
                         ),
@@ -793,11 +709,6 @@ def main() -> None:
                     "damage_event_materialize_empty_breakdown",
                     "damage_event_materialize_no_types",
                     "damage_event_materialize_full",
-                    "damage_event_construct_keywords",
-                    "damage_event_construct_positional",
-                    "damage_event_construct_prebound_cls",
-                    "damage_event_construct_prebound_timestamp",
-                    "damage_event_construct_without_line_number",
                     "damage_parse_plus_materialize",
                     "damage_parse_plus_materialize_fixed_timestamp",
                 }:
@@ -808,11 +719,6 @@ def main() -> None:
                     "damage_event_materialize_empty_breakdown",
                     "damage_event_materialize_no_types",
                     "damage_event_materialize_full",
-                    "damage_event_construct_keywords",
-                    "damage_event_construct_positional",
-                    "damage_event_construct_prebound_cls",
-                    "damage_event_construct_prebound_timestamp",
-                    "damage_event_construct_without_line_number",
                     "damage_parse_plus_materialize",
                     "damage_parse_plus_materialize_fixed_timestamp",
                 } and event_count != len(extract_damage_payloads(subset_lines, _GLOBAL_RUNTIME.line_parser_cls())):
@@ -988,57 +894,6 @@ def main() -> None:
     for row in damage_rows:
         print(" ".join(row[header].ljust(damage_widths[header]) for header in damage_headers))
 
-    print()
-    print("Damage event construction summary")
-    construction_headers = (
-        "fixture",
-        "keywords_ns",
-        "positional_ns",
-        "prebound_cls_ns",
-        "prebound_ts_ns",
-        "without_line_ns",
-        "best_variant",
-        "line_number_cost_ns",
-    )
-    construction_widths = {header: len(header) for header in construction_headers}
-    construction_rows: list[dict[str, str]] = []
-    for summary in damage_shape_summary:
-        fixture_name = str(summary["fixture"])
-        keywords_row = row_map.get((fixture_name, "damage", "n/a", "damage_event_construct_keywords"))
-        positional_row = row_map.get((fixture_name, "damage", "n/a", "damage_event_construct_positional"))
-        prebound_cls_row = row_map.get((fixture_name, "damage", "n/a", "damage_event_construct_prebound_cls"))
-        prebound_ts_row = row_map.get((fixture_name, "damage", "n/a", "damage_event_construct_prebound_timestamp"))
-        without_line_row = row_map.get((fixture_name, "damage", "n/a", "damage_event_construct_without_line_number"))
-        if not all((keywords_row, positional_row, prebound_cls_row, prebound_ts_row, without_line_row)):
-            continue
-        best_name, best_row = min(
-            (
-                ("keywords", keywords_row),
-                ("positional", positional_row),
-                ("prebound_cls", prebound_cls_row),
-                ("prebound_ts", prebound_ts_row),
-            ),
-            key=lambda item: item[1].ns_per_line,
-        )
-        formatted = {
-            "fixture": fixture_name,
-            "keywords_ns": format_ratio(keywords_row.ns_per_line),
-            "positional_ns": format_ratio(positional_row.ns_per_line),
-            "prebound_cls_ns": format_ratio(prebound_cls_row.ns_per_line),
-            "prebound_ts_ns": format_ratio(prebound_ts_row.ns_per_line),
-            "without_line_ns": format_ratio(without_line_row.ns_per_line),
-            "best_variant": best_name,
-            "line_number_cost_ns": format_ratio(prebound_ts_row.ns_per_line - without_line_row.ns_per_line),
-        }
-        construction_rows.append(formatted)
-        for header, value in formatted.items():
-            construction_widths[header] = max(construction_widths[header], len(value))
-
-    print(" ".join(header.ljust(construction_widths[header]) for header in construction_headers))
-    print(" ".join("-" * construction_widths[header] for header in construction_headers))
-    for row in construction_rows:
-        print(" ".join(row[header].ljust(construction_widths[header]) for header in construction_headers))
-
     if args.json_out is not None:
         args.json_out.parent.mkdir(parents=True, exist_ok=True)
         args.json_out.write_text(
@@ -1051,7 +906,6 @@ def main() -> None:
                     "heavy_fixture_gap_summary": summary_rows,
                     "damage_shape_summary": damage_shape_summary,
                     "damage_path_summary": damage_rows,
-                    "damage_event_construction_summary": construction_rows,
                 },
                 indent=2,
             ),

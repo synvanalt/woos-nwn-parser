@@ -116,7 +116,6 @@ class LineParser:
         self._save_marker = " Save"
         self._save_prefix_marker = "SAVE:"
         self._epic_dodge_marker = "Epic Dodge"
-        self._damage_event_cls = DamageDealtEvent
 
     @staticmethod
     def normalize_name(value: str) -> str:
@@ -518,7 +517,7 @@ class LineParser:
             total_damage = int(damage_match.group(3))
             damage_types = self.parse_damage_breakdown(damage_match.group(4))
             timestamp = get_timestamp()
-            damage_event_cls = self._damage_event_cls
+            damage_event_cls = DamageDealtEvent
             return damage_event_cls(
                 timestamp,
                 line_number,
