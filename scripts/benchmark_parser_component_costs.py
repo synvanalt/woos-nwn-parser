@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import importlib
+import json
 import statistics
 import sys
 from collections import deque
@@ -10,14 +12,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from time import perf_counter
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from app.line_parser import LineParser
-from app.parser import ParserSession
 
 
 DEFAULT_FIXTURES = (
@@ -48,6 +45,12 @@ FIXED_TIMESTAMP = datetime(2026, 3, 9, 12, 0, 0)
 
 
 @dataclass(frozen=True)
+class RuntimeBindings:
+    parser_cls: type
+    line_parser_cls: type
+
+
+@dataclass(frozen=True)
 class Row:
     fixture: str
     subset: str
@@ -61,6 +64,7 @@ class Row:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Benchmark parser component costs on real fixtures.")
+    parser.add_argument("--repo-root", type=Path, default=Path("."))
     parser.add_argument("--iterations", type=int, default=7)
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument(
@@ -68,7 +72,29 @@ def parse_args() -> argparse.Namespace:
         nargs="*",
         default=[str(path) for path in DEFAULT_FIXTURES],
     )
+    parser.add_argument("--json-out", type=Path, default=None)
     return parser.parse_args()
+
+
+def clear_app_modules() -> None:
+    for name in list(sys.modules):
+        if name == "app" or name.startswith("app."):
+            sys.modules.pop(name, None)
+
+
+def load_runtime(repo_root: Path) -> RuntimeBindings:
+    clear_app_modules()
+    repo_root_str = str(repo_root)
+    if repo_root_str in sys.path:
+        sys.path.remove(repo_root_str)
+    sys.path.insert(0, repo_root_str)
+
+    parser_mod = importlib.import_module("app.parser")
+    line_parser_mod = importlib.import_module("app.line_parser")
+    return RuntimeBindings(
+        parser_cls=getattr(parser_mod, "ParserSession"),
+        line_parser_cls=getattr(line_parser_mod, "LineParser"),
+    )
 
 
 def classify_line(line: str) -> str:
@@ -155,17 +181,17 @@ class _FixedTimestampProvider:
 
 
 class _NoOpLineParser:
-    WHISPER_MARKER = LineParser.WHISPER_MARKER
-    KILLED_MARKER = LineParser.KILLED_MARKER
-
-    def __init__(self) -> None:
+    def __init__(self, line_parser_cls: type) -> None:
         self.player_name: Optional[str] = None
         self.parse_immunity = True
-        self._timestamp_parser = LineParser()
+        self._line_parser_cls = line_parser_cls
+        self.WHISPER_MARKER = line_parser_cls.WHISPER_MARKER
+        self.KILLED_MARKER = line_parser_cls.KILLED_MARKER
+        self._timestamp_parser = line_parser_cls()
 
     @property
     def death_identify_token(self) -> str:
-        return LineParser.DEATH_IDENTIFY_TOKEN
+        return self._line_parser_cls.DEATH_IDENTIFY_TOKEN
 
     @staticmethod
     def normalize_name(value: str) -> str:
@@ -180,7 +206,7 @@ class _NoOpLineParser:
         *,
         year: int,
     ) -> Optional[datetime]:
-        return LineParser.build_timestamp_from_parts(parts, year=year)
+        return self._line_parser_cls.build_timestamp_from_parts(parts, year=year)
 
     def is_whisper_line(self, raw_line: str) -> bool:
         return False
@@ -204,18 +230,21 @@ class _NoOpLineParser:
         return None
 
 
-def run_session_full(lines: list[str], parse_immunity: bool) -> list[object]:
-    parser = ParserSession(parse_immunity=parse_immunity)
+def run_session_full(runtime: RuntimeBindings, lines: list[str], parse_immunity: bool) -> list[object]:
+    parser = runtime.parser_cls(parse_immunity=parse_immunity)
     return [parser.parse_line(line) for line in lines]
 
 
-def run_session_wrapper_only(lines: list[str], parse_immunity: bool) -> list[object]:
-    parser = ParserSession(line_parser=_NoOpLineParser(), parse_immunity=parse_immunity)
+def run_session_wrapper_only(runtime: RuntimeBindings, lines: list[str], parse_immunity: bool) -> list[object]:
+    parser = runtime.parser_cls(
+        line_parser=_NoOpLineParser(runtime.line_parser_cls),
+        parse_immunity=parse_immunity,
+    )
     return [parser.parse_line(line) for line in lines]
 
 
-def run_line_parser_with_closure(lines: list[str], parse_immunity: bool) -> list[object]:
-    parser = LineParser(parse_immunity=parse_immunity)
+def run_line_parser_with_closure(runtime: RuntimeBindings, lines: list[str], parse_immunity: bool) -> list[object]:
+    parser = runtime.line_parser_cls(parse_immunity=parse_immunity)
     results: list[object] = []
     for index, line in enumerate(lines, start=1):
         raw_line = line
@@ -227,8 +256,8 @@ def run_line_parser_with_closure(lines: list[str], parse_immunity: bool) -> list
     return results
 
 
-def run_line_parser_with_bound_method(lines: list[str], parse_immunity: bool) -> list[object]:
-    parser = LineParser(parse_immunity=parse_immunity)
+def run_line_parser_with_bound_method(runtime: RuntimeBindings, lines: list[str], parse_immunity: bool) -> list[object]:
+    parser = runtime.line_parser_cls(parse_immunity=parse_immunity)
     provider = _FixedTimestampProvider()
     return [
         parser.parse_line(line, line_number=index, get_timestamp=provider.get)
@@ -244,17 +273,17 @@ def run_recent_log_append_only(lines: list[str]) -> list[object]:
 
 
 def run_timestamp_resolution_only(lines: list[str]) -> list[object]:
-    parser = ParserSession(parse_immunity=True)
+    parser = _GLOBAL_RUNTIME.parser_cls(parse_immunity=True)
     return [parser.extract_timestamp_from_line(line) for line in lines]
 
 
 def run_strip_chat_prefix_only(lines: list[str]) -> list[object]:
-    parser = LineParser(parse_immunity=True)
+    parser = _GLOBAL_RUNTIME.line_parser_cls(parse_immunity=True)
     return [parser._strip_chat_prefix(line) for line in lines]
 
 
 def run_damage_breakdown_only(lines: list[str]) -> list[object]:
-    parser = LineParser(parse_immunity=True)
+    parser = _GLOBAL_RUNTIME.line_parser_cls(parse_immunity=True)
     payloads = extract_damage_breakdowns(lines, parser)
     return [parser.parse_damage_breakdown(payload) for payload in payloads]
 
@@ -279,11 +308,16 @@ def safe_share(part: float, whole: float) -> Optional[float]:
 
 def main() -> None:
     args = parse_args()
+    repo_root = args.repo_root.resolve()
+    if not repo_root.is_dir():
+        raise RuntimeError(f"repo root not found: {repo_root}")
+    global _GLOBAL_RUNTIME
+    _GLOBAL_RUNTIME = load_runtime(repo_root)
     rows: list[Row] = []
     comparable_counts: dict[tuple[str, str, str], int] = {}
 
     for fixture_name in args.fixtures:
-        fixture = Path(fixture_name)
+        fixture = (repo_root / Path(fixture_name)).resolve()
         fixture_lines = load_fixture_lines(fixture)
         subsets = build_subsets(fixture_lines)
 
@@ -297,10 +331,10 @@ def main() -> None:
                 mode_label = f"parse_immunity={parse_immunity}"
 
                 parser_variants = [
-                    ("session_full", lambda lines=subset_lines, mode=parse_immunity_value: run_session_full(lines, mode)),
-                    ("session_wrapper_only", lambda lines=subset_lines, mode=parse_immunity_value: run_session_wrapper_only(lines, mode)),
-                    ("line_parser_closure_callback", lambda lines=subset_lines, mode=parse_immunity_value: run_line_parser_with_closure(lines, mode)),
-                    ("line_parser_bound_method", lambda lines=subset_lines, mode=parse_immunity_value: run_line_parser_with_bound_method(lines, mode)),
+                    ("session_full", lambda lines=subset_lines, mode=parse_immunity_value: run_session_full(_GLOBAL_RUNTIME, lines, mode)),
+                    ("session_wrapper_only", lambda lines=subset_lines, mode=parse_immunity_value: run_session_wrapper_only(_GLOBAL_RUNTIME, lines, mode)),
+                    ("line_parser_closure_callback", lambda lines=subset_lines, mode=parse_immunity_value: run_line_parser_with_closure(_GLOBAL_RUNTIME, lines, mode)),
+                    ("line_parser_bound_method", lambda lines=subset_lines, mode=parse_immunity_value: run_line_parser_with_bound_method(_GLOBAL_RUNTIME, lines, mode)),
                 ]
                 for variant_name, runner in parser_variants:
                     median_s, event_count = bench_runner(
@@ -349,7 +383,12 @@ def main() -> None:
                 )
                 effective_line_count = len(subset_lines)
                 if variant_name == "damage_breakdown_only":
-                    effective_line_count = len(extract_damage_breakdowns(subset_lines, LineParser()))
+                    effective_line_count = len(
+                        extract_damage_breakdowns(
+                            subset_lines,
+                            _GLOBAL_RUNTIME.line_parser_cls(),
+                        )
+                    )
                 rows.append(
                     Row(
                         fixture=fixture.name,
@@ -382,6 +421,7 @@ def main() -> None:
             widths[header] = max(widths[header], len(value))
 
     print("Parser component cost benchmark")
+    print(f"Repo: {repo_root}")
     print(f"Iterations: {args.iterations} measured, {args.warmups} warmup")
     print()
     print(" ".join(header.ljust(widths[header]) for header in headers))
@@ -430,6 +470,22 @@ def main() -> None:
     print(" ".join("-" * summary_widths[header] for header in summary_headers))
     for row in summary_rows:
         print(" ".join(row[header].ljust(summary_widths[header]) for header in summary_headers))
+
+    if args.json_out is not None:
+        args.json_out.parent.mkdir(parents=True, exist_ok=True)
+        args.json_out.write_text(
+            json.dumps(
+                {
+                    "repo_root": str(repo_root),
+                    "iterations": args.iterations,
+                    "warmups": args.warmups,
+                    "rows": [row.__dict__ for row in rows],
+                    "heavy_fixture_gap_summary": summary_rows,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
 
 
 if __name__ == "__main__":
