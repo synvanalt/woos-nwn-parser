@@ -201,21 +201,29 @@ class LineParser:
             return damage_types
 
         tokens = breakdown_str.split()
-        index = 0
         token_count = len(tokens)
+        index = 0
         while index < token_count:
-            while index < token_count and not tokens[index].isdigit():
+            token = tokens[index]
+            if not token.isdigit():
                 index += 1
+                continue
+
+            amount = int(token)
+            index += 1
             if index >= token_count:
                 break
 
-            amount = int(tokens[index])
-            index += 1
+            if index + 1 == token_count or tokens[index + 1].isdigit():
+                damage_types[tokens[index]] = amount
+                index += 1
+                continue
+
             type_start = index
+            index += 1
             while index < token_count and not tokens[index].isdigit():
                 index += 1
-            if type_start < index:
-                damage_types[" ".join(tokens[type_start:index])] = amount
+            damage_types[" ".join(tokens[type_start:index])] = amount
 
         return damage_types
 

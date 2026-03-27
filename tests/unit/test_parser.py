@@ -85,6 +85,10 @@ class TestDamageBreakdownParsing:
         result = LineParser().parse_damage_breakdown("  50   Positive   Energy   20   Negative  Energy ")
         assert result == {"Positive Energy": 50, "Negative Energy": 20}
 
+    def test_parse_damage_breakdown_preserves_zero_value_types(self) -> None:
+        result = LineParser().parse_damage_breakdown("24 Physical 0 Cold 11 Divine 0 Fire 2 Sonic")
+        assert result == {"Physical": 24, "Cold": 0, "Divine": 11, "Fire": 0, "Sonic": 2}
+
 
 class TestTimestampExtraction:
     """Test suite for extract_timestamp_from_line method."""
@@ -240,6 +244,16 @@ class TestDamageDealtParsing:
 
         assert result is not None
         assert result.damage_types == {'Positive Energy': 50, 'Divine': 30, 'Pure': 20}
+
+    def test_parse_damage_preserves_zero_value_components(self, parser: ParserSession) -> None:
+        line = (
+            "[CHAT WINDOW TEXT] [Tue Aug  6 10:54:24] Kayla Aseph damages Priestess of the Dead Wyrm God: "
+            "35 (24 Physical 0 Cold 11 Divine 0 Fire 0 Sonic)"
+        )
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result.damage_types == {"Physical": 24, "Cold": 0, "Divine": 11, "Fire": 0, "Sonic": 0}
 
     def test_parse_damage_player_filter_match(self, parser_with_player: ParserSession) -> None:
         """Test parsing damage when player matches filter."""
