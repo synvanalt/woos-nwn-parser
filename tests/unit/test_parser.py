@@ -749,6 +749,36 @@ class TestSaveParsing:
         assert result.save_type == 'fort'
         assert result.bonus == 5
 
+    def test_parse_save_accepts_failure_outcome_keyword(self, parser: ParserSession) -> None:
+        line = "Priestess of the Dead Wyrm God : Will Save vs. Fear : *failure* : (13 + 30 = 43 vs. DC: 47)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result.type == "save"
+        assert result.target == "Priestess of the Dead Wyrm God"
+        assert result.save_type == "will"
+        assert result.bonus == 30
+
+    def test_parse_save_without_total_still_preserves_bonus(self, parser: ParserSession) -> None:
+        line = "SAVE: Woo Wildspawn : Will Save vs. Spell : *success* : (12 + 48 vs. DC: 30)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result.type == "save"
+        assert result.target == "Woo Wildspawn"
+        assert result.save_type == "will"
+        assert result.bonus == 48
+
+    def test_parse_save_without_save_prefix_but_with_descriptor(self, parser: ParserSession) -> None:
+        line = "Woo Whirlwind : Will Save vs. Mind Spells : *success* : (5 + 50 = 55 vs. DC: 46)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result.type == "save"
+        assert result.target == "Woo Whirlwind"
+        assert result.save_type == "will"
+        assert result.bonus == 50
+
 
 class TestEdgeCases:
     """Test suite for edge cases and error handling."""

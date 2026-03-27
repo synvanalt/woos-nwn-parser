@@ -91,7 +91,7 @@ class LineParser:
             "save": re.compile(
                 r"(?:SAVE:\s*)?(?P<target>.+?)\s*:\s*"
                 r"(?P<save_type>Fort|Fortitude|Reflex|Will)\s+Save(?:\s+vs\.\s*[^:]+?)?\s*:\s*"
-                r"\*(?P<outcome>success|failed)\*\s*:\s*"
+                r"\*(?P<outcome>success|failed|failure)\*\s*:\s*"
                 r"\((?P<roll>\d+)\s*\+\s*(?P<bonus>-?\d+)\s*(?:=\s*\d+\s*)?vs\.\s*DC:\s*(?P<dc>\d+)\)",
                 re.IGNORECASE,
             ),
@@ -114,6 +114,7 @@ class LineParser:
         self._attacker_miss_chance_marker = "attacker miss chance:"
         self._target_concealed_marker = "target concealed:"
         self._save_marker = " Save"
+        self._save_prefix_marker = "SAVE:"
         self._epic_dodge_marker = "Epic Dodge"
 
     @staticmethod
@@ -409,6 +410,88 @@ class LineParser:
                 stripped_line = raw_line[prefix_match.end():]
         return stripped_line
 
+    def _parse_save_fast(self, stripped_line: str) -> Optional[tuple[str, str, int]]:
+        if self._save_marker not in stripped_line:
+            return None
+
+        working = stripped_line.strip()
+        if not working:
+            return None
+
+        if working[: len(self._save_prefix_marker)].upper() == self._save_prefix_marker:
+            working = working[len(self._save_prefix_marker):].lstrip()
+            if not working:
+                return None
+
+        marker_specs = (
+            (" : Fortitude Save", "fort"),
+            (" : Fort Save", "fort"),
+            (" : Reflex Save", "ref"),
+            (" : Will Save", "will"),
+        )
+        lowered = working.lower()
+        target = ""
+        save_key = ""
+        rest = ""
+        for marker, candidate_save_key in marker_specs:
+            marker_idx = lowered.find(marker.lower())
+            if marker_idx < 0:
+                continue
+            target = working[:marker_idx].strip()
+            rest = working[marker_idx + len(marker):].strip()
+            save_key = candidate_save_key
+            break
+
+        if not target or not rest or not save_key:
+            return None
+
+        star_start = rest.find("*")
+        if star_start < 0:
+            return None
+
+        star_end = rest.find("*", star_start + 1)
+        if star_end < 0:
+            return None
+
+        outcome = rest[star_start + 1:star_end].strip().lower()
+        if outcome not in {"success", "failed", "failure"}:
+            return None
+
+        tail = rest[star_end + 1:].strip()
+        if tail.startswith(":"):
+            tail = tail[1:].strip()
+        if not tail.startswith("("):
+            return None
+
+        expr_end = tail.find(")")
+        if expr_end < 0:
+            return None
+
+        expr = tail[1:expr_end]
+        expr_lower = expr.lower()
+        dc_idx = expr_lower.find("vs. dc:")
+        if dc_idx < 0:
+            return None
+
+        roll_bonus = expr[:dc_idx].strip()
+        if "=" in roll_bonus:
+            roll_bonus = roll_bonus.split("=", 1)[0].strip()
+
+        plus_idx = roll_bonus.find("+")
+        if plus_idx < 0:
+            return None
+
+        bonus_str = roll_bonus[plus_idx + 1:].strip()
+        if not bonus_str:
+            return None
+
+        try:
+            bonus = int(bonus_str)
+        except ValueError:
+            return None
+
+        return target.strip(" :"), save_key, bonus
+
     def parse_line(
         self,
         raw_line: str,
@@ -537,6 +620,17 @@ class LineParser:
                     )
 
         if self._save_marker in stripped_line:
+            save_fast = self._parse_save_fast(stripped_line)
+            if save_fast is not None:
+                target, save_key, bonus = save_fast
+                return SaveObservedEvent(
+                    target=target,
+                    save_type=save_key,
+                    bonus=bonus,
+                    timestamp=get_timestamp(),
+                    line_number=line_number,
+                )
+
             save_match = patterns["save"].search(stripped_line)
             if save_match and save_match.group("bonus"):
                 save_type = save_match.group("save_type").lower()

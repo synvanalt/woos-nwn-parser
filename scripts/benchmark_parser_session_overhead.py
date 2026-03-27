@@ -217,7 +217,11 @@ def main() -> None:
                 iterations=args.iterations,
                 warmups=args.warmups,
             )
-            if variant_name in {"session_full", "line_parser_closure_callback", "line_parser_bound_method"}:
+            if variant_name in {
+                "session_full",
+                "line_parser_closure_callback",
+                "line_parser_bound_method",
+            }:
                 previous = comparable_event_counts.get(fixture.name)
                 if previous is None:
                     comparable_event_counts[fixture.name] = event_count
