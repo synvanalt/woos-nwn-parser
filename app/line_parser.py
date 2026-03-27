@@ -116,6 +116,7 @@ class LineParser:
         self._save_marker = " Save"
         self._save_prefix_marker = "SAVE:"
         self._epic_dodge_marker = "Epic Dodge"
+        self._damage_event_cls = DamageDealtEvent
 
     @staticmethod
     def normalize_name(value: str) -> str:
@@ -512,13 +513,19 @@ class LineParser:
 
         damage_match = patterns["damage_dealt"].search(raw_line) if self._damage_marker in raw_line else None
         if damage_match:
-            return DamageDealtEvent(
-                attacker=damage_match.group(1).strip(),
-                target=damage_match.group(2).strip(),
-                total_damage=int(damage_match.group(3)),
-                damage_types=self.parse_damage_breakdown(damage_match.group(4)),
-                timestamp=get_timestamp(),
-                line_number=line_number,
+            attacker = damage_match.group(1).strip()
+            target = damage_match.group(2).strip()
+            total_damage = int(damage_match.group(3))
+            damage_types = self.parse_damage_breakdown(damage_match.group(4))
+            timestamp = get_timestamp()
+            damage_event_cls = self._damage_event_cls
+            return damage_event_cls(
+                timestamp,
+                line_number,
+                attacker,
+                target,
+                total_damage,
+                damage_types,
             )
 
         if self._damage_immunity_marker in raw_line:
