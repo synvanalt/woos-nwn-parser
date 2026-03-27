@@ -33,6 +33,9 @@ class ParserSession:
         self._anchor_year = datetime.now().year if anchor_year is None else anchor_year
         self._last_timestamp_year: Optional[int] = None
         self._last_timestamp_month: Optional[int] = None
+        self._current_raw_line = ""
+        self._current_timestamp: Optional[datetime] = None
+        self._current_timestamp_getter = self._get_current_timestamp
 
         self.death_lookup_killed_lookback_lines = 500
         self.death_snippet_max_lines = 100
@@ -41,6 +44,7 @@ class ParserSession:
         self.death_character_name = ""
         self._death_character_name_normalized = ""
         self.death_fallback_line = self.DEFAULT_DEATH_FALLBACK_LINE
+        self._death_fallback_substring = self.death_fallback_line
         self._death_fallback_pattern: Optional[Pattern[str]] = self._compile_fallback_line_pattern(
             self.death_fallback_line
         )
@@ -77,7 +81,7 @@ class ParserSession:
 
         month, _day, _hour, _minute, _second = parts
         year = self._resolve_year(month)
-        return self.line_parser.build_timestamp(line, year=year)
+        return self.line_parser.build_timestamp_from_parts(parts, year=year)
 
     def set_death_character_name(self, name: str) -> None:
         normalized = self.line_parser.normalize_name(name)
@@ -93,7 +97,34 @@ class ParserSession:
 
     def set_death_fallback_line(self, line: str) -> None:
         self.death_fallback_line = line.strip()
+        self._death_fallback_substring = self.death_fallback_line
         self._death_fallback_pattern = self._compile_fallback_line_pattern(self.death_fallback_line)
+
+    def _start_line_parse(self, raw_line: str) -> None:
+        self._current_raw_line = raw_line
+        self._current_timestamp = None
+
+    def _get_current_timestamp(self) -> datetime:
+        timestamp = self._current_timestamp
+        if timestamp is None:
+            timestamp = self.extract_timestamp_from_line(self._current_raw_line)
+            if timestamp is None:
+                timestamp = datetime.now()
+            self._current_timestamp = timestamp
+        return timestamp
+
+    def _can_use_non_death_fast_path(self, raw_line: str) -> bool:
+        if self.line_parser.WHISPER_MARKER in raw_line:
+            return False
+        if self.line_parser.KILLED_MARKER in raw_line:
+            return False
+        if (
+            not self._death_character_name_normalized
+            and self._death_fallback_substring
+            and self._death_fallback_substring in raw_line
+        ):
+            return False
+        return True
 
     def _get_name_token_pattern(self, character_name: str) -> Pattern[str]:
         cached = self._name_token_pattern_cache.get(character_name)
@@ -213,15 +244,14 @@ class ParserSession:
         self._line_number += 1
         line_number = self._line_number
         self.recent_log_lines.append(raw_line)
-        timestamp: Optional[datetime] = None
+        self._start_line_parse(raw_line)
 
-        def get_timestamp() -> datetime:
-            nonlocal timestamp
-            if timestamp is None:
-                timestamp = self.extract_timestamp_from_line(raw_line)
-                if not timestamp:
-                    timestamp = datetime.now()
-            return timestamp
+        if self._can_use_non_death_fast_path(raw_line):
+            return self.line_parser.parse_line(
+                raw_line,
+                line_number=line_number,
+                get_timestamp=self._current_timestamp_getter,
+            )
 
         if self.line_parser.is_whisper_line(raw_line):
             whisper_match = self.line_parser.match_chat_whisper(raw_line)
@@ -233,7 +263,7 @@ class ParserSession:
                         self.set_death_character_name(speaker)
                         return DeathCharacterIdentifiedEvent(
                             character_name=speaker,
-                            timestamp=get_timestamp(),
+                            timestamp=self._get_current_timestamp(),
                             line_number=line_number,
                         )
 
@@ -246,17 +276,20 @@ class ParserSession:
                     death_event = self._build_death_snippet_event_from_killed_match(
                         killer=killer,
                         target=dead_target,
-                        timestamp=get_timestamp(),
+                        timestamp=self._get_current_timestamp(),
                         line_number=line_number,
                     )
                     if death_event:
                         return death_event
 
         if (not self._death_character_name_normalized) and self._death_fallback_pattern:
-            if self._death_fallback_pattern.search(raw_line):
+            if (
+                self._death_fallback_substring in raw_line
+                and self._death_fallback_pattern.search(raw_line)
+            ):
                 death_event = self._build_death_snippet_event_from_fallback(
                     raw_line,
-                    get_timestamp(),
+                    self._get_current_timestamp(),
                     line_number,
                 )
                 if death_event:
@@ -265,5 +298,5 @@ class ParserSession:
         return self.line_parser.parse_line(
             raw_line,
             line_number=line_number,
-            get_timestamp=get_timestamp,
+            get_timestamp=self._current_timestamp_getter,
         )

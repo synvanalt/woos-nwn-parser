@@ -85,6 +85,10 @@ class TestDamageBreakdownParsing:
         result = LineParser().parse_damage_breakdown("  50   Positive   Energy   20   Negative  Energy ")
         assert result == {"Positive Energy": 50, "Negative Energy": 20}
 
+    def test_parse_damage_breakdown_preserves_zero_value_types(self) -> None:
+        result = LineParser().parse_damage_breakdown("24 Physical 0 Cold 11 Divine 0 Fire 2 Sonic")
+        assert result == {"Physical": 24, "Cold": 0, "Divine": 11, "Fire": 0, "Sonic": 2}
+
 
 class TestTimestampExtraction:
     """Test suite for extract_timestamp_from_line method."""
@@ -240,6 +244,16 @@ class TestDamageDealtParsing:
 
         assert result is not None
         assert result.damage_types == {'Positive Energy': 50, 'Divine': 30, 'Pure': 20}
+
+    def test_parse_damage_preserves_zero_value_components(self, parser: ParserSession) -> None:
+        line = (
+            "[CHAT WINDOW TEXT] [Tue Aug  6 10:54:24] Kayla Aseph damages Priestess of the Dead Wyrm God: "
+            "35 (24 Physical 0 Cold 11 Divine 0 Fire 0 Sonic)"
+        )
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result.damage_types == {"Physical": 24, "Cold": 0, "Divine": 11, "Fire": 0, "Sonic": 0}
 
     def test_parse_damage_player_filter_match(self, parser_with_player: ParserSession) -> None:
         """Test parsing damage when player matches filter."""
@@ -748,6 +762,36 @@ class TestSaveParsing:
         assert result.target == 'Goblin'
         assert result.save_type == 'fort'
         assert result.bonus == 5
+
+    def test_parse_save_accepts_failure_outcome_keyword(self, parser: ParserSession) -> None:
+        line = "Priestess of the Dead Wyrm God : Will Save vs. Fear : *failure* : (13 + 30 = 43 vs. DC: 47)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result.type == "save"
+        assert result.target == "Priestess of the Dead Wyrm God"
+        assert result.save_type == "will"
+        assert result.bonus == 30
+
+    def test_parse_save_without_total_still_preserves_bonus(self, parser: ParserSession) -> None:
+        line = "SAVE: Woo Wildspawn : Will Save vs. Spell : *success* : (12 + 48 vs. DC: 30)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result.type == "save"
+        assert result.target == "Woo Wildspawn"
+        assert result.save_type == "will"
+        assert result.bonus == 48
+
+    def test_parse_save_without_save_prefix_but_with_descriptor(self, parser: ParserSession) -> None:
+        line = "Woo Whirlwind : Will Save vs. Mind Spells : *success* : (5 + 50 = 55 vs. DC: 46)"
+        result = parser.parse_line(line)
+
+        assert result is not None
+        assert result.type == "save"
+        assert result.target == "Woo Whirlwind"
+        assert result.save_type == "will"
+        assert result.bonus == 50
 
 
 class TestEdgeCases:

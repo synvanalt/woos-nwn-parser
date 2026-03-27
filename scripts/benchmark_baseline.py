@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
 import statistics
 import sys
 from dataclasses import dataclass
@@ -238,6 +239,12 @@ def parse_args() -> argparse.Namespace:
         default="both",
         help="Select which parse_immunity mode(s) to benchmark.",
     )
+    parser.add_argument(
+        "--json-out",
+        type=Path,
+        default=None,
+        help="Optional path to write benchmark rows as JSON.",
+    )
     return parser.parse_args()
 
 
@@ -340,6 +347,24 @@ def main() -> None:
     print(" ".join("-" * widths[header] for header in headers))
     for row in formatted_rows:
         print(" ".join(row[header].ljust(widths[header]) for header in headers))
+
+    if args.json_out is not None:
+        args.json_out.parent.mkdir(parents=True, exist_ok=True)
+        args.json_out.write_text(
+            json.dumps(
+                {
+                    "repo_root": str(repo_root),
+                    "iterations": args.iterations,
+                    "warmups": args.warmups,
+                    "large_fixture_iterations": args.large_fixture_iterations,
+                    "large_fixture_line_threshold": args.large_fixture_line_threshold,
+                    "parse_immunity_mode": args.parse_immunity_mode,
+                    "rows": rows,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
 
 
 if __name__ == "__main__":

@@ -91,7 +91,7 @@ class LineParser:
             "save": re.compile(
                 r"(?:SAVE:\s*)?(?P<target>.+?)\s*:\s*"
                 r"(?P<save_type>Fort|Fortitude|Reflex|Will)\s+Save(?:\s+vs\.\s*[^:]+?)?\s*:\s*"
-                r"\*(?P<outcome>success|failed)\*\s*:\s*"
+                r"\*(?P<outcome>success|failed|failure)\*\s*:\s*"
                 r"\((?P<roll>\d+)\s*\+\s*(?P<bonus>-?\d+)\s*(?:=\s*\d+\s*)?vs\.\s*DC:\s*(?P<dc>\d+)\)",
                 re.IGNORECASE,
             ),
@@ -107,12 +107,14 @@ class LineParser:
             ),
         }
 
+        self._damage_marker = " damages "
         self._damage_immunity_marker = "Damage Immunity absorbs"
         self._attack_marker = " attacks "
         self._threat_roll_marker = "Threat Roll:"
         self._attacker_miss_chance_marker = "attacker miss chance:"
         self._target_concealed_marker = "target concealed:"
         self._save_marker = " Save"
+        self._save_prefix_marker = "SAVE:"
         self._epic_dodge_marker = "Epic Dodge"
 
     @staticmethod
@@ -176,6 +178,16 @@ class LineParser:
         if parts is None:
             return None
 
+        return self.build_timestamp_from_parts(parts, year=year)
+
+    @staticmethod
+    def build_timestamp_from_parts(
+        parts: tuple[int, int, int, int, int],
+        *,
+        year: int,
+    ) -> Optional[datetime]:
+        """Build a timestamp from pre-parsed timestamp components."""
+
         month, day, hour, minute, second = parts
         try:
             return datetime(year, month, day, hour, minute, second)
@@ -189,21 +201,29 @@ class LineParser:
             return damage_types
 
         tokens = breakdown_str.split()
-        index = 0
         token_count = len(tokens)
+        index = 0
         while index < token_count:
-            while index < token_count and not tokens[index].isdigit():
+            token = tokens[index]
+            if not token.isdigit():
                 index += 1
+                continue
+
+            amount = int(token)
+            index += 1
             if index >= token_count:
                 break
 
-            amount = int(tokens[index])
-            index += 1
+            if index + 1 == token_count or tokens[index + 1].isdigit():
+                damage_types[tokens[index]] = amount
+                index += 1
+                continue
+
             type_start = index
+            index += 1
             while index < token_count and not tokens[index].isdigit():
                 index += 1
-            if type_start < index:
-                damage_types[" ".join(tokens[type_start:index])] = amount
+            damage_types[" ".join(tokens[type_start:index])] = amount
 
         return damage_types
 
@@ -214,7 +234,7 @@ class LineParser:
             attacker = attacker.rsplit(" : ", 1)[-1].strip()
         return attacker
 
-    def _parse_attack_threat_fast(self, s: str) -> tuple[Optional[Dict[str, Any]], bool]:
+    def _parse_attack_threat_fast(self, s: str) -> tuple[Optional[Dict[str, object]], bool]:
         if self._attack_marker not in s or self._threat_roll_marker not in s:
             return None, True
 
@@ -267,12 +287,12 @@ class LineParser:
             "attacker": attacker,
             "target": target,
             "outcome": outcome,
-            "roll": roll_str,
-            "bonus": bonus_str,
-            "total": total_tail[:total_end],
+            "roll": int(roll_str),
+            "bonus": int(bonus_str),
+            "total": int(total_tail[:total_end]),
         }, False
 
-    def _parse_attack_basic_fast(self, s: str) -> tuple[Optional[Dict[str, Any]], bool]:
+    def _parse_attack_basic_fast(self, s: str) -> tuple[Optional[Dict[str, object]], bool]:
         if self._attack_marker not in s:
             return None, True
 
@@ -327,12 +347,12 @@ class LineParser:
             "attacker": attacker,
             "target": target,
             "outcome": outcome,
-            "roll": roll_str,
-            "bonus": bonus_str,
-            "total": total_str,
+            "roll": int(roll_str),
+            "bonus": int(bonus_str),
+            "total": int(total_str),
         }, False
 
-    def _parse_attack_conceal_fast(self, s: str) -> tuple[Optional[Dict[str, Any]], bool]:
+    def _parse_attack_conceal_fast(self, s: str) -> tuple[Optional[Dict[str, object]], bool]:
         if " attacks " not in s or "*target concealed:" not in s:
             return None, True
         try:
@@ -376,7 +396,7 @@ class LineParser:
                 "target": target,
                 "outcome": outcome,
                 "roll": roll,
-                "bonus": str(bonus),
+                "bonus": bonus,
                 "total": total,
             }, False
         except ValueError:
@@ -398,6 +418,88 @@ class LineParser:
                 stripped_line = raw_line[prefix_match.end():]
         return stripped_line
 
+    def _parse_save_fast(self, stripped_line: str) -> Optional[tuple[str, str, int]]:
+        if self._save_marker not in stripped_line:
+            return None
+
+        working = stripped_line.strip()
+        if not working:
+            return None
+
+        if working[: len(self._save_prefix_marker)].upper() == self._save_prefix_marker:
+            working = working[len(self._save_prefix_marker):].lstrip()
+            if not working:
+                return None
+
+        marker_specs = (
+            (" : Fortitude Save", "fort"),
+            (" : Fort Save", "fort"),
+            (" : Reflex Save", "ref"),
+            (" : Will Save", "will"),
+        )
+        lowered = working.lower()
+        target = ""
+        save_key = ""
+        rest = ""
+        for marker, candidate_save_key in marker_specs:
+            marker_idx = lowered.find(marker.lower())
+            if marker_idx < 0:
+                continue
+            target = working[:marker_idx].strip()
+            rest = working[marker_idx + len(marker):].strip()
+            save_key = candidate_save_key
+            break
+
+        if not target or not rest or not save_key:
+            return None
+
+        star_start = rest.find("*")
+        if star_start < 0:
+            return None
+
+        star_end = rest.find("*", star_start + 1)
+        if star_end < 0:
+            return None
+
+        outcome = rest[star_start + 1:star_end].strip().lower()
+        if outcome not in {"success", "failed", "failure"}:
+            return None
+
+        tail = rest[star_end + 1:].strip()
+        if tail.startswith(":"):
+            tail = tail[1:].strip()
+        if not tail.startswith("("):
+            return None
+
+        expr_end = tail.find(")")
+        if expr_end < 0:
+            return None
+
+        expr = tail[1:expr_end]
+        expr_lower = expr.lower()
+        dc_idx = expr_lower.find("vs. dc:")
+        if dc_idx < 0:
+            return None
+
+        roll_bonus = expr[:dc_idx].strip()
+        if "=" in roll_bonus:
+            roll_bonus = roll_bonus.split("=", 1)[0].strip()
+
+        plus_idx = roll_bonus.find("+")
+        if plus_idx < 0:
+            return None
+
+        bonus_str = roll_bonus[plus_idx + 1:].strip()
+        if not bonus_str:
+            return None
+
+        try:
+            bonus = int(bonus_str)
+        except ValueError:
+            return None
+
+        return target.strip(" :"), save_key, bonus
+
     def parse_line(
         self,
         raw_line: str,
@@ -408,15 +510,21 @@ class LineParser:
         """Parse a non-empty raw line without session history state."""
         patterns = self.patterns
 
-        damage_match = patterns["damage_dealt"].search(raw_line)
+        damage_match = patterns["damage_dealt"].search(raw_line) if self._damage_marker in raw_line else None
         if damage_match:
-            return DamageDealtEvent(
-                attacker=damage_match.group(1).strip(),
-                target=damage_match.group(2).strip(),
-                total_damage=int(damage_match.group(3)),
-                damage_types=self.parse_damage_breakdown(damage_match.group(4)),
-                timestamp=get_timestamp(),
-                line_number=line_number,
+            attacker = damage_match.group(1).strip()
+            target = damage_match.group(2).strip()
+            total_damage = int(damage_match.group(3))
+            damage_types = self.parse_damage_breakdown(damage_match.group(4))
+            timestamp = get_timestamp()
+            damage_event_cls = DamageDealtEvent
+            return damage_event_cls(
+                timestamp,
+                line_number,
+                attacker,
+                target,
+                total_damage,
+                damage_types,
             )
 
         if self._damage_immunity_marker in raw_line:
@@ -449,7 +557,7 @@ class LineParser:
                     line_number=line_number,
                 )
 
-        attack_fast_data: Optional[Dict[str, Any]] = None
+        attack_fast_data: Optional[Dict[str, object]] = None
         if self._attack_marker in stripped_line:
             if self._target_concealed_marker in stripped_line:
                 attack_fast_data, should_fallback = self._parse_attack_conceal_fast(stripped_line)
@@ -466,36 +574,39 @@ class LineParser:
             attack_match = None
 
         if attack_fast_data is not None:
-            attacker = attack_fast_data["attacker"]
-            target = attack_fast_data["target"]
-            outcome = attack_fast_data["outcome"]
-            roll_str = str(attack_fast_data["roll"])
-            total_str = str(attack_fast_data["total"])
-            bonus_str = attack_fast_data["bonus"]
+            attacker = str(attack_fast_data["attacker"])
+            target = str(attack_fast_data["target"])
+            outcome = str(attack_fast_data["outcome"])
+            roll = attack_fast_data["roll"]
+            total = attack_fast_data["total"]
+            bonus = attack_fast_data["bonus"]
         elif attack_match:
             attacker = attack_match.group("attacker").strip()
             target = attack_match.group("target").strip()
             outcome = attack_match.group("outcome").lower() if "outcome" in attack_match.groupdict() else ""
-            roll_str = attack_match.group("roll")
-            total_str = attack_match.group("total")
-            bonus_str = attack_match.group("bonus")
+            roll = attack_match.group("roll")
+            total = attack_match.group("total")
+            bonus = attack_match.group("bonus")
         else:
             attacker = ""
             target = ""
             outcome = ""
-            roll_str = None
-            total_str = None
-            bonus_str = None
+            roll = None
+            total = None
+            bonus = None
 
         if attack_fast_data is not None or attack_match:
             is_hit = "hit" in outcome
             is_crit = "critical" in outcome
             is_miss = "miss" in outcome or "parried" in outcome or "resisted" in outcome
             is_concealment = "attacker miss chance" in outcome
-            if roll_str and total_str:
-                roll = int(roll_str)
-                total = int(total_str)
-                bonus = int(bonus_str) if bonus_str else None
+            if roll is not None and total is not None:
+                if isinstance(roll, str):
+                    roll = int(roll)
+                if isinstance(total, str):
+                    total = int(total)
+                if isinstance(bonus, str):
+                    bonus = int(bonus)
                 if is_hit:
                     event_cls = AttackCriticalHitEvent if is_crit else AttackHitEvent
                     return event_cls(
@@ -523,6 +634,17 @@ class LineParser:
                     )
 
         if self._save_marker in stripped_line:
+            save_fast = self._parse_save_fast(stripped_line)
+            if save_fast is not None:
+                target, save_key, bonus = save_fast
+                return SaveObservedEvent(
+                    target=target,
+                    save_type=save_key,
+                    bonus=bonus,
+                    timestamp=get_timestamp(),
+                    line_number=line_number,
+                )
+
             save_match = patterns["save"].search(stripped_line)
             if save_match and save_match.group("bonus"):
                 save_type = save_match.group("save_type").lower()
