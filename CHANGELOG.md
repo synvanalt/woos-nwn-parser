@@ -8,6 +8,7 @@
 ### Changed
 - The app now remembers your selected `First Timestamp` mode between launches
 - Warning dialogs now use the app's dark modal styling instead of a mismatched light system popup
+- Damage parsing and log import now do less per-hit overhead during heavy combat, which improves responsiveness on larger logs and denser damage mixes
 
 ### Fixed
 - `Target Immunities` no longer keeps showing a stale temporary `100%` immunity after later hits prove that damage type is being dealt again; those rows now fall back to the real max damage and show `-` for absorbed amount and immunity percentage
