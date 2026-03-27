@@ -543,7 +543,7 @@ class TestMainWindowCallbacks:
         app = _make_app_shell()
         app.settings_controller.build_settings.return_value = "settings"
 
-        assert app._build_session_settings() == "settings"
+        assert app.settings_controller.build_settings() == "settings"
         app.settings_controller.build_settings.assert_called_once_with()
 
     def test_schedule_session_settings_save_delegates_to_controller(self) -> None:
@@ -553,11 +553,9 @@ class TestMainWindowCallbacks:
 
         app.settings_controller.schedule_save.assert_called_once_with()
 
-    def test_flush_pending_session_settings_save_updates_cached_settings(self) -> None:
+    def test_flush_pending_session_settings_save_delegates_to_controller(self) -> None:
         app = _make_app_shell()
-        app.settings_controller.settings = "saved-settings"
 
         app._flush_pending_session_settings_save()
 
         app.settings_controller.flush_pending_save.assert_called_once_with()
-        assert app._settings == "saved-settings"

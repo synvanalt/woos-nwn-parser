@@ -8,9 +8,36 @@ from unittest.mock import Mock
 import pytest
 
 import app.ui.main_window as main_window_module
+from app.parser import ParserSession
 from app.settings import AppSettings
 from app.ui.main_window import WoosNwnParserApp
 from app.ui.runtime_config import DEFAULT_APP_RUNTIME_CONFIG
+
+
+def _mock_setup_ui(app: WoosNwnParserApp) -> None:
+    app.notebook = Mock(bind=Mock())
+    app.dps_panel = Mock()
+    app.dps_panel.time_tracking_var = Mock(set=Mock(), get=Mock(return_value="Per Character"))
+    app.dps_panel.time_tracking_combo = Mock(bind=Mock())
+    app.dps_panel.target_filter_combo = Mock(bind=Mock())
+    app.stats_panel = Mock()
+    app.immunity_panel = Mock()
+    app.immunity_panel.target_combo = Mock(bind=Mock(), get=Mock(return_value=""))
+    app.death_snippet_panel = Mock()
+    app.death_snippet_panel.get_character_name.return_value = ""
+    app.death_snippet_panel.get_fallback_death_line.return_value = ParserSession.DEFAULT_DEATH_FALLBACK_LINE
+    app.debug_panel = Mock()
+    app.debug_panel.debug_mode_var = Mock(trace=Mock())
+
+
+def _patch_init_dependencies(monkeypatch) -> None:
+    monkeypatch.setattr(WoosNwnParserApp, "setup_ui", _mock_setup_ui)
+    monkeypatch.setattr(WoosNwnParserApp, "_set_monitoring_switch_ui", lambda self, _value: None)
+    monkeypatch.setattr(main_window_module, "RefreshCoordinator", Mock(return_value=Mock()))
+    monkeypatch.setattr(main_window_module, "QueueDrainController", Mock(return_value=Mock(start=Mock())))
+    monkeypatch.setattr(main_window_module, "MonitorController", Mock(return_value=Mock(configure_switch_style=Mock())))
+    monkeypatch.setattr(main_window_module, "ImportController", Mock(return_value=Mock()))
+    monkeypatch.setattr(main_window_module, "DebugUnlockController", Mock(return_value=Mock()))
 
 
 def _make_app_shell() -> WoosNwnParserApp:
@@ -28,6 +55,7 @@ def _make_app_shell() -> WoosNwnParserApp:
     app.settings_controller = Mock()
     app.import_controller = Mock(shutdown=Mock())
     app.monitor_controller = Mock(shutdown=Mock())
+    app.debug_panel = Mock(log=Mock())
     app.tooltip_manager = Mock(destroy=Mock())
     app.root = Mock(destroy=Mock())
     app._is_closing = False
@@ -133,14 +161,17 @@ def test_init_uses_persisted_settings_over_defaults(monkeypatch) -> None:
     )
     monkeypatch.setattr(main_window_module, "get_default_log_directory", lambda: r"C:\default_logs")
     monkeypatch.setattr(main_window_module.font, "nametofont", lambda _name: Mock())
-    monkeypatch.setattr(WoosNwnParserApp, "setup_ui", lambda self: None)
-    monkeypatch.setattr(main_window_module.SessionSettingsController, "load_initial_settings", lambda self: AppSettings(
-        log_directory=r"C:\persisted_logs",
-        death_fallback_line="Persisted fallback",
-        parse_immunity=False,
-        first_timestamp_mode="global",
-    ))
-    monkeypatch.setattr(WoosNwnParserApp, "_set_monitoring_switch_ui", lambda self, _value: None)
+    monkeypatch.setattr(
+        main_window_module.SessionSettingsController,
+        "load_initial_settings",
+        lambda self: AppSettings(
+            log_directory=r"C:\persisted_logs",
+            death_fallback_line="Persisted fallback",
+            parse_immunity=False,
+            first_timestamp_mode="global",
+        ),
+    )
+    _patch_init_dependencies(monkeypatch)
 
     app = WoosNwnParserApp(root)
 
@@ -159,8 +190,7 @@ def test_init_defaults_parse_immunity_on_when_setting_missing(monkeypatch) -> No
     monkeypatch.setattr(main_window_module, "load_app_settings", lambda: AppSettings())
     monkeypatch.setattr(main_window_module, "get_default_log_directory", lambda: r"C:\default_logs")
     monkeypatch.setattr(main_window_module.font, "nametofont", lambda _name: Mock())
-    monkeypatch.setattr(WoosNwnParserApp, "setup_ui", lambda self: None)
-    monkeypatch.setattr(WoosNwnParserApp, "_set_monitoring_switch_ui", lambda self, _value: None)
+    _patch_init_dependencies(monkeypatch)
 
     app = WoosNwnParserApp(root)
 
@@ -176,8 +206,7 @@ def test_init_uses_runtime_config_for_queue_maxsize(monkeypatch) -> None:
     monkeypatch.setattr(main_window_module, "load_app_settings", lambda: AppSettings())
     monkeypatch.setattr(main_window_module, "get_default_log_directory", lambda: r"C:\default_logs")
     monkeypatch.setattr(main_window_module.font, "nametofont", lambda _name: Mock())
-    monkeypatch.setattr(WoosNwnParserApp, "setup_ui", lambda self: None)
-    monkeypatch.setattr(WoosNwnParserApp, "_set_monitoring_switch_ui", lambda self, _value: None)
+    _patch_init_dependencies(monkeypatch)
 
     app = WoosNwnParserApp(root)
 

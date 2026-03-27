@@ -54,6 +54,7 @@ class TestIncrementalRefresh:
 
     def test_full_refresh_on_first_call(self, dps_panel) -> None:
         """Test that first refresh triggers full rebuild."""
+        dps_panel.dps_query_service.supports_store_version_fast_path = False
         # Mock the service to return data
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
             DpsRow(
@@ -87,6 +88,7 @@ class TestIncrementalRefresh:
 
     def test_incremental_refresh_when_values_change(self, dps_panel) -> None:
         """Test that incremental refresh updates only changed values."""
+        dps_panel.dps_query_service.supports_store_version_fast_path = False
         # Initial data
         initial_data = [
             DpsRow(
@@ -137,6 +139,7 @@ class TestIncrementalRefresh:
 
     def test_full_refresh_when_characters_added(self, dps_panel) -> None:
         """Test that full refresh occurs when new characters appear."""
+        dps_panel.dps_query_service.supports_store_version_fast_path = False
         # Initial data - one character
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
             DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=())
@@ -163,6 +166,7 @@ class TestIncrementalRefresh:
 
     def test_full_refresh_when_characters_removed(self, dps_panel) -> None:
         """Test that full refresh occurs when characters are removed."""
+        dps_panel.dps_query_service.supports_store_version_fast_path = False
         # Initial data - two characters
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
             DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=()),
@@ -189,6 +193,7 @@ class TestIncrementalRefresh:
 
     def test_incremental_refresh_damage_type_added(self, dps_panel) -> None:
         """Test handling when new damage type is added."""
+        dps_panel.dps_query_service.supports_store_version_fast_path = False
         # Initial data - one damage type
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
             DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=())
@@ -252,6 +257,7 @@ class TestIncrementalRefresh:
 
     def test_incremental_refresh_no_changes(self, dps_panel) -> None:
         """Test that no updates occur when data hasn't changed."""
+        dps_panel.dps_query_service.supports_store_version_fast_path = False
         # Initial data
         data = [
             DpsRow(
@@ -281,6 +287,7 @@ class TestIncrementalRefresh:
 
     def test_incremental_refresh_skips_breakdown_fetch_for_unchanged_character(self, dps_panel) -> None:
         """Unchanged characters should reuse cached breakdowns."""
+        dps_panel.dps_query_service.supports_store_version_fast_path = False
         data = [
             DpsRow(
                 character='Woo',
@@ -338,6 +345,7 @@ class TestIncrementalRefresh:
 
     def test_incremental_refresh_reorders_natural_dps_order_without_rebuild(self, dps_panel) -> None:
         """Natural DPS ordering should move existing rows instead of rebuilding them."""
+        dps_panel.dps_query_service.supports_store_version_fast_path = False
         initial_data = [
             DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=(('Physical', 500),)),
             DpsRow(character='Ally', total_damage=300, time_seconds=10, dps=30.0, hit_rate=80.0, breakdown_token=(('Fire', 300),)),
@@ -371,6 +379,7 @@ class TestIncrementalRefresh:
 
     def test_refresh_rebuilds_when_view_key_changes(self, dps_panel) -> None:
         """Changing target filter or mode should force a safe full refresh."""
+        dps_panel.dps_query_service.supports_store_version_fast_path = False
         dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
             DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=(('Physical', 500),))
         ])
@@ -389,6 +398,7 @@ class TestIncrementalRefresh:
 
     def test_full_refresh_does_not_rescan_dps_rows_per_character(self, dps_panel) -> None:
         """Full refresh should iterate DPS rows linearly, not rescan them per insert."""
+        dps_panel.dps_query_service.supports_store_version_fast_path = False
 
         class CountingList(list[DpsRow]):
             def __init__(self, items: list[DpsRow]) -> None:
@@ -428,6 +438,7 @@ class TestRefreshSelectionPreservation:
 
     def test_selection_preserved_during_incremental_refresh(self, dps_panel) -> None:
         """Test that selection is preserved when using incremental refresh."""
+        dps_panel.dps_query_service.supports_store_version_fast_path = False
         # This is implicitly tested but we can verify the mechanism
         # The _incremental_refresh doesn't recreate items, so selection persists
 
