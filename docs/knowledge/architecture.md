@@ -154,7 +154,7 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 
 **UI Controllers** (`ui/controllers/`)
 - `MonitorController` owns live monitor start/pause, background file polling, active-file status updates, and monitoring switch styling
-- `ImportController` owns the `Load & Parse Logs` workflow, modal progress UI, worker process, and incremental payload application
+- `ImportController` owns the `Load & Parse Logs` workflow, modal progress UI, worker process, strict worker-payload normalization, and incremental payload application
 - `QueueDrainController` owns bounded queue draining, pressure-based scheduling, and monitor backpressure policy
 - `RefreshCoordinator` owns coalesced heavy-panel refreshes after queue drains
 - `SessionSettingsController` owns loading, building, debouncing, and persisting session settings

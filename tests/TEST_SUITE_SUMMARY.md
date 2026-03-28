@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 28, 2026 (session 5 UI/runtime-config coverage refresh)
+**Last Updated:** March 28, 2026 (import payload contract and cleanup refresh)
 
 ## Overview
-This document reflects the current state of the `tests/` directory after the Session 5 UI decomposition cleanup and a fresh full-suite recollection.
+This document reflects the current state of the `tests/` directory after the import payload contract cleanup and a fresh full-suite recollection.
 
 Collection baseline used for this update:
 - Command: `python -m pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **686 tests collected**
+- Result: **687 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 43 modules, 635 tests
+- `tests/unit/`: 43 modules, 636 tests
 - `tests/integration/`: 7 modules, 44 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 51 test modules, 686 tests
+- Total: 51 test modules, 687 tests
 
 Notes:
 - All active `test_*.py` files are under `unit/`, `integration/`, or `e2e/`.
@@ -36,7 +36,7 @@ Notes:
 - `test_immunity_panel_incremental.py` (6)
 - `test_immunity_query_service.py` (8)
 - `test_main_window_debug_tab_unlock.py` (5)
-- `test_main_window_load_parse.py` (22)
+- `test_main_window_load_parse.py` (23)
 - `test_main_window_monitoring_switch.py` (8)
 - `test_main_window_orchestration.py` (11)
 - `test_message_dialogs.py` (3)
@@ -113,7 +113,7 @@ Notes:
   - Includes explicit coverage that heavy widgets use an explicit query-service fast-path capability flag instead of method-introspection compatibility shims
   - Includes dark modal dialog coverage for app-owned warning popups and bottom-right action-row alignment shared by warning and import-progress modals
   - Includes shared tooltip-manager coverage for delayed show/hide behavior, popup reuse, overwrite-safe registration, and first-pass tooltip wiring on the main window plus DPS, Target Immunities, Death Snippets, and Debug controls
-  - Includes controller-first import coverage for modal layout, worker startup, incremental payload application, preserved death-snippet / death-character side-event delivery, and debug-toggle delegation through `MonitorController.set_debug_enabled(...)`
+  - Includes controller-first import coverage for modal layout, worker startup, strict `ops_chunk` payload requirements, incremental payload application, preserved death-snippet / death-character side-event delivery, and debug-toggle delegation through `MonitorController.set_debug_enabled(...)`
   - Includes Death Snippets widget coverage for selection state, placeholder behavior, Tk tag application, guarded `wooparseme` auto-identification, one-click character-name clearing back to the hint state, and wrap-toggle scroll preservation
   - Includes dedicated realtime backlog coverage for bounded queue saturation, post-read monitor backpressure pacing, pressure-banded Tk drain budgets, and coalesced refresh behavior under producer-faster-than-consumer load
   - Includes Target Immunities coverage for zero-damage matched samples, absorbed-value tie-breaking, suppression of invalidated temporary full-immunity rows back to real max-damage display, best-effort immunity % display when exact reverse inference fails, and persisted/default-on Parse Immunities toggle behavior
