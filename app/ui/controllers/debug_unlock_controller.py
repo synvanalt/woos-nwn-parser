@@ -28,10 +28,6 @@ class DebugUnlockController:
         self.on_unlock = on_unlock
         self._dps_tab_click_times: deque[float] = deque()
 
-    @property
-    def click_times(self) -> deque[float]:
-        return self._dps_tab_click_times
-
     def handle_notebook_click(self, event: tk.Event) -> None:
         """Inspect notebook tab clicks and unlock debug when the gesture matches."""
         if self.is_debug_tab_visible() or self.notebook is None:

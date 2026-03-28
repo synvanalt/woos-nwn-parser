@@ -472,9 +472,6 @@ class WoosNwnParserApp:
     def _flush_pending_session_settings_save(self) -> None:
         self.settings_controller.flush_pending_save()
 
-    def clear_debug(self) -> None:
-        self.debug_panel.clear()
-
     def log_debug(self, message: str, msg_type: str = "debug") -> None:
         self.debug_panel.log(message, msg_type)
 

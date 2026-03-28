@@ -61,10 +61,6 @@ class MonitorController:
         self._debug_monitor_enabled = False
         self.polling_job = None
 
-    @property
-    def active_file_name(self) -> str:
-        return self._monitor_active_file_name
-
     def set_debug_enabled(self, enabled: bool) -> None:
         """Update whether monitor-side debug messages should be emitted."""
         self._debug_monitor_enabled = bool(enabled)
@@ -148,7 +144,7 @@ class MonitorController:
         self.log_debug(f"Starting monitoring of directory: {log_directory}", "debug")
         self.directory_monitor = LogDirectoryMonitor(log_directory)
         self.directory_monitor.start_monitoring()
-        current_log_file = getattr(self.directory_monitor, "current_log_file", None)
+        current_log_file = self.directory_monitor.current_log_file
         self._monitor_active_file_name = current_log_file.name if current_log_file is not None else "N/A"
         self.update_active_file_label()
         self.set_debug_enabled(self.debug_panel.get_debug_enabled())

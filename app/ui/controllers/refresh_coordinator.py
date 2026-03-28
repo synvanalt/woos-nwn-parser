@@ -37,22 +37,6 @@ class RefreshCoordinator:
         self._targets_dirty = False
         self._immunity_dirty_targets: set[str] = set()
 
-    @property
-    def refresh_job(self):
-        return self._refresh_job
-
-    @property
-    def dps_dirty(self) -> bool:
-        return self._dps_dirty
-
-    @property
-    def targets_dirty(self) -> bool:
-        return self._targets_dirty
-
-    @property
-    def immunity_dirty_targets(self) -> set[str]:
-        return self._immunity_dirty_targets
-
     def clear_dirty_state(self) -> None:
         """Reset all pending refresh state without scheduling UI work."""
         self._dps_dirty = False
@@ -84,10 +68,7 @@ class RefreshCoordinator:
         if result.targets_to_refresh:
             self._targets_dirty = True
 
-        selected_target = ""
-        target_combo = getattr(self.immunity_panel, "target_combo", None)
-        if target_combo is not None:
-            selected_target = str(target_combo.get() or "")
+        selected_target = str(self.immunity_panel.get_selected_target() or "")
         if selected_target and (
             selected_target in result.immunity_targets
             or selected_target in result.damage_targets
@@ -100,17 +81,12 @@ class RefreshCoordinator:
     def run(self) -> None:
         """Execute one coalesced refresh pass."""
         self._refresh_job = None
-        selected_target = ""
-        target_combo = getattr(self.immunity_panel, "target_combo", None)
-        if target_combo is not None:
-            selected_target = str(target_combo.get() or "")
+        selected_target = str(self.immunity_panel.get_selected_target() or "")
 
         if self._targets_dirty:
             self.refresh_targets()
             self._targets_dirty = False
-            target_combo = getattr(self.immunity_panel, "target_combo", None)
-            if target_combo is not None:
-                selected_target = str(target_combo.get() or "")
+            selected_target = str(self.immunity_panel.get_selected_target() or "")
 
         if self._dps_dirty:
             self.dps_panel.refresh()

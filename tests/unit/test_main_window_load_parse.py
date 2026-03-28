@@ -208,10 +208,10 @@ class TestImportController:
         controller.is_importing = True
         progress = Mock(stop=Mock())
         modal = _FakeImportToplevel(None)
-        modal._progressbar = progress
         modal.grab_release = Mock()
         modal.destroy = Mock()
         controller.import_modal = modal
+        controller.import_progressbar = progress
         controller._import_status = {"total_files": 2, "errors": [], "aborted": False}
 
         controller.finalize()
@@ -539,7 +539,7 @@ class TestMainWindowCallbacks:
         app.monitor_controller.set_debug_enabled.assert_called_once_with(True)
         app.log_debug.assert_called_once_with("Debug output enabled")
 
-    def test_build_session_settings_delegates_to_controller(self) -> None:
+    def test_settings_build_is_controller_owned(self) -> None:
         app = _make_app_shell()
         app.settings_controller.build_settings.return_value = "settings"
 

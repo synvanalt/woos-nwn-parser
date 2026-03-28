@@ -83,7 +83,6 @@ class TestDebugTabUnlock:
             app.debug_unlock_controller.record_click_and_maybe_unlock()
 
         app._show_debug_tab.assert_called_once()
-        assert len(app.debug_unlock_controller.click_times) == 0
 
     def test_clicks_outside_window_do_not_unlock(self, monkeypatch):
         app = _build_unlock_shell()
@@ -100,15 +99,20 @@ class TestDebugTabUnlock:
 
     def test_non_dps_click_resets_sequence(self):
         app = _build_unlock_shell()
-        app.debug_unlock_controller.click_times.extend([1.0, 1.2, 1.4])
+        app._show_debug_tab = Mock()
+        app.debug_unlock_controller.on_unlock = app._show_debug_tab
         app.notebook.identify.return_value = "label"
         app.notebook.index.return_value = 1
         app.notebook.tab.return_value = "Target Stats"
 
+        for _ in range(3):
+            app.debug_unlock_controller.record_click_and_maybe_unlock()
         event = Mock(x=10, y=10)
         app._on_notebook_click(event)
+        for _ in range(4):
+            app.debug_unlock_controller.record_click_and_maybe_unlock()
 
-        assert len(app.debug_unlock_controller.click_times) == 0
+        app._show_debug_tab.assert_not_called()
 
     def test_show_debug_tab_is_idempotent(self):
         app = _build_unlock_shell()
