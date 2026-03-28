@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable
+from typing import Any, Callable
 
 from ..models import (
     AttackMutation,
@@ -43,6 +43,58 @@ class IngestionResult:
     dps_updated: bool = False
     death_event: DeathSnippetEvent | None = None
     character_identified: DeathCharacterIdentifiedEvent | None = None
+
+
+@dataclass(slots=True)
+class IngestionAccumulator:
+    """Collect normalized ingestion outputs across multiple parsed events."""
+
+    dps_updated: bool = False
+    targets_to_refresh: set[str] = field(default_factory=set)
+    immunity_targets: set[str] = field(default_factory=set)
+    damage_targets: set[str] = field(default_factory=set)
+    mutations: list[StoreMutation] = field(default_factory=list)
+    death_events: list[DeathSnippetEvent] = field(default_factory=list)
+    character_identity_events: list[DeathCharacterIdentifiedEvent] = field(default_factory=list)
+
+    def append(self, result: IngestionResult) -> None:
+        """Append one normalized ingestion result."""
+        self.mutations.extend(result.mutations)
+        if result.dps_updated:
+            self.dps_updated = True
+        if result.target_to_refresh:
+            self.targets_to_refresh.add(result.target_to_refresh)
+        if result.immunity_target:
+            self.immunity_targets.add(result.immunity_target)
+        if result.damage_target:
+            self.damage_targets.add(result.damage_target)
+        if result.death_event:
+            self.death_events.append(result.death_event)
+        if result.character_identified:
+            self.character_identity_events.append(result.character_identified)
+
+    def build_import_ops(self) -> dict[str, list[Any]]:
+        """Return the import payload shape consumed by import helpers/workers."""
+        return {
+            "mutations": list(self.mutations),
+            "death_snippets": [
+                {
+                    "target": death_event.target,
+                    "killer": death_event.killer,
+                    "lines": death_event.lines or [],
+                    "timestamp": death_event.timestamp,
+                    "type": "death_snippet",
+                }
+                for death_event in self.death_events
+            ],
+            "death_character_identified": [
+                {
+                    "type": "death_character_identified",
+                    "character_name": identity_event.character_name,
+                }
+                for identity_event in self.character_identity_events
+            ],
+        }
 
 
 class EventIngestionEngine:
@@ -93,39 +145,6 @@ class EventIngestionEngine:
             return IngestionResult(handled=True, character_identified=parsed_event)
 
         return IngestionResult(handled=False)
-
-    def append_import_mutations(
-        self,
-        parsed_event: ParsedEvent,
-        mutations: list[StoreMutation],
-    ) -> bool:
-        """Append only import-relevant mutations without wrapper allocation."""
-        if isinstance(parsed_event, DamageDealtEvent):
-            self._append_damage_mutations(parsed_event, mutations)
-            return True
-        if isinstance(parsed_event, ImmunityObservedEvent):
-            self._append_immunity_mutations(parsed_event, mutations)
-            return True
-        if isinstance(parsed_event, (AttackHitEvent, AttackCriticalHitEvent, AttackMissEvent)):
-            mutations.append(self._build_attack_mutation(parsed_event))
-            return True
-        if isinstance(parsed_event, EpicDodgeEvent):
-            if parsed_event.target:
-                mutations.append(EpicDodgeMutation(target=parsed_event.target))
-            return True
-        if isinstance(parsed_event, SaveObservedEvent):
-            if parsed_event.target and parsed_event.save_type and parsed_event.bonus is not None:
-                mutations.append(
-                    SaveMutation(
-                        target=parsed_event.target,
-                        save_key=str(parsed_event.save_type),
-                        bonus=int(parsed_event.bonus),
-                    )
-                )
-            return True
-        if isinstance(parsed_event, (DeathSnippetEvent, DeathCharacterIdentifiedEvent)):
-            return True
-        return False
 
     def cleanup_stale_immunities(self, max_age_seconds: float = 5.0) -> None:
         """Remove stale immunity observations when matcher support is enabled."""
