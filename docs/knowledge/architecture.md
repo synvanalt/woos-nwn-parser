@@ -26,8 +26,10 @@ woos-nwn-parser/
 |   `-- ui/
 |       |-- __init__.py
 |       |-- main_window.py         # Main application window
+|       |-- runtime_config.py      # Typed runtime policy defaults
 |       |-- formatters.py          # Data formatting utilities
 |       |-- tree_refresh.py        # Shared treeview refresh/diff helpers
+|       |-- controllers/           # Workflow/policy coordinators
 |       |-- presenters/            # Pure render-preparation helpers for widgets
 |       |-- window_style.py        # Window styling helpers
 |       `-- widgets/               # UI components
@@ -74,7 +76,8 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 - `DataStore` owns mutable indexed combat state, versioning, locking, and mutation application
 - `DataStore` also owns store-facing immutable read snapshots for query consumption, including atomic projection snapshots when query timing state must stay consistent with indexed summaries
 - Query services own read-side row construction, memoization, and typed immutable DTO return semantics for the UI
-- UI controllers coordinate workflows such as monitoring, import, queue draining, coalesced refreshes, and persisted session settings
+- `app/ui/runtime_config.py` owns typed runtime-tuning policy for queue draining, monitor pacing, import streaming, and the hidden debug unlock gesture
+- UI controllers coordinate workflows such as monitoring, import, queue draining, coalesced refreshes, persisted session settings, and hidden debug unlock handling
 - `app/ui/tree_refresh.py` owns shared top-level tree diffing, selection preservation, stale-item fallback, and sort-preservation behavior for the heavy table widgets
 - UI presenters/formatters own pure display-data preparation that widgets can consume without Tk dependencies
 - Panels should consume query services, not build projections directly from low-level store state
@@ -132,11 +135,12 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 - `ImmunityQueryService` builds prepared `Target Immunities` display rows from store-owned damage/immunity snapshots
 - Keep read-side projection caching out of `DataStore`, while consuming store-owned immutable snapshots and returning typed read-model DTOs for UI consumers
 - UI-facing display semantics such as immunity-percent formatting, absorbed-value suppression, and parse-toggle-specific row presentation belong here rather than in Tk widgets
+- Query services expose an explicit `supports_store_version_fast_path` capability that heavy widgets consult before using version-based no-op refresh short-circuits; widgets should not infer this by inspecting method identity or monkeypatch state
 
 **WoosNwnParserApp** (`ui/main_window.py`)
-- Wires together parser, storage, widgets, query services, and UI controllers
-- Owns high-level Tk callbacks such as target selection, settings-triggered refreshes, and shutdown
-- Keeps debug console hidden by default and reveals it through the DPS-tab click gesture
+- Acts as the UI composition root: constructs parser, storage, query dependencies, widgets, runtime policy, and controllers
+- Owns only app-level Tk callbacks such as target selection fanout, settings-triggered refreshes, clear/reset orchestration, and shutdown ordering
+- Delegates monitoring, import, queue-drain, settings persistence, and hidden debug unlock behavior to focused controllers
 
 **Tree Refresh Helpers** (`ui/tree_refresh.py`)
 - Own shared top-level tree rebuild and incremental-update mechanics for `DPSPanel`, `TargetStatsPanel`, and `ImmunityPanel`
@@ -149,11 +153,16 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 - Returns prepared render instructions that the widget can map onto Tk text tags
 
 **UI Controllers** (`ui/controllers/`)
-- `MonitorController` owns live monitor start/pause, background file polling, and active-file status updates
+- `MonitorController` owns live monitor start/pause, background file polling, active-file status updates, and monitoring switch styling
 - `ImportController` owns the `Load & Parse Logs` workflow, modal progress UI, worker process, and incremental payload application
 - `QueueDrainController` owns bounded queue draining, pressure-based scheduling, and monitor backpressure policy
 - `RefreshCoordinator` owns coalesced heavy-panel refreshes after queue drains
 - `SessionSettingsController` owns loading, building, debouncing, and persisting session settings
+- `DebugUnlockController` owns the hidden `Debug Console` notebook-click gesture policy and reveal callback triggering
+
+**Runtime Policy** (`ui/runtime_config.py`)
+- `AppRuntimeConfig` groups typed runtime policy for queue drain budgets, monitor scheduling, import pacing, and hidden debug unlock behavior
+- `DEFAULT_APP_RUNTIME_CONFIG` is the single source of truth for app-shell tuning values that were previously embedded as `WoosNwnParserApp` constants
 
 **DeathSnippetPanel** (`ui/widgets/death_snippet_panel.py`)
 - Displays death-context snippets with a `Killed by:` dropdown (newest first)
@@ -164,4 +173,3 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 ## Related Knowledge Docs
 
 - `docs/knowledge/immunity-matching.md`: immunity matching rules, heuristics, and live/import parity details
-
