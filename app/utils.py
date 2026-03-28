@@ -240,7 +240,10 @@ def parse_and_import_file(
                 lines_processed += 1
                 parsed_data = parser.parse_line(line)
                 if parsed_data:
-                    accumulated.append(ingestion_engine.consume(parsed_data))
+                    accumulated.append(
+                        ingestion_engine.consume(parsed_data),
+                        include_side_events=False,
+                    )
 
                     if len(accumulated.mutations) >= IMPORT_MUTATION_BATCH_SIZE:
                         flush_mutations()
@@ -325,6 +328,7 @@ def _build_import_parser(
     parser.set_death_fallback_line(death_fallback_line)
     return parser
 
+
 def _collect_file_ops(
     file_path: str,
     *,
@@ -391,24 +395,9 @@ def iter_file_ops_chunks(
             len(pending.mutations) >= chunk_size
             or len(pending.death_events) >= chunk_size
             or len(pending.character_identity_events) >= chunk_size
-            or (
-                force
-                and (
-                    pending.mutations
-                    or pending.death_events
-                    or pending.character_identity_events
-                )
-            )
+            or (force and pending.has_import_ops())
         ):
-            ops = pending.build_import_ops()
-            yield {
-                'mutations': ops['mutations'][:chunk_size],
-                'death_snippets': ops['death_snippets'][:chunk_size],
-                'death_character_identified': ops['death_character_identified'][:chunk_size],
-            }
-            pending.mutations = pending.mutations[chunk_size:]
-            pending.death_events = pending.death_events[chunk_size:]
-            pending.character_identity_events = pending.character_identity_events[chunk_size:]
+            yield pending.pop_import_ops_chunk(chunk_size)
 
     with open(file_path, 'r', encoding='utf-8', errors='ignore') as handle:
         if should_abort and should_abort():

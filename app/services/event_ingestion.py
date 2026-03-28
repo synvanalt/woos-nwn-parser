@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any, Callable
 
 from ..models import (
@@ -57,7 +56,7 @@ class IngestionAccumulator:
     death_events: list[DeathSnippetEvent] = field(default_factory=list)
     character_identity_events: list[DeathCharacterIdentifiedEvent] = field(default_factory=list)
 
-    def append(self, result: IngestionResult) -> None:
+    def append(self, result: IngestionResult, *, include_side_events: bool = True) -> None:
         """Append one normalized ingestion result."""
         self.mutations.extend(result.mutations)
         if result.dps_updated:
@@ -68,32 +67,66 @@ class IngestionAccumulator:
             self.immunity_targets.add(result.immunity_target)
         if result.damage_target:
             self.damage_targets.add(result.damage_target)
-        if result.death_event:
+        if include_side_events and result.death_event:
             self.death_events.append(result.death_event)
-        if result.character_identified:
+        if include_side_events and result.character_identified:
             self.character_identity_events.append(result.character_identified)
+
+    def has_import_ops(self) -> bool:
+        """Return whether any import payload data is pending."""
+        return bool(self.mutations or self.death_events or self.character_identity_events)
 
     def build_import_ops(self) -> dict[str, list[Any]]:
         """Return the import payload shape consumed by import helpers/workers."""
         return {
             "mutations": list(self.mutations),
             "death_snippets": [
-                {
-                    "target": death_event.target,
-                    "killer": death_event.killer,
-                    "lines": death_event.lines or [],
-                    "timestamp": death_event.timestamp,
-                    "type": "death_snippet",
-                }
-                for death_event in self.death_events
+                self._death_event_to_import_payload(death_event) for death_event in self.death_events
             ],
             "death_character_identified": [
-                {
-                    "type": "death_character_identified",
-                    "character_name": identity_event.character_name,
-                }
+                self._identity_event_to_import_payload(identity_event)
                 for identity_event in self.character_identity_events
             ],
+        }
+
+    def pop_import_ops_chunk(self, chunk_size: int) -> dict[str, list[Any]]:
+        """Pop one import payload chunk without rebuilding the full payload each time."""
+        chunk_size = max(1, int(chunk_size))
+        death_snippets = [
+            self._death_event_to_import_payload(death_event)
+            for death_event in self.death_events[:chunk_size]
+        ]
+        identity_events = [
+            self._identity_event_to_import_payload(identity_event)
+            for identity_event in self.character_identity_events[:chunk_size]
+        ]
+        chunk = {
+            "mutations": self.mutations[:chunk_size],
+            "death_snippets": death_snippets,
+            "death_character_identified": identity_events,
+        }
+        del self.mutations[:chunk_size]
+        del self.death_events[:chunk_size]
+        del self.character_identity_events[:chunk_size]
+        return chunk
+
+    @staticmethod
+    def _death_event_to_import_payload(death_event: DeathSnippetEvent) -> dict[str, Any]:
+        return {
+            "target": death_event.target,
+            "killer": death_event.killer,
+            "lines": death_event.lines or [],
+            "timestamp": death_event.timestamp,
+            "type": "death_snippet",
+        }
+
+    @staticmethod
+    def _identity_event_to_import_payload(
+        identity_event: DeathCharacterIdentifiedEvent,
+    ) -> dict[str, Any]:
+        return {
+            "type": "death_character_identified",
+            "character_name": identity_event.character_name,
         }
 
 
