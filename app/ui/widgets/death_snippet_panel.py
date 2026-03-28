@@ -180,8 +180,6 @@ class DeathSnippetPanel(ttk.Frame):
 
     def _on_notebook_tab_changed(self, _event: tk.Event) -> None:
         """Set default focus to selector dropdown when entering this panel."""
-        if not hasattr(self, "_notebook"):
-            return
         try:
             selected_tab = self._notebook.nametowidget(self._notebook.select())
         except tk.TclError:
@@ -209,27 +207,21 @@ class DeathSnippetPanel(ttk.Frame):
         self._on_fallback_line_changed = on_fallback_line_changed
 
     def _set_character_entry_foreground(self, color: str) -> None:
-        """Set the character name entry foreground with ttk/tk compatibility."""
-        if not hasattr(self, "character_name_entry"):
-            return
+        """Set the character-name entry foreground when the theme allows it."""
         try:
             self.character_name_entry.configure(foreground=color)
         except tk.TclError:
             pass
 
     def _set_fallback_entry_foreground(self, color: str) -> None:
-        """Set the fallback line entry foreground with ttk/tk compatibility."""
-        if not hasattr(self, "fallback_death_line_entry"):
-            return
+        """Set the fallback-line entry foreground when the theme allows it."""
         try:
             self.fallback_death_line_entry.configure(foreground=color)
         except tk.TclError:
             pass
 
     def _set_combo_text_foreground(self, color: str) -> None:
-        """Set dropdown text color with ttk/tk compatibility."""
-        if not hasattr(self, "killed_by_combo"):
-            return
+        """Set dropdown text color when the theme allows it."""
         try:
             self.killed_by_combo.configure(foreground=color)
         except tk.TclError:

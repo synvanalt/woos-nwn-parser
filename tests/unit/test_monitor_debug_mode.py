@@ -236,8 +236,8 @@ class TestDebugMode:
         assert len(debug_items) == 0
 
 
-class TestDebugModeBackwardCompatibility:
-    """Test that debug_mode doesn't break existing functionality."""
+class TestDebugModeCoreBehavior:
+    """Test that disabling debug output preserves normal parsing behavior."""
 
     def test_parsing_works_with_debug_disabled(self, temp_log_dir: Path) -> None:
         """Test that parsing still works when debug_enabled=False."""

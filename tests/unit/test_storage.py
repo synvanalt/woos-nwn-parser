@@ -39,7 +39,7 @@ class TestDataStoreInitialization:
         assert data_store.last_damage_timestamp is None
 
     def test_initialization_uses_named_default_history_limits(self) -> None:
-        """Default raw-history retention should remain backward-compatible."""
+        """Default raw-history retention should use the named store defaults."""
         store = DataStore()
 
         assert store.max_events_history == DataStore.DEFAULT_MAX_EVENTS_HISTORY

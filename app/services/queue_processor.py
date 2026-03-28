@@ -8,9 +8,8 @@ All logic is pure Python with no Tkinter dependencies.
 import queue
 from dataclasses import dataclass, field
 from time import perf_counter
-from typing import Any, Callable, Dict, List, Set
+from typing import Callable, List, Set
 
-from ..models import StoreMutation
 from ..parser import ParserSession
 from ..parsed_events import (
     AttackCriticalHitEvent,
@@ -25,7 +24,7 @@ from ..parsed_events import (
     SaveObservedEvent,
 )
 from ..storage import DataStore
-from .event_ingestion import EventIngestionEngine, IngestionResult
+from .event_ingestion import EventIngestionEngine, IngestionAccumulator, IngestionResult
 from .immunity_matcher import ImmunityMatcher
 
 
@@ -69,7 +68,7 @@ class QueueProcessor:
         """Process a bounded batch of queue events."""
         result = QueueDrainResult()
         started = perf_counter()
-        pending_mutations: List[StoreMutation] = []
+        accumulated = IngestionAccumulator()
 
         try:
             while result.events_processed < max_events:
@@ -81,35 +80,28 @@ class QueueProcessor:
                 data = data_queue.get_nowait()
                 result.events_processed += 1
 
-                event_result = self._handle_event_batched(
+                self._handle_event_batched(
                     data,
-                    pending_mutations,
+                    accumulated,
                     on_log_message,
                     debug_enabled,
                 )
 
-                if event_result:
-                    if event_result.get("dps_updated"):
-                        result.dps_updated = True
-                    if event_result.get("target"):
-                        result.targets_to_refresh.add(event_result["target"])
-                    if event_result.get("immunity_target"):
-                        result.immunity_targets.add(event_result["immunity_target"])
-                    if event_result.get("damage_target"):
-                        result.damage_targets.add(event_result["damage_target"])
-                    if event_result.get("death_event"):
-                        result.death_events.append(event_result["death_event"])
-                    if event_result.get("character_identified"):
-                        result.character_identity_events.append(event_result["character_identified"])
-
         except queue.Empty:
             pass
 
-        if pending_mutations:
+        if accumulated.mutations:
             try:
-                self.data_store.apply_mutations(pending_mutations)
+                self.data_store.apply_mutations(accumulated.mutations)
             except Exception as exc:
                 on_log_message(f"Data store batch error: {exc}", "error")
+
+        result.dps_updated = accumulated.dps_updated
+        result.targets_to_refresh = accumulated.targets_to_refresh
+        result.immunity_targets = accumulated.immunity_targets
+        result.damage_targets = accumulated.damage_targets
+        result.death_events = accumulated.death_events
+        result.character_identity_events = accumulated.character_identity_events
 
         result.backlog_count = self._get_queue_size_hint(data_queue)
         result.has_backlog = result.backlog_count > 0
@@ -162,10 +154,10 @@ class QueueProcessor:
     def _handle_event_batched(
         self,
         data: ParsedEvent,
-        pending_mutations: List[StoreMutation],
+        accumulated: IngestionAccumulator,
         on_log_message: Callable[[str, str], None],
         debug_enabled: bool,
-    ) -> Dict[str, Any]:
+    ) -> None:
         self.ingestion_engine.parse_immunity = bool(self.parser.parse_immunity)
         matcher = self.ingestion_engine._matcher
         had_pending_immunity_types: set[str] = set()
@@ -183,7 +175,7 @@ class QueueProcessor:
                 ):
                     had_pending_immunity_types.add(str(damage_type))
         event_result = self.ingestion_engine.consume(data)
-        pending_mutations.extend(event_result.mutations)
+        accumulated.append(event_result)
         self._log_debug_event(
             data=data,
             event_result=event_result,
@@ -194,21 +186,6 @@ class QueueProcessor:
 
         if not event_result.handled:
             on_log_message(f"Unhandled parsed event: {data}", "error")
-
-        result: Dict[str, Any] = {}
-        if event_result.dps_updated:
-            result["dps_updated"] = True
-        if event_result.target_to_refresh:
-            result["target"] = event_result.target_to_refresh
-        if event_result.immunity_target:
-            result["immunity_target"] = event_result.immunity_target
-        if event_result.damage_target:
-            result["damage_target"] = event_result.damage_target
-        if event_result.death_event:
-            result["death_event"] = event_result.death_event
-        if event_result.character_identified:
-            result["character_identified"] = event_result.character_identified
-        return result
 
     def _log_debug_event(
         self,

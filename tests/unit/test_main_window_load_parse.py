@@ -8,6 +8,7 @@ from collections import deque
 from datetime import datetime
 from unittest.mock import Mock
 
+import pytest
 import app.ui.controllers.import_controller as import_module
 import app.ui.main_window as main_window_module
 from app.models import DamageMutation, SaveMutation
@@ -383,7 +384,9 @@ class TestImportController:
                             count_for_dps=True,
                             damage_types={"slashing": 10},
                         )
-                    ]
+                    ],
+                    "death_snippets": [],
+                    "death_character_identified": [],
                 },
             }
         )
@@ -400,6 +403,23 @@ class TestImportController:
         controller.poll_progress()
 
         controller.finalize.assert_called_once_with()
+
+    def test_drain_events_requires_complete_ops_chunk_payload(self) -> None:
+        controller = _make_controller()
+        controller.import_result_queue = queue.Queue()
+        controller.import_result_queue.put(
+            {
+                "event": "ops_chunk",
+                "index": 1,
+                "ops": {
+                    "mutations": [],
+                    "death_snippets": [],
+                },
+            }
+        )
+
+        with pytest.raises(KeyError):
+            controller.drain_events()
 
     def test_start_import_worker_passes_death_settings_to_worker(self, monkeypatch) -> None:
         controller = _make_controller()

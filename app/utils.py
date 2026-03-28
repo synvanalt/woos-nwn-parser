@@ -9,10 +9,8 @@ import queue
 import time
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
-from .models import StoreMutation
 from .parser import ParserSession
-from .parsed_events import DeathCharacterIdentifiedEvent, DeathSnippetEvent
-from .services.event_ingestion import EventIngestionEngine, IngestionResult
+from .services.event_ingestion import EventIngestionEngine, IngestionAccumulator
 from .services.immunity_matcher import ImmunityMatcher
 
 ABORT_CHECK_MASK = 0x3FF
@@ -206,13 +204,12 @@ def parse_and_import_file(
         )
 
         last_progress_report = 0
-        pending_mutations: List[StoreMutation] = []
+        accumulated = IngestionAccumulator()
 
         def flush_mutations() -> None:
-            nonlocal pending_mutations
-            if pending_mutations:
-                database.apply_mutations(pending_mutations)
-                pending_mutations = []
+            if accumulated.mutations:
+                database.apply_mutations(accumulated.mutations)
+                accumulated.mutations.clear()
 
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             if should_abort and should_abort():
@@ -243,9 +240,12 @@ def parse_and_import_file(
                 lines_processed += 1
                 parsed_data = parser.parse_line(line)
                 if parsed_data:
-                    ingestion_engine.append_import_mutations(parsed_data, pending_mutations)
+                    accumulated.append(
+                        ingestion_engine.consume(parsed_data),
+                        include_side_events=False,
+                    )
 
-                    if len(pending_mutations) >= IMPORT_MUTATION_BATCH_SIZE:
+                    if len(accumulated.mutations) >= IMPORT_MUTATION_BATCH_SIZE:
                         flush_mutations()
 
                 if progress_callback and (lines_processed % PROGRESS_REPORT_EVERY_LINES) == 0:
@@ -329,34 +329,6 @@ def _build_import_parser(
     return parser
 
 
-def _append_ingestion_result(
-    ingestion_result: IngestionResult,
-    *,
-    mutations: List[StoreMutation],
-    death_snippets: List[Dict[str, Any]],
-    death_character_identified: List[Dict[str, Any]],
-) -> None:
-    """Append one normalized ingestion result to import payload buffers."""
-    mutations.extend(ingestion_result.mutations)
-
-    if ingestion_result.death_event:
-        death_event = ingestion_result.death_event
-        death_snippets.append({
-            'target': death_event.target,
-            'killer': death_event.killer,
-            'lines': death_event.lines or [],
-            'timestamp': death_event.timestamp,
-            'type': 'death_snippet',
-        })
-
-    if ingestion_result.character_identified:
-        identity_event = ingestion_result.character_identified
-        death_character_identified.append({
-            'type': 'death_character_identified',
-            'character_name': identity_event.character_name,
-        })
-
-
 def _collect_file_ops(
     file_path: str,
     *,
@@ -369,9 +341,7 @@ def _collect_file_ops(
         parse_immunity=parser.parse_immunity,
         matcher_factory=ImmunityMatcher,
     )
-    mutations: List[StoreMutation] = []
-    death_snippets: List[Dict[str, Any]] = []
-    death_character_identified: List[Dict[str, Any]] = []
+    accumulated = IngestionAccumulator()
 
     with open(file_path, 'r', encoding='utf-8', errors='ignore') as handle:
         if should_abort and should_abort():
@@ -391,18 +361,9 @@ def _collect_file_ops(
             if not parsed_data:
                 continue
 
-            _append_ingestion_result(
-                ingestion_engine.consume(parsed_data),
-                mutations=mutations,
-                death_snippets=death_snippets,
-                death_character_identified=death_character_identified,
-            )
+            accumulated.append(ingestion_engine.consume(parsed_data))
 
-    return lines_processed, False, {
-        'mutations': mutations,
-        'death_snippets': death_snippets,
-        'death_character_identified': death_character_identified,
-    }
+    return lines_processed, False, accumulated.build_import_ops()
 
 
 def iter_file_ops_chunks(
@@ -426,29 +387,17 @@ def iter_file_ops_chunks(
         parse_immunity=parser.parse_immunity,
         matcher_factory=ImmunityMatcher,
     )
-    pending_mutations: List[StoreMutation] = []
-    pending_death_snippets: List[Dict[str, Any]] = []
-    pending_identity_events: List[Dict[str, Any]] = []
+    pending = IngestionAccumulator()
 
     def flush_pending(force: bool = False) -> Iterator[Dict[str, List[Any]]]:
-        nonlocal pending_mutations, pending_death_snippets, pending_identity_events
+        nonlocal pending
         while (
-            len(pending_mutations) >= chunk_size
-            or len(pending_death_snippets) >= chunk_size
-            or len(pending_identity_events) >= chunk_size
-            or (
-                force
-                and (pending_mutations or pending_death_snippets or pending_identity_events)
-            )
+            len(pending.mutations) >= chunk_size
+            or len(pending.death_events) >= chunk_size
+            or len(pending.character_identity_events) >= chunk_size
+            or (force and pending.has_import_ops())
         ):
-            yield {
-                'mutations': pending_mutations[:chunk_size],
-                'death_snippets': pending_death_snippets[:chunk_size],
-                'death_character_identified': pending_identity_events[:chunk_size],
-            }
-            pending_mutations = pending_mutations[chunk_size:]
-            pending_death_snippets = pending_death_snippets[chunk_size:]
-            pending_identity_events = pending_identity_events[chunk_size:]
+            yield pending.pop_import_ops_chunk(chunk_size)
 
     with open(file_path, 'r', encoding='utf-8', errors='ignore') as handle:
         if should_abort and should_abort():
@@ -468,12 +417,7 @@ def iter_file_ops_chunks(
             if not parsed_data:
                 continue
 
-            _append_ingestion_result(
-                ingestion_engine.consume(parsed_data),
-                mutations=pending_mutations,
-                death_snippets=pending_death_snippets,
-                death_character_identified=pending_identity_events,
-            )
+            pending.append(ingestion_engine.consume(parsed_data))
             yield from flush_pending()
 
     yield from flush_pending(force=True)
