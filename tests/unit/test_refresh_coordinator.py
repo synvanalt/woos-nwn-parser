@@ -14,7 +14,7 @@ def test_handle_queue_result_marks_dirty_and_schedules_once() -> None:
         root=root,
         dps_panel=Mock(),
         stats_panel=Mock(),
-        immunity_panel=SimpleNamespace(target_combo=SimpleNamespace(get=lambda: "")),
+        immunity_panel=SimpleNamespace(get_selected_target=lambda: ""),
         refresh_targets=Mock(),
         on_death_snippet=Mock(),
         on_character_identified=Mock(),
@@ -27,8 +27,8 @@ def test_handle_queue_result_marks_dirty_and_schedules_once() -> None:
         )
     )
 
-    assert coordinator.dps_dirty is True
-    assert coordinator.targets_dirty is True
+    assert coordinator._dps_dirty is True
+    assert coordinator._targets_dirty is True
     root.after.assert_called_once_with(180, coordinator.run)
 
 
@@ -37,7 +37,7 @@ def test_run_refreshes_targets_then_dps_then_selected_immunity() -> None:
     root = Mock()
     root.after = Mock(return_value="refresh-job")
     immunity_panel = Mock()
-    immunity_panel.target_combo.get.return_value = "Goblin"
+    immunity_panel.get_selected_target.return_value = "Goblin"
     immunity_panel.refresh_target_details.side_effect = lambda target: call_order.append(f"immunity:{target}")
     dps_panel = Mock()
     dps_panel.refresh.side_effect = lambda: call_order.append("dps")

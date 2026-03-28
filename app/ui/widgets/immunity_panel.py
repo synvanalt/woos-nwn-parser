@@ -170,7 +170,7 @@ class ImmunityPanel(ttk.Frame):
         """
         view_key = (target, bool(self.parser.parse_immunity))
         current_version = self.data_store.version
-        uses_store_query = self._can_use_store_version_fast_path()
+        uses_store_query = self.immunity_query_service.supports_store_version_fast_path
         natural_order = self._is_natural_order_active()
         if self._tree_refresh.can_skip_refresh(
             self._tree_refresh_state,
@@ -249,19 +249,6 @@ class ImmunityPanel(ttk.Frame):
         self._tree_refresh_state.order_token = order_token
         self._tree_refresh_state.last_refresh_version = current_version
         self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
-
-    def _can_use_store_version_fast_path(self) -> bool:
-        """Return whether refresh data is sourced from the live store method."""
-        service_method = getattr(
-            self.immunity_query_service,
-            "get_target_immunity_display_rows",
-            None,
-        )
-        return (
-            getattr(service_method, "__self__", None) is self.immunity_query_service
-            and getattr(service_method, "__func__", None)
-            is ImmunityQueryService.get_target_immunity_display_rows
-        )
 
     def _is_natural_order_active(self) -> bool:
         """Return whether the active tree sort matches store immunity order."""

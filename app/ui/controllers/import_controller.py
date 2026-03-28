@@ -69,6 +69,7 @@ class ImportController:
         self.import_status_text: tk.StringVar | None = None
         self.import_progress_text: tk.StringVar | None = None
         self.import_abort_button = None
+        self.import_progressbar = None
         self._import_status_lock = Lock()
         self._import_status: dict[str, Any] = {}
         self._pending_file_payloads = deque()
@@ -173,7 +174,7 @@ class ImportController:
         progress = ttk.Progressbar(container, mode="indeterminate")
         progress.pack(fill="x")
         progress.start(8)
-        self.import_modal._progressbar = progress
+        self.import_progressbar = progress
 
         actions = ttk.Frame(container)
         actions.pack(side="bottom", fill="x")
@@ -371,12 +372,13 @@ class ImportController:
         self.import_abort_flag = None
 
         if self.import_modal is not None:
-            progress = getattr(self.import_modal, "_progressbar", None)
+            progress = self.import_progressbar
             if progress is not None:
                 progress.stop()
             self.import_modal.grab_release()
             self.import_modal.destroy()
             self.import_modal = None
+        self.import_progressbar = None
 
         with self._import_status_lock:
             status = dict(self._import_status)

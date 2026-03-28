@@ -35,14 +35,6 @@ class SessionSettingsController:
         self._settings = AppSettings()
         self._settings_save_job = None
 
-    @property
-    def settings(self) -> AppSettings:
-        return self._settings
-
-    @property
-    def settings_save_job(self):
-        return self._settings_save_job
-
     def load_initial_settings(self) -> AppSettings:
         """Load and remember persisted settings."""
         self._settings = self._load_settings()
@@ -53,7 +45,7 @@ class SessionSettingsController:
         return AppSettings(
             log_directory=(self.get_log_directory() or "").strip() or None,
             death_fallback_line=(self.get_death_fallback_line() or "").strip() or None,
-            parse_immunity=bool(getattr(self.parser, "parse_immunity", True)),
+            parse_immunity=bool(self.parser.parse_immunity),
             first_timestamp_mode=self.get_first_timestamp_mode(),
         )
 

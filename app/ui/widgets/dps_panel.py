@@ -160,7 +160,7 @@ class DPSPanel(ttk.Frame):
             self.dps_query_service.global_start_time,
         )
         current_version = self.data_store.version
-        uses_store_query = self._can_use_store_version_fast_path()
+        uses_store_query = self.dps_query_service.supports_store_version_fast_path
         if self._tree_refresh.can_skip_refresh(
             self._tree_refresh_state,
             current_version=current_version,
@@ -255,15 +255,6 @@ class DPSPanel(ttk.Frame):
         self._tree_refresh_state.last_refresh_version = current_version
         self._tree_refresh_state.last_refresh_used_store_query = uses_store_query
         self._cached_breakdown_tokens = new_breakdown_tokens
-
-    def _can_use_store_version_fast_path(self) -> bool:
-        """Return whether the service output is controlled by the store/version state."""
-        service_method = getattr(self.dps_query_service, "get_dps_display_data", None)
-        return (
-            getattr(service_method, "__self__", None) is self.dps_query_service
-            and getattr(service_method, "__func__", None)
-            is DpsQueryService.get_dps_display_data
-        )
 
     def _is_natural_order_active(self) -> bool:
         """Return whether the active tree sort matches the service's natural order."""

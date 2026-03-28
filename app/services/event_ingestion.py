@@ -270,8 +270,10 @@ class EventIngestionEngine:
             roll=parsed_event.roll,
             bonus=parsed_event.bonus,
             total=parsed_event.total,
-            was_nat1=bool(getattr(parsed_event, "was_nat1", False)),
-            was_nat20=bool(getattr(parsed_event, "was_nat20", False)),
+            was_nat1=bool(parsed_event.was_nat1) if isinstance(parsed_event, AttackMissEvent) else False,
+            was_nat20=bool(parsed_event.was_nat20)
+            if isinstance(parsed_event, (AttackHitEvent, AttackCriticalHitEvent))
+            else False,
             is_concealment=bool(parsed_event.is_concealment),
         )
 

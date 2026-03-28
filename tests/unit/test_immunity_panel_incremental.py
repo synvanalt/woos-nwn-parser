@@ -98,6 +98,7 @@ class TestImmunityPanelIncrementalRefresh:
             ImmunityDisplayRow("Fire", "50", "-", "-", "-"),
         ]
 
+        panel.immunity_query_service.supports_store_version_fast_path = False
         panel.immunity_query_service.get_target_immunity_display_rows = (  # type: ignore[assignment]
             lambda _target, _parse_immunity: initial_summary
         )

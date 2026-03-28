@@ -20,7 +20,7 @@ from app.storage import DataStore
 from app.ui.controllers.monitor_controller import MonitorController
 from app.ui.controllers.queue_drain_controller import QueueDrainController
 from app.ui.controllers.refresh_coordinator import RefreshCoordinator
-from app.ui.main_window import WoosNwnParserApp
+from app.ui.runtime_config import DEFAULT_APP_RUNTIME_CONFIG
 
 
 class _AfterRecorder:
@@ -100,11 +100,12 @@ def _build_harness() -> tuple[QueueDrainController, RefreshCoordinator, MonitorC
     root = Mock()
     root.after = after_recorder.after
     root.after_cancel = after_recorder.after_cancel
+    runtime_config = DEFAULT_APP_RUNTIME_CONFIG
 
     parser = ParserSession(parse_immunity=False)
     data_store = DataStore()
     queue_processor = QueueProcessor(data_store, parser)
-    data_queue: queue.Queue = queue.Queue(maxsize=WoosNwnParserApp.DATA_QUEUE_MAXSIZE)
+    data_queue: queue.Queue = queue.Queue(maxsize=runtime_config.queue.data_queue_maxsize)
 
     dps_panel = Mock(refresh=Mock())
     stats_panel = Mock(refresh=Mock())
@@ -128,25 +129,25 @@ def _build_harness() -> tuple[QueueDrainController, RefreshCoordinator, MonitorC
         get_debug_enabled=lambda: False,
         log_debug=Mock(),
         refresh_coordinator=refresh_coordinator,
-        queue_tick_ms_normal=WoosNwnParserApp.QUEUE_TICK_MS_NORMAL,
-        queue_tick_ms_pressured=WoosNwnParserApp.QUEUE_TICK_MS_PRESSURED,
-        queue_tick_ms_saturated=WoosNwnParserApp.QUEUE_TICK_MS_SATURATED,
-        queue_drain_max_events_normal=WoosNwnParserApp.QUEUE_DRAIN_MAX_EVENTS_NORMAL,
-        queue_drain_max_events_pressured=WoosNwnParserApp.QUEUE_DRAIN_MAX_EVENTS_PRESSURED,
-        queue_drain_max_events_saturated=WoosNwnParserApp.QUEUE_DRAIN_MAX_EVENTS_SATURATED,
-        queue_drain_max_time_ms_normal=WoosNwnParserApp.QUEUE_DRAIN_MAX_TIME_MS_NORMAL,
-        queue_drain_max_time_ms_pressured=WoosNwnParserApp.QUEUE_DRAIN_MAX_TIME_MS_PRESSURED,
-        queue_drain_max_time_ms_saturated=WoosNwnParserApp.QUEUE_DRAIN_MAX_TIME_MS_SATURATED,
-        data_queue_pressured_threshold=WoosNwnParserApp.DATA_QUEUE_PRESSURED_THRESHOLD,
-        data_queue_saturated_threshold=WoosNwnParserApp.DATA_QUEUE_SATURATED_THRESHOLD,
-        monitor_lines_per_poll_normal=WoosNwnParserApp.MONITOR_LINES_PER_POLL_NORMAL,
-        monitor_lines_per_poll_pressured=WoosNwnParserApp.MONITOR_LINES_PER_POLL_PRESSURED,
-        monitor_sleep_active_normal=WoosNwnParserApp.MONITOR_SLEEP_ACTIVE_NORMAL,
-        monitor_sleep_active_pressured=WoosNwnParserApp.MONITOR_SLEEP_ACTIVE_PRESSURED,
-        monitor_sleep_active_saturated=WoosNwnParserApp.MONITOR_SLEEP_ACTIVE_SATURATED,
-        monitor_sleep_idle_normal=WoosNwnParserApp.MONITOR_SLEEP_IDLE_NORMAL,
-        monitor_sleep_idle_pressured=WoosNwnParserApp.MONITOR_SLEEP_IDLE_PRESSURED,
-        monitor_sleep_idle_saturated=WoosNwnParserApp.MONITOR_SLEEP_IDLE_SATURATED,
+        queue_tick_ms_normal=runtime_config.queue.queue_tick_ms_normal,
+        queue_tick_ms_pressured=runtime_config.queue.queue_tick_ms_pressured,
+        queue_tick_ms_saturated=runtime_config.queue.queue_tick_ms_saturated,
+        queue_drain_max_events_normal=runtime_config.queue.queue_drain_max_events_normal,
+        queue_drain_max_events_pressured=runtime_config.queue.queue_drain_max_events_pressured,
+        queue_drain_max_events_saturated=runtime_config.queue.queue_drain_max_events_saturated,
+        queue_drain_max_time_ms_normal=runtime_config.queue.queue_drain_max_time_ms_normal,
+        queue_drain_max_time_ms_pressured=runtime_config.queue.queue_drain_max_time_ms_pressured,
+        queue_drain_max_time_ms_saturated=runtime_config.queue.queue_drain_max_time_ms_saturated,
+        data_queue_pressured_threshold=runtime_config.queue.data_queue_pressured_threshold,
+        data_queue_saturated_threshold=runtime_config.queue.data_queue_saturated_threshold,
+        monitor_lines_per_poll_normal=runtime_config.monitor.lines_per_poll_normal,
+        monitor_lines_per_poll_pressured=runtime_config.monitor.lines_per_poll_pressured,
+        monitor_sleep_active_normal=runtime_config.monitor.sleep_active_normal,
+        monitor_sleep_active_pressured=runtime_config.monitor.sleep_active_pressured,
+        monitor_sleep_active_saturated=runtime_config.monitor.sleep_active_saturated,
+        monitor_sleep_idle_normal=runtime_config.monitor.sleep_idle_normal,
+        monitor_sleep_idle_pressured=runtime_config.monitor.sleep_idle_pressured,
+        monitor_sleep_idle_saturated=runtime_config.monitor.sleep_idle_saturated,
     )
     active_files: list[str] = []
     monitor = MonitorController(
@@ -172,7 +173,8 @@ def _build_harness() -> tuple[QueueDrainController, RefreshCoordinator, MonitorC
 
 def test_realtime_backpressure_stress_keeps_monitor_non_blocking(monkeypatch: pytest.MonkeyPatch) -> None:
     queue_drain, refresh_coordinator, monitor, after_recorder, data_queue = _build_harness()
-    total_events = WoosNwnParserApp.DATA_QUEUE_SATURATED_THRESHOLD + 1500
+    runtime_config = DEFAULT_APP_RUNTIME_CONFIG
+    total_events = runtime_config.queue.data_queue_saturated_threshold + 1500
     now = datetime.now()
     fake_monitor = _FakeRealtimeMonitor([_make_realtime_event(index, now) for index in range(total_events)])
     monitor.directory_monitor = fake_monitor
@@ -200,7 +202,7 @@ def test_realtime_backpressure_stress_keeps_monitor_non_blocking(monkeypatch: py
             break
         original_sleep(0.001)
 
-    assert "pressured" in observed_queue_pressure or data_queue.qsize() >= WoosNwnParserApp.DATA_QUEUE_PRESSURED_THRESHOLD
+    assert "pressured" in observed_queue_pressure or data_queue.qsize() >= runtime_config.queue.data_queue_pressured_threshold
     assert queue_drain.get_pressure_state() == "saturated"
 
     scheduled_queue_ticks: list[int] = []
@@ -216,7 +218,7 @@ def test_realtime_backpressure_stress_keeps_monitor_non_blocking(monkeypatch: py
             for delay_ms, callback in new_calls
             if getattr(callback, "__name__", "") == "tick"
         )
-        if refresh_coordinator._refresh_job is not None:
+        if any(callback == refresh_coordinator.run for _delay_ms, callback in new_calls):
             coalesced_refresh_runs += 1
             refresh_coordinator.run()
         if fake_monitor.remaining_count == 0 and data_queue.empty():
@@ -231,9 +233,9 @@ def test_realtime_backpressure_stress_keeps_monitor_non_blocking(monkeypatch: py
     assert fake_monitor.remaining_count == 0
     assert data_queue.qsize() == 0
     assert queue_drain.get_pressure_state() == "normal"
-    assert WoosNwnParserApp.MONITOR_LINES_PER_POLL_PRESSURED in fake_monitor.max_lines_requests
-    assert WoosNwnParserApp.MONITOR_SLEEP_ACTIVE_SATURATED in recorded_sleep_durations
-    assert WoosNwnParserApp.QUEUE_TICK_MS_PRESSURED in scheduled_queue_ticks
+    assert runtime_config.monitor.lines_per_poll_pressured in fake_monitor.max_lines_requests
+    assert runtime_config.monitor.sleep_active_saturated in recorded_sleep_durations
+    assert runtime_config.queue.queue_tick_ms_pressured in scheduled_queue_ticks
     assert coalesced_refresh_runs > 0
     assert monitor.dps_panel.refresh.call_count == coalesced_refresh_runs
     assert refresh_coordinator.refresh_targets.call_count == coalesced_refresh_runs
@@ -241,8 +243,9 @@ def test_realtime_backpressure_stress_keeps_monitor_non_blocking(monkeypatch: py
 
 def test_monitor_loop_uses_post_read_pressure_for_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     queue_drain, _refresh_coordinator, monitor, _after_recorder, data_queue = _build_harness()
+    runtime_config = DEFAULT_APP_RUNTIME_CONFIG
     now = datetime.now()
-    for _ in range(WoosNwnParserApp.DATA_QUEUE_PRESSURED_THRESHOLD - 500):
+    for _ in range(runtime_config.queue.data_queue_pressured_threshold - 500):
         data_queue.put(
             DamageDealtEvent(
                 attacker="seed",
@@ -252,9 +255,9 @@ def test_monitor_loop_uses_post_read_pressure_for_sleep(monkeypatch: pytest.Monk
                 damage_types={"Physical": 1},
                 line_number=-1,
             )
-        )
+    )
     fake_monitor = _FakeRealtimeMonitor(
-        [_make_realtime_event(index, now) for index in range(WoosNwnParserApp.MONITOR_LINES_PER_POLL_NORMAL)]
+        [_make_realtime_event(index, now) for index in range(runtime_config.monitor.lines_per_poll_normal)]
     )
     monitor.directory_monitor = fake_monitor
     monitor.is_monitoring = True
@@ -269,5 +272,5 @@ def test_monitor_loop_uses_post_read_pressure_for_sleep(monkeypatch: pytest.Monk
 
     monitor.monitor_loop()
 
-    assert fake_monitor.max_lines_requests[0] == WoosNwnParserApp.MONITOR_LINES_PER_POLL_NORMAL
-    assert recorded_sleep_durations == [WoosNwnParserApp.MONITOR_SLEEP_ACTIVE_SATURATED]
+    assert fake_monitor.max_lines_requests[0] == runtime_config.monitor.lines_per_poll_normal
+    assert recorded_sleep_durations == [runtime_config.monitor.sleep_active_saturated]

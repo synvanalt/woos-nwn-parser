@@ -9,6 +9,8 @@ from .models import TargetSummaryRow
 class TargetSummaryQueryService:
     """Build target summary rows from store-owned indices."""
 
+    supports_store_version_fast_path = True
+
     def __init__(self, data_store: DataStore) -> None:
         self.data_store = data_store
         self._cache_version = -1

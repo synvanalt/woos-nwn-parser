@@ -12,6 +12,8 @@ from .models import DpsBreakdownRow, DpsRow
 class DpsQueryService:
     """Build DPS display rows and damage-type breakdowns from store indices."""
 
+    supports_store_version_fast_path = True
+
     def __init__(self, data_store: DataStore) -> None:
         self.data_store = data_store
         self.time_tracking_mode = "per_character"

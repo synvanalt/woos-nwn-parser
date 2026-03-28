@@ -57,7 +57,6 @@ class TestTargetStatsIncrementalRefresh:
         apply(store, damage_row(target="Goblin", damage_type="Fire", total_damage=50, attacker="Woo"))
         panel.refresh()
 
-        panel._can_use_store_version_fast_path = Mock(return_value=True)  # type: ignore[method-assign]
         panel.target_summary_query_service.get_all_targets_summary = Mock(  # type: ignore[assignment]
             side_effect=AssertionError("should not be called")
         )
@@ -101,6 +100,7 @@ class TestTargetStatsIncrementalRefresh:
             TargetSummaryRow("Goblin", "-", "-", "-", "-", "-", "50"),
         ]
 
+        panel.target_summary_query_service.supports_store_version_fast_path = False
         panel.target_summary_query_service.get_all_targets_summary = lambda: initial_summary  # type: ignore[assignment]
         panel.refresh()
         initial_item_ids = dict(panel._tree_refresh_state.item_ids)

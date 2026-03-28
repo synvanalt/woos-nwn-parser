@@ -10,6 +10,8 @@ from .models import ImmunityDisplayRow
 class ImmunityQueryService:
     """Build prepared immunity display rows from indexed damage and immunity state."""
 
+    supports_store_version_fast_path = True
+
     def __init__(self, data_store: DataStore) -> None:
         self.data_store = data_store
         self._cache_version = -1

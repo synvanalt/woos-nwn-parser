@@ -115,7 +115,7 @@ class QueueProcessor:
         result.has_backlog = result.backlog_count > 0
         result.pressure_state = self._classify_backpressure(
             backlog_count=result.backlog_count,
-            queue_maxsize=getattr(data_queue, "maxsize", 0),
+            queue_maxsize=data_queue.maxsize,
         )
 
         self.parsed_event_count += result.events_processed
