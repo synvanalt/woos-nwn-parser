@@ -105,6 +105,18 @@ class ImportController:
             line_number=None,
         )
 
+    @staticmethod
+    def _payload_item_from_worker_event(event: dict[str, Any]) -> dict[str, Any]:
+        """Normalize one required ops-chunk payload from the import worker."""
+        ops = event["ops"]
+        return {
+            "mutations": ops["mutations"],
+            "death_snippets": ops["death_snippets"],
+            "death_character_identified": ops["death_character_identified"],
+            "index": event["index"],
+            "mutation_idx": 0,
+        }
+
     def start_from_dialog(self, *, is_monitoring: bool) -> None:
         """Open file picker and start background import if files were chosen."""
         if self.is_importing:
@@ -247,16 +259,7 @@ class ImportController:
                 with self._import_status_lock:
                     self._import_status["current_file"] = event.get("file_name", "")
             elif event_type == "ops_chunk":
-                ops = event.get("ops", {})
-                self._pending_file_payloads.append(
-                    {
-                        "mutations": ops.get("mutations", []),
-                        "death_snippets": ops.get("death_snippets", []),
-                        "death_character_identified": ops.get("death_character_identified", []),
-                        "index": event.get("index", 0),
-                        "mutation_idx": 0,
-                    }
-                )
+                self._pending_file_payloads.append(self._payload_item_from_worker_event(event))
                 if not self._is_applying_payload:
                     self._is_applying_payload = True
                     self.root.after(1, self.apply_pending_payloads_incremental)
