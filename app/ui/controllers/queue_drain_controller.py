@@ -67,10 +67,6 @@ class QueueDrainController:
         self._queue_tick_ms = self.queue_tick_ms_normal
         self._queue_pressure_state = "normal"
 
-    @property
-    def pressure_state(self) -> str:
-        return self._queue_pressure_state
-
     def start(self) -> None:
         self.tick()
 
@@ -84,7 +80,7 @@ class QueueDrainController:
             max_events=max_events,
             max_time_ms=max_time_ms,
         )
-        pressure_state = getattr(result, "pressure_state", "normal")
+        pressure_state = result.pressure_state
         if pressure_state not in {"normal", "pressured", "saturated"}:
             pressure_state = "normal"
         self._queue_pressure_state = pressure_state

@@ -218,7 +218,7 @@ def test_realtime_backpressure_stress_keeps_monitor_non_blocking(monkeypatch: py
             for delay_ms, callback in new_calls
             if getattr(callback, "__name__", "") == "tick"
         )
-        if refresh_coordinator._refresh_job is not None:
+        if any(callback == refresh_coordinator.run for _delay_ms, callback in new_calls):
             coalesced_refresh_runs += 1
             refresh_coordinator.run()
         if fake_monitor.remaining_count == 0 and data_queue.empty():
