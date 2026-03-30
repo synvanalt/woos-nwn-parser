@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 28, 2026 (import payload contract and cleanup refresh)
+**Last Updated:** March 30, 2026 (parser API cleanup refresh)
 
 ## Overview
 This document reflects the current state of the `tests/` directory after the import payload contract cleanup and a fresh full-suite recollection.
 
 Collection baseline used for this update:
 - Command: `python -m pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **687 tests collected**
+- Result: **686 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 43 modules, 636 tests
+- `tests/unit/`: 43 modules, 635 tests
 - `tests/integration/`: 7 modules, 44 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 51 test modules, 687 tests
+- Total: 51 test modules, 686 tests
 
 Notes:
 - All active `test_*.py` files are under `unit/`, `integration/`, or `e2e/`.
@@ -44,7 +44,7 @@ Notes:
 - `test_monitor.py` (23)
 - `test_monitor_debug_mode.py` (9)
 - `test_monitor_edge_cases.py` (4)
-- `test_parser.py` (81)
+- `test_parser.py` (80)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
 - `test_queue_processor.py` (10)
@@ -84,7 +84,7 @@ Notes:
 
 - Parser and models:
   - `test_parser.py`, `test_models.py`, `test_parser_storage_integration.py`
-  - Includes direct `LineParser` coverage for pure damage-breakdown parsing, explicit `ParserSession` coverage for year-rollover and death-correlation behavior, malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, malformed target-concealed fast-path fallback coverage, parser output contracts for store-owned AC/AB/save derivation, hot-path regression coverage for threat-roll/basic attack fast paths plus `+`-prefixed ability chains, and explicit AC/AB regression coverage for duplicate-hit invalidation and higher-bonus tie winners
+  - Includes direct `LineParser` coverage for pure damage-breakdown parsing, explicit `ParserSession` coverage for year-rollover and death-correlation behavior, malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, malformed target-concealed fast-path fallback coverage, parser output contracts for store-owned AC/AB/save derivation, explicit coverage that damage parsing does not filter by attacker identity, hot-path regression coverage for threat-roll/basic attack fast paths plus `+`-prefixed ability chains, and explicit AC/AB regression coverage for duplicate-hit invalidation and higher-bonus tie winners
 - Storage and indexing performance behavior:
   - `test_storage.py`, `test_storage_indices.py`
   - Direct store setup now uses the real public batch API (`DataStore.apply_mutations(...)`) instead of older per-write helper methods
@@ -156,6 +156,7 @@ Current shared fixtures include:
 Notes:
 - `tests/conftest.py` no longer monkeypatches removed `DataStore` write methods for tests.
 - `temp_log_dir` now uses repo-local per-test directories under `.pytest_tmp` for more reliable file-based tests on Windows in this workspace.
+- `parser_with_player` is still a shared fixture name, but it now exists only for attacker-name parsing assertions; parsing no longer exposes player-based filtering behavior.
 
 ## Shared Test Helpers
 
