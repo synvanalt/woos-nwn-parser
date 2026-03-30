@@ -1,7 +1,7 @@
 """Unit tests for the parser session and line parser layers.
 
 Tests regex pattern matching, damage parsing, immunity parsing,
-attack parsing, save parsing, and player filtering.
+attack parsing, save parsing, and death-correlation behavior.
 """
 
 from datetime import datetime
@@ -21,16 +21,10 @@ class TestParserSessionInitialization:
     def test_default_initialization(self) -> None:
         """Test parser initializes with default values."""
         parser = ParserSession()
-        assert parser.player_name is None
         assert parser.parse_immunity is True
         assert not hasattr(parser, "target_ac")
         assert not hasattr(parser, "target_saves")
         assert not hasattr(parser, "target_attack_bonus")
-
-    def test_initialization_with_player_name(self) -> None:
-        """Test parser initializes with player name."""
-        parser = ParserSession(player_name="TestPlayer")
-        assert parser.player_name == "TestPlayer"
 
     def test_initialization_with_immunity_parsing(self) -> None:
         """Test parser initializes with immunity parsing enabled."""
@@ -255,8 +249,8 @@ class TestDamageDealtParsing:
         assert result is not None
         assert result.damage_types == {"Physical": 24, "Cold": 0, "Divine": 11, "Fire": 0, "Sonic": 0}
 
-    def test_parse_damage_player_filter_match(self, parser_with_player: ParserSession) -> None:
-        """Test parsing damage when player matches filter."""
+    def test_parse_damage_preserves_attacker_name(self, parser_with_player: ParserSession) -> None:
+        """Damage parsing should preserve the attacker name verbatim."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] TestPlayer damages Goblin: 50 (50 Physical)"
         result = parser_with_player.parse_line(line)
 
@@ -264,8 +258,8 @@ class TestDamageDealtParsing:
         assert isinstance(result, DamageDealtEvent)
         assert result.attacker == 'TestPlayer'
 
-    def test_parse_damage_player_filter_no_match(self, parser_with_player: ParserSession) -> None:
-        """Damage events still emit normally even when player_name differs."""
+    def test_parse_damage_does_not_filter_by_attacker_name(self, parser_with_player: ParserSession) -> None:
+        """Damage events should emit normally regardless of attacker identity."""
         line = "[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] OtherPlayer damages Goblin: 50 (50 Physical)"
         result = parser_with_player.parse_line(line)
 

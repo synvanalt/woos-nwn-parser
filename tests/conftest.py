@@ -110,19 +110,19 @@ sys.modules[__name__].LogMessageCapture = LogMessageCapture
 @pytest.fixture
 def parser() -> ParserSession:
     """Create a ParserSession instance for testing."""
-    return ParserSession(player_name=None, parse_immunity=False)
+    return ParserSession(parse_immunity=False)
 
 
 @pytest.fixture
 def parser_with_immunity() -> ParserSession:
     """Create a ParserSession instance with immunity parsing enabled."""
-    return ParserSession(player_name=None, parse_immunity=True)
+    return ParserSession(parse_immunity=True)
 
 
 @pytest.fixture
 def parser_with_player() -> ParserSession:
-    """Create a ParserSession instance with player filtering."""
-    return ParserSession(player_name="TestPlayer", parse_immunity=False)
+    """Create a ParserSession instance for attacker-name parsing assertions."""
+    return ParserSession(parse_immunity=False)
 
 
 @pytest.fixture

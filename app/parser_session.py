@@ -20,13 +20,11 @@ class ParserSession:
         self,
         *,
         line_parser: Optional[LineParser] = None,
-        player_name: Optional[str] = None,
         parse_immunity: bool = True,
         max_recent_log_lines: int = 20000,
         anchor_year: Optional[int] = None,
     ) -> None:
         self.line_parser = line_parser or LineParser(
-            player_name=player_name,
             parse_immunity=parse_immunity,
         )
         self._line_number = 0
@@ -48,10 +46,6 @@ class ParserSession:
         self._death_fallback_pattern: Optional[Pattern[str]] = self._compile_fallback_line_pattern(
             self.death_fallback_line
         )
-
-    @property
-    def player_name(self) -> Optional[str]:
-        return self.line_parser.player_name
 
     @property
     def parse_immunity(self) -> bool:

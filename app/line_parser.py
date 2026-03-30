@@ -62,10 +62,8 @@ class LineParser:
     def __init__(
         self,
         *,
-        player_name: Optional[str] = None,
         parse_immunity: bool = True,
     ) -> None:
-        self.player_name = player_name
         self.parse_immunity = bool(parse_immunity)
 
         self.timestamp_pattern = re.compile(r"\[CHAT WINDOW TEXT] \[([^]]+)]")
@@ -190,14 +188,6 @@ class LineParser:
 
         return month, day, hour, minute, second
 
-    def build_timestamp(self, line: str, *, year: int) -> Optional[datetime]:
-        """Build a timestamp for a line using a caller-supplied year."""
-        parts = self.extract_timestamp_parts(line)
-        if parts is None:
-            return None
-
-        return self.build_timestamp_from_parts(parts, year=year)
-
     @staticmethod
     def build_timestamp_from_parts(
         parts: tuple[int, int, int, int, int],
@@ -252,8 +242,8 @@ class LineParser:
             attacker = attacker.rsplit(" : ", 1)[-1].strip()
         return attacker
 
+    @staticmethod
     def _build_attack_parse_result(
-        self,
         *,
         attacker: str,
         target: str,
