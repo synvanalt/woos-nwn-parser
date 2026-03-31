@@ -1,6 +1,6 @@
 # Architecture
 
-This document is the architecture reference for the current app structure. It captures the runtime shape, component ownership, and the read/write split around `DataStore` and query services.
+This document is the architecture reference for the current `app/` structure. Planning docs under `docs/` may describe how the repo got here, but this file is the source of truth when they differ.
 
 ## Project Structure
 
@@ -11,7 +11,9 @@ woos-nwn-parser/
 |   |-- __main__.py                # Entry point
 |   |-- constants.py               # Shared constants (damage type palette)
 |   |-- models.py                  # Data models
-|   |-- parser.py                  # Log parsing logic
+|   |-- parser.py                  # Stable parser facade/re-exports
+|   |-- line_parser.py             # Pure line parsing logic
+|   |-- parser_session.py          # Stateful parser/session correlation
 |   |-- storage.py                 # Mutable session store and indexed reads
 |   |-- monitor.py                 # File monitoring and rotation
 |   |-- settings.py                # User settings persistence
@@ -23,6 +25,7 @@ woos-nwn-parser/
 |   |   |-- immunity_matcher.py    # Shared damage/immunity correlation
 |   |   |-- queue_processor.py     # Live queue draining and batching
 |   |   `-- queries/               # Read-side query services for UI projections
+|   |       `-- models.py          # Typed read-side DTOs for query results
 |   `-- ui/
 |       |-- __init__.py
 |       |-- main_window.py         # Main application window
@@ -94,6 +97,7 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 - Owns pure regex and fast-path parsing for individual log lines
 - Emits typed parsed events for damage, attacks, saves, immunities, and epic dodge
 - Provides narrow helper methods used by `ParserSession` for whisper/killed-line recognition without exposing raw parser internals as the session contract
+- `app/parser.py` is the stable parser import boundary for callers outside the parser internals
 
 **DataStore** (`storage.py`)
 - Thread-safe in-memory session storage
@@ -133,6 +137,7 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 - `DpsQueryService` builds DPS rows, hit-rate display data, and damage-type breakdowns from store indices
 - `TargetSummaryQueryService` builds `Target Stats` rows from indexed target state
 - `ImmunityQueryService` builds prepared `Target Immunities` display rows from store-owned damage/immunity snapshots
+- `services/queries/models.py` defines the typed immutable DTOs returned by those services
 - Keep read-side projection caching out of `DataStore`, while consuming store-owned immutable snapshots and returning typed read-model DTOs for UI consumers
 - UI-facing display semantics such as immunity-percent formatting, absorbed-value suppression, and parse-toggle-specific row presentation belong here rather than in Tk widgets
 - Query services expose an explicit `supports_store_version_fast_path` capability that heavy widgets consult before using version-based no-op refresh short-circuits; widgets should not infer this by inspecting method identity or monkeypatch state

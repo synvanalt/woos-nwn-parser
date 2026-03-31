@@ -6,7 +6,9 @@ This document is the internal source of truth for how damage immunity lines are 
 Read this before changing immunity parsing, the shared matcher, import/live parity, or the `Target Immunities` panel.
 
 ## Relevant Code Paths
-- `app/parser.py`: parses raw NWN log lines into `damage_dealt` and `immunity` events and assigns monotonic `line_number`.
+- `app/parser_session.py`: owns monotonic `line_number`, session state, and routing of raw NWN log lines through `LineParser`.
+- `app/line_parser.py`: parses individual raw NWN log lines into typed parsed events such as damage and immunity observations.
+- `app/parser.py`: stable facade that re-exports `ParserSession` and `LineParser` for parser-facing callers.
 - `app/services/immunity_matcher.py`: shared matching logic used by both live monitoring and historic import.
 - `app/services/queue_processor.py`: live monitoring path; feeds parsed events into the matcher and applies resulting mutations.
 - `app/utils.py`: historic import path; feeds parsed events into the same matcher during file parsing and worker import.
@@ -26,9 +28,9 @@ Observed real-log patterns include:
 This is why immunity matching cannot rely only on "last damage for target" or on timestamp alone.
 
 ## Parsing Model
-The parser does not directly compute immunity samples. It emits events:
-- `damage_dealt`
-- `immunity`
+The parser does not directly compute immunity samples. It emits typed parsed events:
+- `DamageDealtEvent`
+- `ImmunityObservedEvent`
 
 For immunity work, the important parser outputs are:
 - normalized `target`
@@ -77,7 +79,7 @@ This matcher is shared on purpose so live monitoring and file import produce the
 
 ## Live And Import Flow
 ### Live monitoring
-- `app/parser.py` emits parsed events.
+- `ParserSession` routes raw lines through `LineParser` and emits parsed events.
 - `app/services/queue_processor.py` inserts damage rows, sends damage and immunity observations to the matcher, and applies matched `ImmunityMutation`s to the store.
 
 ### Historic import
