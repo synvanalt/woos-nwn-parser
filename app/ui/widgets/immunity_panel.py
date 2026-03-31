@@ -80,6 +80,19 @@ class ImmunityPanel(ttk.Frame):
                 self.on_parse_immunity_changed(val)
             self.refresh_display()
 
+        def _on_target_selected(event: tk.Event) -> None:
+            """Handle target selection change."""
+            selected = self.target_combo.get()
+            if selected:
+                self.refresh_target_details(selected)
+
+        self.select_target_label = ttk.Label(selector_frame, text="Select Target:")
+        self.select_target_label.pack(side="left", padx=(0, 5), pady=0)
+
+        self.target_combo = ttk.Combobox(selector_frame, state="readonly", width=30)
+        self.target_combo.pack(side="left", padx=5, pady=0, fill="x", expand=True)
+        self.target_combo.bind("<<ComboboxSelected>>", _on_target_selected)
+
         self.parse_immunity_toggle = ttk.Checkbutton(
             selector_frame,
             text="Parse Immunities",
@@ -87,19 +100,7 @@ class ImmunityPanel(ttk.Frame):
             command=_on_toggle_immunity,
             style="Switch.TCheckbutton",
         )
-        self.parse_immunity_toggle.pack(side="left", padx=0, pady=0)
-
-        def _on_target_selected(event: tk.Event) -> None:
-            """Handle target selection change."""
-            selected = self.target_combo.get()
-            if selected:
-                self.refresh_target_details(selected)
-
-        self.target_combo = ttk.Combobox(selector_frame, state="readonly", width=30)
-        self.target_combo.pack(side="right", padx=5, fill="x", expand=False)
-        self.target_combo.bind("<<ComboboxSelected>>", _on_target_selected)
-        self.select_target_label = ttk.Label(selector_frame, text="Select Target:")
-        self.select_target_label.pack(side="right", padx=5)
+        self.parse_immunity_toggle.pack(side="right", padx=(30, 0), pady=0)
 
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True)

@@ -92,12 +92,14 @@ Historic import uses the same parser and ingestion logic, then applies the resul
 - Owns the stateful parser API used by production code
 - Tracks line numbering, recent-line history, death snippet correlation, fallback death detection, and year rollover inference
 - Exposes the session-level parser controls used by UI and import flows, including immunity parsing and death-snippet settings
+- The supported constructor surface is the current keyword-only session configuration (line_parser, parse_immunity, max_recent_log_lines, anchor_year)
 
 **LineParser** (`parser.py`, `line_parser.py`)
 - Owns pure regex and fast-path parsing for individual log lines
 - Emits typed parsed events for damage, attacks, saves, immunities, and epic dodge
 - Provides narrow helper methods used by `ParserSession` for whisper/killed-line recognition without exposing raw parser internals as the session contract
-- `app/parser.py` is the stable parser import boundary for callers outside the parser internals
+- The supported timestamp helper surface is `extract_timestamp_parts(...)` plus `build_timestamp_from_parts(...)`
+- `app/parser.py` is the parser import boundary for callers outside the parser internals
 
 **DataStore** (`storage.py`)
 - Thread-safe in-memory session storage

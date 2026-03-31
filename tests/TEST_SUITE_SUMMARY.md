@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 30, 2026 (parser API cleanup refresh)
+**Last Updated:** March 31, 2026 (Target Immunities selector layout coverage refresh)
 
 ## Overview
-This document reflects the current state of the `tests/` directory after the import payload contract cleanup and a fresh full-suite recollection.
+This document reflects the current state of the `tests/` directory after the Target Immunities selector-layout regression coverage update and a fresh full-suite recollection.
 
 Collection baseline used for this update:
 - Command: `python -m pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **686 tests collected**
+- Result: **687 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 43 modules, 635 tests
+- `tests/unit/`: 43 modules, 636 tests
 - `tests/integration/`: 7 modules, 44 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 51 test modules, 686 tests
+- Total: 51 test modules, 687 tests
 
 Notes:
 - All active `test_*.py` files are under `unit/`, `integration/`, or `e2e/`.
@@ -31,7 +31,7 @@ Notes:
 - `test_dps_panel_incremental.py` (14)
 - `test_dps_query_service.py` (16)
 - `test_formatters.py` (22)
-- `test_immunity_panel_additional.py` (10)
+- `test_immunity_panel_additional.py` (11)
 - `test_immunity_panel_edge_cases.py` (9)
 - `test_immunity_panel_incremental.py` (6)
 - `test_immunity_query_service.py` (8)
@@ -116,7 +116,7 @@ Notes:
   - Includes controller-first import coverage for modal layout, worker startup, strict `ops_chunk` payload requirements, incremental payload application, preserved death-snippet / death-character side-event delivery, and debug-toggle delegation through `MonitorController.set_debug_enabled(...)`
   - Includes Death Snippets widget coverage for selection state, placeholder behavior, Tk tag application, guarded `wooparseme` auto-identification, one-click character-name clearing back to the hint state, and wrap-toggle scroll preservation
   - Includes dedicated realtime backlog coverage for bounded queue saturation, post-read monitor backpressure pacing, pressure-banded Tk drain budgets, and coalesced refresh behavior under producer-faster-than-consumer load
-  - Includes Target Immunities coverage for zero-damage matched samples, absorbed-value tie-breaking, suppression of invalidated temporary full-immunity rows back to real max-damage display, best-effort immunity % display when exact reverse inference fails, and persisted/default-on Parse Immunities toggle behavior
+  - Includes Target Immunities coverage for selector-row pack layout, expanding target-combobox behavior, zero-damage matched samples, absorbed-value tie-breaking, suppression of invalidated temporary full-immunity rows back to real max-damage display, best-effort immunity % display when exact reverse inference fails, and persisted/default-on Parse Immunities toggle behavior
 - Death Snippets presenter coverage:
   - `test_death_snippet_presenter.py`
   - Includes pure render-preparation coverage for chat-prefix sanitization, opponent extraction, wrap-mode line padding, damage/name span generation, per-render name-pattern cache reuse, and killed-name precedence over opponent highlighting
