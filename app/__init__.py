@@ -5,7 +5,7 @@ small set of parser, storage, monitoring, and query types are re-exported here
 for tests and external tooling.
 """
 
-__version__ = "1.6.0"
+__version__ = "1.7.0"
 __author__ = "Synvan"
 
 from .constants import DAMAGE_TYPE_PALETTE

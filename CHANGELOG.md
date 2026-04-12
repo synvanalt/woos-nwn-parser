@@ -2,8 +2,9 @@
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-04-12
 ### Added
-- Key controls across the app now show tooltips for quicker in-app guidance
+- Widgets across the app now show tooltips for quicker in-app guidance
 
 ### Changed
 - The app now remembers your selected `First Timestamp` mode between launches
