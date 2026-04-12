@@ -1,4 +1,4 @@
-"""Parser entrypoints."""
+"""Stable parser facade for parser-facing consumers."""
 
 from __future__ import annotations
 

@@ -32,6 +32,30 @@ def _find_parse_checkbutton(panel: ImmunityPanel) -> ttk.Checkbutton:
     raise AssertionError("Parse Immunities checkbutton not found")
 
 
+def test_selector_row_layout_places_expanding_combo_between_label_and_switch(panel_ctx) -> None:
+    panel, _store, _parser = panel_ctx
+    selector_frame = panel.winfo_children()[0]
+
+    assert panel.select_target_label.master is selector_frame
+    assert panel.target_combo.master is selector_frame
+    assert panel.parse_immunity_toggle.master is selector_frame
+
+    assert panel.select_target_label.winfo_manager() == "pack"
+    assert panel.target_combo.winfo_manager() == "pack"
+    assert panel.parse_immunity_toggle.winfo_manager() == "pack"
+
+    label_pack = panel.select_target_label.pack_info()
+    combo_pack = panel.target_combo.pack_info()
+    toggle_pack = panel.parse_immunity_toggle.pack_info()
+
+    assert str(label_pack["side"]) == "left"
+    assert str(combo_pack["side"]) == "left"
+    assert str(toggle_pack["side"]) == "right"
+
+    assert str(combo_pack["fill"]) == "x"
+    assert str(combo_pack["expand"]) == "1"
+
+
 def test_parse_immunity_toggle_updates_parser_and_refresh(panel_ctx) -> None:
     panel, _store, parser = panel_ctx
     check_btn = _find_parse_checkbutton(panel)

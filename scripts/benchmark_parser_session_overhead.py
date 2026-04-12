@@ -15,8 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.line_parser import LineParser
-from app.parser import ParserSession
+from app.parser import LineParser, ParserSession
 
 
 DEFAULT_FIXTURES = (

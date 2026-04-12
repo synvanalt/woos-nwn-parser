@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import shutil
 import uuid
+from datetime import date
 from pathlib import Path
 from types import ModuleType
 
@@ -33,6 +34,75 @@ def make_workspace_tmp_dir() -> Path:
     return temp_dir
 
 
+def create_release_workspace(tmp_path: Path) -> None:
+    """Create the minimal release-file layout needed by bump_version.py."""
+    (tmp_path / "app").mkdir(parents=True)
+    (tmp_path / "docs" / "releases").mkdir(parents=True)
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "woos-nwn-parser"
+version = "1.3.1"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app" / "__init__.py").write_text(
+        '__version__ = "1.3.1"\n',
+        encoding="utf-8",
+    )
+
+    spec_text = """
+version_info = VSVersionInfo(
+    ffi=FixedFileInfo(
+        filevers=(1, 3, 1, 0),
+        prodvers=(1, 3, 1, 0),
+    ),
+    kids=[
+        StringFileInfo(
+            [
+                StringTable(
+                    '040904B0',
+                    [
+                        StringStruct('FileVersion', '1.3.1.0'),
+                        StringStruct('ProductVersion', '1.3.1.0')
+                    ]
+                )
+            ]
+        ),
+    ]
+)
+""".strip() + "\n"
+    (tmp_path / "WoosNwnParser-onefile.spec").write_text(spec_text, encoding="utf-8")
+    (tmp_path / "WoosNwnParser-onedir.spec").write_text(spec_text, encoding="utf-8")
+
+    (tmp_path / "CHANGELOG.md").write_text(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n"
+        "- New release automation helper\n\n"
+        "### Fixed\n"
+        "- Dry-run now previews release docs too\n\n"
+        "## [1.3.1] - 2026-03-01\n\n"
+        "### Fixed\n"
+        "- Previous shipped fix\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs" / "releases" / "v1.3.1.md").write_text(
+        "### Description\n\n"
+        "Release template body.\n\n"
+        "### Security Scan\n\n"
+        "**One file approach** - VirusTotal: "
+        "[2/72 vendors flagged](https://example.com/onefile)\n\n"
+        "**One directory approach** - VirusTotal: "
+        "[1/72 vendors flagged](https://example.com/onedir)\n\n"
+        "### Changelog\n\n"
+        "#### Changed\n"
+        "- Old release notes\n",
+        encoding="utf-8",
+    )
+
+
 def test_bump_semver_patch() -> None:
     module = load_bump_version_module()
     assert module.bump_semver("1.3.1", "patch") == "1.3.2"
@@ -59,47 +129,10 @@ def test_update_versions_updates_all_targets() -> None:
 
     tmp_path = make_workspace_tmp_dir()
     try:
-        (tmp_path / "app").mkdir(parents=True)
-        (tmp_path / "pyproject.toml").write_text(
-            """
-[project]
-name = "woos-nwn-parser"
-version = "1.3.1"
-""".strip()
-            + "\n",
-            encoding="utf-8",
-        )
-        (tmp_path / "app" / "__init__.py").write_text(
-            '__version__ = "1.0.0"\n',
-            encoding="utf-8",
-        )
-
-        spec_text = """
-version_info = VSVersionInfo(
-    ffi=FixedFileInfo(
-        filevers=(1, 3, 1, 0),
-        prodvers=(1, 3, 1, 0),
-    ),
-    kids=[
-        StringFileInfo(
-            [
-                StringTable(
-                    '040904B0',
-                    [
-                        StringStruct('FileVersion', '1.3.1.0'),
-                        StringStruct('ProductVersion', '1.3.1.0')
-                    ]
-                )
-            ]
-        ),
-    ]
-)
-""".strip() + "\n"
-        (tmp_path / "WoosNwnParser-onefile.spec").write_text(spec_text, encoding="utf-8")
-        (tmp_path / "WoosNwnParser-onedir.spec").write_text(spec_text, encoding="utf-8")
+        create_release_workspace(tmp_path)
 
         changed_paths = module.update_versions(tmp_path, "1.3.2", dry_run=False)
-        assert len(changed_paths) == 4
+        assert len(changed_paths) == 6
 
         pyproject = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
         assert 'version = "1.3.2"' in pyproject
@@ -114,6 +147,20 @@ version_info = VSVersionInfo(
             assert "prodvers=(1, 3, 2, 0)" in text
             assert "StringStruct('FileVersion', '1.3.2.0')" in text
             assert "StringStruct('ProductVersion', '1.3.2.0')" in text
+
+        release_date = date.today().isoformat()
+        changelog = (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
+        assert changelog.startswith("# Changelog\n\n## [Unreleased]\n\n## [1.3.2] - ")
+        assert f"## [1.3.2] - {release_date}" in changelog
+        assert "### Added\n- New release automation helper" in changelog
+        assert "### Fixed\n- Dry-run now previews release docs too" in changelog
+
+        new_release = (tmp_path / "docs" / "releases" / "v1.3.2.md").read_text(encoding="utf-8")
+        assert "#### Added\n- New release automation helper" in new_release
+        assert "#### Fixed\n- Dry-run now previews release docs too" in new_release
+        assert "\n### Added\n- New release automation helper" not in new_release
+        assert "[X/72 vendors flagged](https://example.com/onefile)" in new_release
+        assert "[X/72 vendors flagged](https://example.com/onedir)" in new_release
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)
 
@@ -123,32 +170,101 @@ def test_update_versions_dry_run_does_not_modify_files() -> None:
 
     tmp_path = make_workspace_tmp_dir()
     try:
-        (tmp_path / "app").mkdir(parents=True)
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nversion = "1.3.1"\n',
-            encoding="utf-8",
-        )
-        (tmp_path / "app" / "__init__.py").write_text(
-            '__version__ = "1.0.0"\n',
-            encoding="utf-8",
-        )
-        minimal_spec = (
-            "filevers=(1, 3, 1, 0)\n"
-            "prodvers=(1, 3, 1, 0)\n"
-            "StringStruct('FileVersion', '1.3.1.0')\n"
-            "StringStruct('ProductVersion', '1.3.1.0')\n"
-        )
-        (tmp_path / "WoosNwnParser-onefile.spec").write_text(minimal_spec, encoding="utf-8")
-        (tmp_path / "WoosNwnParser-onedir.spec").write_text(minimal_spec, encoding="utf-8")
+        create_release_workspace(tmp_path)
 
         before_pyproject = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
         before_init = (tmp_path / "app" / "__init__.py").read_text(encoding="utf-8")
+        before_changelog = (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
+        before_release = (tmp_path / "docs" / "releases" / "v1.3.1.md").read_text(encoding="utf-8")
 
-        module.update_versions(tmp_path, "1.3.2", dry_run=True)
+        changed_paths = module.update_versions(tmp_path, "1.3.2", dry_run=True)
 
         after_pyproject = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
         after_init = (tmp_path / "app" / "__init__.py").read_text(encoding="utf-8")
+        after_changelog = (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
+        after_release = (tmp_path / "docs" / "releases" / "v1.3.1.md").read_text(encoding="utf-8")
         assert before_pyproject == after_pyproject
         assert before_init == after_init
+        assert before_changelog == after_changelog
+        assert before_release == after_release
+        assert not (tmp_path / "docs" / "releases" / "v1.3.2.md").exists()
+        assert len(changed_paths) == 6
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+def test_update_versions_fails_when_unreleased_section_is_empty() -> None:
+    module = load_bump_version_module()
+
+    tmp_path = make_workspace_tmp_dir()
+    try:
+        create_release_workspace(tmp_path)
+        (tmp_path / "CHANGELOG.md").write_text(
+            "# Changelog\n\n## [Unreleased]\n\n## [1.3.1] - 2026-03-01\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(RuntimeError, match="Section '\\[Unreleased\\]'"):
+            module.update_versions(tmp_path, "1.3.2", dry_run=False)
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+def test_update_versions_fails_when_target_release_note_exists() -> None:
+    module = load_bump_version_module()
+
+    tmp_path = make_workspace_tmp_dir()
+    try:
+        create_release_workspace(tmp_path)
+        (tmp_path / "docs" / "releases" / "v1.3.2.md").write_text(
+            "already exists\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(FileExistsError, match="Target release note already exists"):
+            module.update_versions(tmp_path, "1.3.2", dry_run=False)
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+def test_build_release_notes_requires_two_virustotal_badges() -> None:
+    module = load_bump_version_module()
+
+    bad_template = (
+        "### Description\n\n"
+        "Only one badge here.\n\n"
+        "### Security Scan\n\n"
+        "**One file approach** - VirusTotal: "
+        "[2/72 vendors flagged](https://example.com/onefile)\n\n"
+        "### Changelog\n\n"
+        "#### Fixed\n"
+        "- Old release notes\n"
+    )
+
+    with pytest.raises(RuntimeError, match="Expected exactly two VirusTotal badge lines"):
+        module.build_release_notes(
+            bad_template,
+            released_changelog_body="### Fixed\n- New notes\n",
+            release_path=Path("docs/releases/v1.3.2.md"),
+        )
+
+
+def test_build_release_notes_requires_changelog_section() -> None:
+    module = load_bump_version_module()
+
+    bad_template = (
+        "### Description\n\n"
+        "Missing changelog section.\n\n"
+        "### Security Scan\n\n"
+        "**One file approach** - VirusTotal: "
+        "[2/72 vendors flagged](https://example.com/onefile)\n\n"
+        "**One directory approach** - VirusTotal: "
+        "[1/72 vendors flagged](https://example.com/onedir)\n"
+    )
+
+    with pytest.raises(RuntimeError, match="release changelog section"):
+        module.build_release_notes(
+            bad_template,
+            released_changelog_body="### Fixed\n- New notes\n",
+            release_path=Path("docs/releases/v1.3.2.md"),
+        )

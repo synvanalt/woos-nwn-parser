@@ -1,4 +1,4 @@
-"""Bump project version across pyproject and PyInstaller spec files.
+"""Bump project version and prepare release documents.
 
 Usage examples:
     python scripts/bump_version.py --patch
@@ -8,12 +8,20 @@ Usage examples:
 from __future__ import annotations
 
 import argparse
+from datetime import date
 import re
 import tomllib
 from pathlib import Path
 from typing import Callable
 
 SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+UNRELEASED_SECTION_RE = re.compile(
+    r"(?ms)^(## \[Unreleased\]\s*\n)(.*?)(?=^## \[|\Z)"
+)
+RELEASE_CHANGELOG_SECTION_RE = re.compile(
+    r"(?ms)^(### Changelog\s*\n)(.*?)(?=^### |\Z)"
+)
+VIRUSTOTAL_COUNT_RE = re.compile(r"\[(\d+|X)/(\d+) vendors flagged\]\(([^)]+)\)")
 
 
 def parse_semver(version: str) -> tuple[int, int, int]:
@@ -62,6 +70,22 @@ def replace_exactly_once(
 ) -> str:
     """Replace a pattern exactly once, or fail fast."""
     updated, count = re.subn(pattern, replacement, text, flags=re.MULTILINE | re.DOTALL)
+    if count != 1:
+        raise RuntimeError(
+            f"Expected exactly one '{field_name}' occurrence in {file_path}, found {count}."
+        )
+    return updated
+
+
+def replace_match_exactly_once(
+    text: str,
+    pattern: re.Pattern[str],
+    replacement: str | Callable[[re.Match[str]], str],
+    field_name: str,
+    file_path: Path,
+) -> str:
+    """Replace a compiled regex exactly once, or fail fast."""
+    updated, count = pattern.subn(replacement, text)
     if count != 1:
         raise RuntimeError(
             f"Expected exactly one '{field_name}' occurrence in {file_path}, found {count}."
@@ -145,34 +169,175 @@ def get_project_version(base_dir: Path) -> str:
     return version
 
 
-def update_versions(base_dir: Path, new_version: str, dry_run: bool = False) -> list[Path]:
-    """Update all versioned files for a release."""
-    parse_semver(new_version)
+def get_release_file_path(base_dir: Path, version: str) -> Path:
+    """Return the release note path for a semantic version."""
+    parse_semver(version)
+    return base_dir / "docs" / "releases" / f"v{version}.md"
 
+
+def get_release_date() -> str:
+    """Return today's local date in ISO format."""
+    return date.today().isoformat()
+
+
+def build_updated_changelog(
+    changelog_text: str,
+    *,
+    new_version: str,
+    release_date: str,
+    changelog_path: Path,
+) -> tuple[str, str]:
+    """Promote the unreleased changelog section into a dated release section."""
+    match = UNRELEASED_SECTION_RE.search(changelog_text)
+    if match is None:
+        raise RuntimeError(f"Missing top-level '[Unreleased]' section in {changelog_path}.")
+
+    unreleased_body = match.group(2)
+    if not unreleased_body.strip():
+        raise RuntimeError(f"Section '[Unreleased]' in {changelog_path} is empty.")
+
+    released_heading = f"## [{new_version}] - {release_date}\n"
+    new_unreleased_heading = "## [Unreleased]\n\n"
+    updated = (
+        changelog_text[: match.start()]
+        + new_unreleased_heading
+        + released_heading
+        + unreleased_body
+        + changelog_text[match.end() :]
+    )
+    return updated, unreleased_body
+
+
+def normalize_release_changelog_body(changelog_body: str) -> str:
+    """Promote changelog subsection headings by one level for release docs."""
+    return re.sub(r"(?m)^### ", "#### ", changelog_body)
+
+
+def update_virustotal_counts(release_text: str, release_path: Path) -> str:
+    """Replace VirusTotal vendor-count numerators with X placeholders."""
+
+    def replacement(match: re.Match[str]) -> str:
+        return f"[X/{match.group(2)} vendors flagged]({match.group(3)})"
+
+    updated, count = VIRUSTOTAL_COUNT_RE.subn(replacement, release_text)
+    if count != 2:
+        raise RuntimeError(
+            f"Expected exactly two VirusTotal badge lines in {release_path}, found {count}."
+        )
+    return updated
+
+
+def build_release_notes(
+    template_text: str,
+    *,
+    released_changelog_body: str,
+    release_path: Path,
+) -> str:
+    """Build the next release note file from the previous release template."""
+    normalized_body = normalize_release_changelog_body(released_changelog_body)
+    updated = replace_match_exactly_once(
+        text=template_text,
+        pattern=RELEASE_CHANGELOG_SECTION_RE,
+        replacement=lambda match: f"{match.group(1)}{normalized_body}",
+        field_name="release changelog section",
+        file_path=release_path,
+    )
+    return update_virustotal_counts(updated, release_path)
+
+
+def update_release_docs(
+    base_dir: Path,
+    *,
+    current_version: str,
+    new_version: str,
+    dry_run: bool = False,
+) -> list[Path]:
+    """Update changelog and create the next release note document."""
+    changelog_path = base_dir / "CHANGELOG.md"
+    current_release_path = get_release_file_path(base_dir, current_version)
+    new_release_path = get_release_file_path(base_dir, new_version)
+
+    required_paths = [changelog_path, current_release_path]
+    missing = [path for path in required_paths if not path.exists()]
+    if missing:
+        missing_joined = ", ".join(str(path) for path in missing)
+        raise FileNotFoundError(f"Expected file(s) not found: {missing_joined}")
+    if new_release_path.exists():
+        raise FileExistsError(f"Target release note already exists: {new_release_path}")
+
+    release_date = get_release_date()
+    changelog_text = changelog_path.read_text(encoding="utf-8")
+    updated_changelog, released_changelog_body = build_updated_changelog(
+        changelog_text,
+        new_version=new_version,
+        release_date=release_date,
+        changelog_path=changelog_path,
+    )
+
+    current_release_text = current_release_path.read_text(encoding="utf-8")
+    new_release_text = build_release_notes(
+        current_release_text,
+        released_changelog_body=released_changelog_body,
+        release_path=new_release_path,
+    )
+
+    if dry_run:
+        return [changelog_path, new_release_path]
+
+    changelog_path.write_text(updated_changelog, encoding="utf-8")
+    new_release_path.write_text(new_release_text, encoding="utf-8")
+    return [changelog_path, new_release_path]
+
+
+def update_versions(
+    base_dir: Path,
+    new_version: str,
+    dry_run: bool = False,
+    *,
+    current_version: str | None = None,
+) -> list[Path]:
+    """Update versioned files and release documents for a release."""
+    parse_semver(new_version)
+    if current_version is None:
+        current_version = get_project_version(base_dir)
+    parse_semver(current_version)
     pyproject_path = base_dir / "pyproject.toml"
     app_init_path = base_dir / "app" / "__init__.py"
     onefile_spec = base_dir / "WoosNwnParser-onefile.spec"
     onedir_spec = base_dir / "WoosNwnParser-onedir.spec"
 
-    paths = [pyproject_path, app_init_path, onefile_spec, onedir_spec]
-    missing = [path for path in paths if not path.exists()]
+    version_paths = [pyproject_path, app_init_path, onefile_spec, onedir_spec]
+    missing = [path for path in version_paths if not path.exists()]
     if missing:
         missing_joined = ", ".join(str(path) for path in missing)
         raise FileNotFoundError(f"Expected file(s) not found: {missing_joined}")
 
+    release_paths = update_release_docs(
+        base_dir,
+        current_version=current_version,
+        new_version=new_version,
+        dry_run=True,
+    )
+
     if dry_run:
-        return paths
+        return version_paths + release_paths
 
     update_pyproject_version(pyproject_path, new_version)
     update_app_init_version(app_init_path, new_version)
     update_spec_file(onefile_spec, new_version)
     update_spec_file(onedir_spec, new_version)
-    return paths
+    update_release_docs(
+        base_dir,
+        current_version=current_version,
+        new_version=new_version,
+        dry_run=False,
+    )
+    return version_paths + release_paths
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """Create CLI parser."""
-    parser = argparse.ArgumentParser(description="Bump version across release files.")
+    parser = argparse.ArgumentParser(description="Bump version and prepare release files.")
     bump_group = parser.add_mutually_exclusive_group(required=True)
     bump_group.add_argument("--major", action="store_true", help="Bump major version.")
     bump_group.add_argument("--minor", action="store_true", help="Bump minor version.")
@@ -207,7 +372,12 @@ def main() -> int:
     current_version = get_project_version(base_dir)
     new_version = bump_semver(current_version, bump_type)
 
-    updated_paths = update_versions(base_dir=base_dir, new_version=new_version, dry_run=args.dry_run)
+    updated_paths = update_versions(
+        base_dir=base_dir,
+        new_version=new_version,
+        dry_run=args.dry_run,
+        current_version=current_version,
+    )
 
     action = "Would update" if args.dry_run else "Updated"
     print(f"{action} version: {current_version} -> {new_version}")
@@ -217,6 +387,11 @@ def main() -> int:
             print(f"- {relative}")
         except ValueError:
             print(f"- {path}")
+
+    if not args.dry_run:
+        print("Manual follow-up:")
+        print("- Rescan both release artifacts in VirusTotal.")
+        print("- Replace the placeholder 'X' vendor-flag counts in the new release note.")
 
     return 0
 

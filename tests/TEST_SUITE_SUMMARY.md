@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 28, 2026 (import payload contract and cleanup refresh)
+**Last Updated:** April 12, 2026 (release bump automation coverage refresh)
 
 ## Overview
-This document reflects the current state of the `tests/` directory after the import payload contract cleanup and a fresh full-suite recollection.
+This document reflects the current state of the `tests/` directory after the release bump automation coverage update and a fresh full-suite recollection.
 
 Collection baseline used for this update:
 - Command: `python -m pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **687 tests collected**
+- Result: **691 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 43 modules, 636 tests
+- `tests/unit/`: 43 modules, 640 tests
 - `tests/integration/`: 7 modules, 44 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 51 test modules, 687 tests
+- Total: 51 test modules, 691 tests
 
 Notes:
 - All active `test_*.py` files are under `unit/`, `integration/`, or `e2e/`.
@@ -24,14 +24,14 @@ Notes:
 ## Module Inventory
 
 ### Unit (`tests/unit`)
-- `test_bump_version_script.py` (6)
+- `test_bump_version_script.py` (10)
 - `test_death_snippet_panel.py` (15)
 - `test_death_snippet_presenter.py` (13)
 - `test_debug_console_panel.py` (6)
 - `test_dps_panel_incremental.py` (14)
 - `test_dps_query_service.py` (16)
 - `test_formatters.py` (22)
-- `test_immunity_panel_additional.py` (10)
+- `test_immunity_panel_additional.py` (11)
 - `test_immunity_panel_edge_cases.py` (9)
 - `test_immunity_panel_incremental.py` (6)
 - `test_immunity_query_service.py` (8)
@@ -44,7 +44,7 @@ Notes:
 - `test_monitor.py` (23)
 - `test_monitor_debug_mode.py` (9)
 - `test_monitor_edge_cases.py` (4)
-- `test_parser.py` (81)
+- `test_parser.py` (80)
 - `test_parser_model_formatter_p2.py` (5)
 - `test_platform_wrappers_p2.py` (8)
 - `test_queue_processor.py` (10)
@@ -84,7 +84,7 @@ Notes:
 
 - Parser and models:
   - `test_parser.py`, `test_models.py`, `test_parser_storage_integration.py`
-  - Includes direct `LineParser` coverage for pure damage-breakdown parsing, explicit `ParserSession` coverage for year-rollover and death-correlation behavior, malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, malformed target-concealed fast-path fallback coverage, parser output contracts for store-owned AC/AB/save derivation, hot-path regression coverage for threat-roll/basic attack fast paths plus `+`-prefixed ability chains, and explicit AC/AB regression coverage for duplicate-hit invalidation and higher-bonus tie winners
+  - Includes direct `LineParser` coverage for pure damage-breakdown parsing, explicit `ParserSession` coverage for year-rollover and death-correlation behavior, malformed timestamp fallback coverage, invalid calendar/numeric timestamp parsing, malformed target-concealed fast-path fallback coverage, parser output contracts for store-owned AC/AB/save derivation, explicit coverage that damage parsing does not filter by attacker identity, hot-path regression coverage for threat-roll/basic attack fast paths plus `+`-prefixed ability chains, and explicit AC/AB regression coverage for duplicate-hit invalidation and higher-bonus tie winners
 - Storage and indexing performance behavior:
   - `test_storage.py`, `test_storage_indices.py`
   - Direct store setup now uses the real public batch API (`DataStore.apply_mutations(...)`) instead of older per-write helper methods
@@ -95,6 +95,7 @@ Notes:
   - Includes direct `QueueDrainResult` assertions for DPS/target/immunity/death side effects instead of legacy callback fanout, plus shared-matcher resilience coverage for reverse-order immunity lines, nearest-match selection, mismatch debug logging, and disabled-mode verification that damage events no longer retain matcher-side state or trigger periodic stale cleanup
 - Release/version automation:
   - `test_bump_version_script.py`
+  - Includes coverage for the combined version-bump and release-doc workflow: changelog promotion from `[Unreleased]` into a dated release section, recreation of a fresh empty `[Unreleased]`, release-note generation from the previous version template, changelog heading-depth normalization from `###` to `####` inside release docs, VirusTotal count placeholder rewriting to `X/NN`, dry-run no-write behavior, and fail-fast validation for empty unreleased notes, duplicate target release files, malformed VirusTotal badge counts, and missing release changelog sections
 - Monitor behavior (rotation/truncation/debug):
   - `test_monitor.py`, `test_monitor_debug_mode.py`, `test_monitor_edge_cases.py`, `test_log_rotation.py`, `test_file_truncation.py`, `test_monitor_parser_integration.py`, `test_integration_real_scenario.py`, `test_final_verification.py`
   - Includes steady-state active-file cache coverage, idle fallback rescans when directory metadata does not surface rotation immediately, delayed discovery when monitoring starts before any NWN log file exists, and edge-case monitor tests that now use realistic `readline()`-driven file doubles instead of runtime test-only file-handle branches
@@ -116,7 +117,7 @@ Notes:
   - Includes controller-first import coverage for modal layout, worker startup, strict `ops_chunk` payload requirements, incremental payload application, preserved death-snippet / death-character side-event delivery, and debug-toggle delegation through `MonitorController.set_debug_enabled(...)`
   - Includes Death Snippets widget coverage for selection state, placeholder behavior, Tk tag application, guarded `wooparseme` auto-identification, one-click character-name clearing back to the hint state, and wrap-toggle scroll preservation
   - Includes dedicated realtime backlog coverage for bounded queue saturation, post-read monitor backpressure pacing, pressure-banded Tk drain budgets, and coalesced refresh behavior under producer-faster-than-consumer load
-  - Includes Target Immunities coverage for zero-damage matched samples, absorbed-value tie-breaking, suppression of invalidated temporary full-immunity rows back to real max-damage display, best-effort immunity % display when exact reverse inference fails, and persisted/default-on Parse Immunities toggle behavior
+  - Includes Target Immunities coverage for selector-row pack layout, expanding target-combobox behavior, zero-damage matched samples, absorbed-value tie-breaking, suppression of invalidated temporary full-immunity rows back to real max-damage display, best-effort immunity % display when exact reverse inference fails, and persisted/default-on Parse Immunities toggle behavior
 - Death Snippets presenter coverage:
   - `test_death_snippet_presenter.py`
   - Includes pure render-preparation coverage for chat-prefix sanitization, opponent extraction, wrap-mode line padding, damage/name span generation, per-render name-pattern cache reuse, and killed-name precedence over opponent highlighting
@@ -156,6 +157,7 @@ Current shared fixtures include:
 Notes:
 - `tests/conftest.py` no longer monkeypatches removed `DataStore` write methods for tests.
 - `temp_log_dir` now uses repo-local per-test directories under `.pytest_tmp` for more reliable file-based tests on Windows in this workspace.
+- `parser_with_player` is still a shared fixture name, but it now exists only for attacker-name parsing assertions; parsing no longer exposes player-based filtering behavior.
 
 ## Shared Test Helpers
 

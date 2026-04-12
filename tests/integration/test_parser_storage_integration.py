@@ -157,15 +157,15 @@ class TestParserStorageIntegration:
         dps_list = DpsQueryService(database).get_dps_data(time_tracking_mode="per_character")
         assert len(dps_list) > 0
 
-    def test_parse_with_player_filter(self, temp_log_dir: Path) -> None:
-        """Test parsing with player name filter."""
+    def test_parse_tracks_all_attackers(self, temp_log_dir: Path) -> None:
+        """Parsing should track all attackers without attacker-name filtering."""
         log_file = temp_log_dir / "test.txt"
         content = """[CHAT WINDOW TEXT] [Thu Jan 09 14:30:00] Woo damages Goblin: 50 (50 Physical)
 [CHAT WINDOW TEXT] [Thu Jan 09 14:30:01] OtherPlayer damages Orc: 40 (40 Physical)
 """
         log_file.write_text(content)
 
-        parser = ParserSession(player_name="Woo")
+        parser = ParserSession()
         database = DataStore()
 
         result = parse_and_import_file(str(log_file), parser, database)
