@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** March 31, 2026 (Target Immunities selector layout coverage refresh)
+**Last Updated:** April 12, 2026 (release bump automation coverage refresh)
 
 ## Overview
-This document reflects the current state of the `tests/` directory after the Target Immunities selector-layout regression coverage update and a fresh full-suite recollection.
+This document reflects the current state of the `tests/` directory after the release bump automation coverage update and a fresh full-suite recollection.
 
 Collection baseline used for this update:
 - Command: `python -m pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **687 tests collected**
+- Result: **691 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 43 modules, 636 tests
+- `tests/unit/`: 43 modules, 640 tests
 - `tests/integration/`: 7 modules, 44 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 51 test modules, 687 tests
+- Total: 51 test modules, 691 tests
 
 Notes:
 - All active `test_*.py` files are under `unit/`, `integration/`, or `e2e/`.
@@ -24,7 +24,7 @@ Notes:
 ## Module Inventory
 
 ### Unit (`tests/unit`)
-- `test_bump_version_script.py` (6)
+- `test_bump_version_script.py` (10)
 - `test_death_snippet_panel.py` (15)
 - `test_death_snippet_presenter.py` (13)
 - `test_debug_console_panel.py` (6)
@@ -95,6 +95,7 @@ Notes:
   - Includes direct `QueueDrainResult` assertions for DPS/target/immunity/death side effects instead of legacy callback fanout, plus shared-matcher resilience coverage for reverse-order immunity lines, nearest-match selection, mismatch debug logging, and disabled-mode verification that damage events no longer retain matcher-side state or trigger periodic stale cleanup
 - Release/version automation:
   - `test_bump_version_script.py`
+  - Includes coverage for the combined version-bump and release-doc workflow: changelog promotion from `[Unreleased]` into a dated release section, recreation of a fresh empty `[Unreleased]`, release-note generation from the previous version template, changelog heading-depth normalization from `###` to `####` inside release docs, VirusTotal count placeholder rewriting to `X/NN`, dry-run no-write behavior, and fail-fast validation for empty unreleased notes, duplicate target release files, malformed VirusTotal badge counts, and missing release changelog sections
 - Monitor behavior (rotation/truncation/debug):
   - `test_monitor.py`, `test_monitor_debug_mode.py`, `test_monitor_edge_cases.py`, `test_log_rotation.py`, `test_file_truncation.py`, `test_monitor_parser_integration.py`, `test_integration_real_scenario.py`, `test_final_verification.py`
   - Includes steady-state active-file cache coverage, idle fallback rescans when directory metadata does not surface rotation immediately, delayed discovery when monitoring starts before any NWN log file exists, and edge-case monitor tests that now use realistic `readline()`-driven file doubles instead of runtime test-only file-handle branches
