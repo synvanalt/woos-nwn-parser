@@ -264,14 +264,25 @@ def test_setup_ui_wires_about_button_after_browse_with_tooltip_and_busy_state(mo
             self.parent = parent
             self.kwargs = kwargs
             self.pack_calls = []
+            self.grid_calls = []
             self.config_calls = []
             self.bind_calls = []
             self.packed_children = []
+            self.gridded_children = []
+            self.columnconfigure_calls = []
 
         def pack(self, *args, **kwargs) -> None:
             self.pack_calls.append((args, kwargs))
             if self.parent is not None and hasattr(self.parent, "packed_children"):
                 self.parent.packed_children.append(self)
+
+        def grid(self, *args, **kwargs) -> None:
+            self.grid_calls.append((args, kwargs))
+            if self.parent is not None and hasattr(self.parent, "gridded_children"):
+                self.parent.gridded_children.append(self)
+
+        def columnconfigure(self, index, **kwargs) -> None:
+            self.columnconfigure_calls.append((index, kwargs))
 
         def config(self, **kwargs) -> None:
             self.config_calls.append(kwargs)
@@ -366,13 +377,16 @@ def test_setup_ui_wires_about_button_after_browse_with_tooltip_and_busy_state(mo
     app.setup_ui()
 
     file_frame = app.browse_button.parent
-    assert app.about_button.kwargs["text"] == "About"
+    assert app.browse_button.kwargs["text"] == "Browse"
+    assert app.about_button.kwargs["text"] == "?"
     assert app.about_button.kwargs["command"] is app.show_about_modal
-    assert file_frame.packed_children.index(app.about_button) == (
-        file_frame.packed_children.index(app.browse_button) + 1
+    assert file_frame.columnconfigure_calls == [(1, {"weight": 1, "minsize": 40})]
+    assert app.dir_label.grid_calls == [((), {"row": 0, "column": 1, "sticky": "ew", "padx": (2, 2)})]
+    assert app.browse_button.grid_calls == [((), {"row": 0, "column": 4, "sticky": "w", "padx": 5})]
+    assert app.about_button.grid_calls == [((), {"row": 0, "column": 5, "sticky": "w", "padx": 5})]
+    assert file_frame.gridded_children.index(app.about_button) == (
+        file_frame.gridded_children.index(app.browse_button) + 1
     )
-    assert app.browse_button.pack_calls == [((), {"side": "left", "padx": 5})]
-    assert app.about_button.pack_calls == [((), {"side": "left", "padx": 5})]
     tooltip_manager.register.assert_any_call(app.about_button, "About this app")
 
     app._set_import_ui_busy(True)

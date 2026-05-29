@@ -178,9 +178,10 @@ class WoosNwnParserApp:
 
         file_frame = ttk.Frame(control_frame)
         file_frame.pack(fill="x", pady=(0, 10))
+        file_frame.columnconfigure(1, weight=1, minsize=40)
 
         self.log_directory_label = ttk.Label(file_frame, text="Log Directory:")
-        self.log_directory_label.pack(side="left", padx=5)
+        self.log_directory_label.grid(row=0, column=0, sticky="w", padx=5)
         self.dir_text = tk.StringVar(value="No directory selected")
         self.dir_label = ttk.Entry(
             file_frame,
@@ -189,10 +190,10 @@ class WoosNwnParserApp:
             foreground="gray",
             width=40,
         )
-        self.dir_label.pack(side="left", fill="x", expand=True, padx=(2, 2))
+        self.dir_label.grid(row=0, column=1, sticky="ew", padx=(2, 2))
 
         self.active_file_name_label = ttk.Label(file_frame, text="File:")
-        self.active_file_name_label.pack(side="left", padx=(10, 0))
+        self.active_file_name_label.grid(row=0, column=2, sticky="w", padx=(10, 0))
         self.active_file_text = tk.StringVar(value="N/A")
         self.active_file_label = ttk.Entry(
             file_frame,
@@ -201,12 +202,12 @@ class WoosNwnParserApp:
             foreground="gray",
             width=13,
         )
-        self.active_file_label.pack(side="left", padx=5)
+        self.active_file_label.grid(row=0, column=3, sticky="w", padx=5)
 
-        self.browse_button = ttk.Button(file_frame, text="Browse...", command=self.browse_directory)
-        self.browse_button.pack(side="left", padx=5)
-        self.about_button = ttk.Button(file_frame, text="About", command=self.show_about_modal)
-        self.about_button.pack(side="left", padx=5)
+        self.browse_button = ttk.Button(file_frame, text="Browse", command=self.browse_directory)
+        self.browse_button.grid(row=0, column=4, sticky="w", padx=5)
+        self.about_button = ttk.Button(file_frame, text="?", command=self.show_about_modal)
+        self.about_button.grid(row=0, column=5, sticky="w", padx=5)
 
         buttons_frame = ttk.Frame(control_frame)
         buttons_frame.pack(fill="x", pady=(5, 0))
