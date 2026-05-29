@@ -139,7 +139,7 @@ class DPSPanel(ttk.Frame):
         self.include_summons_var = tk.BooleanVar(value=False)
         self.include_summons_check = ttk.Checkbutton(
             self.dps_options_frame,
-            text="Include Summons in DPS",
+            text="Include Summons in Owner DPS",
             variable=self.include_summons_var,
         )
         self.include_summons_check.pack(side="left", padx=(0, 0))
