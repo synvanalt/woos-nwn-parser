@@ -397,7 +397,7 @@ class TestIncrementalRefresh:
         assert dps_panel._tree_refresh_state.item_ids['Woo'] != initial_item_id
 
     def test_include_summons_in_dps_checkbox_defaults_off_and_changes_view_key(self, dps_panel) -> None:
-        assert dps_panel.include_summons_check.cget("text") == "Include Summons in DPS"
+        assert dps_panel.include_summons_check.cget("text") == "Include Summons in Owner DPS"
         assert dps_panel.get_include_summons_in_dps() is False
         assert dps_panel.dps_options_frame.winfo_manager() == "pack"
 
