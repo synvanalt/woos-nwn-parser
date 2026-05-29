@@ -41,8 +41,12 @@ def test_dps_panel_registers_only_configured_widget_tooltips(notebook) -> None:
     store = DataStore()
     panel = DPSPanel(notebook, store, DpsQueryService(store), tooltip_manager=recorder)
 
-    assert len(recorder.calls) == 2
+    assert len(recorder.calls) == 3
     assert all("DPS" in call[2] or "target" in call[2].lower() for call in recorder.calls)
+    assert any(
+        call[2] == "When enabled, summons DPS will be included under the lead character (works only if summon's name includes the lead character name)."
+        for call in recorder.calls
+    )
 
     before = list(recorder.calls)
     panel.refresh()

@@ -17,6 +17,7 @@ class AppSettings:
     death_fallback_line: str | None = None
     parse_immunity: bool | None = None
     first_timestamp_mode: str | None = None
+    combine_associates: bool = False
 
 
 def get_settings_path() -> Path:
@@ -73,6 +74,7 @@ def load_app_settings(path: Path | None = None) -> AppSettings:
         first_timestamp_mode=_normalize_optional_first_timestamp_mode(
             payload.get("first_timestamp_mode")
         ),
+        combine_associates=bool(_normalize_optional_bool(payload.get("combine_associates"))),
     )
 
 
@@ -91,5 +93,6 @@ def save_app_settings(settings: AppSettings, path: Path | None = None) -> None:
         "first_timestamp_mode": _normalize_optional_first_timestamp_mode(
             settings.first_timestamp_mode
         ),
+        "combine_associates": bool(_normalize_optional_bool(settings.combine_associates)),
     }
     settings_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

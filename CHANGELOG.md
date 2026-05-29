@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- DPS can now optionally combine summon or associate damage under the lead character with the new `Combine Associates` checkbox.
 
 ## [1.7.0] - 2026-04-12
 ### Added

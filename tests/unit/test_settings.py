@@ -49,6 +49,7 @@ def test_load_app_settings_reads_expected_values() -> None:
                     "death_fallback_line": "  Your God refuses to hear your prayers!  ",
                     "parse_immunity": False,
                     "first_timestamp_mode": " global ",
+                    "combine_associates": True,
                 }
             ),
             encoding="utf-8",
@@ -60,6 +61,7 @@ def test_load_app_settings_reads_expected_values() -> None:
         assert settings.death_fallback_line == "Your God refuses to hear your prayers!"
         assert settings.parse_immunity is False
         assert settings.first_timestamp_mode == "global"
+        assert settings.combine_associates is True
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)
 
@@ -86,6 +88,7 @@ def test_save_app_settings_round_trip() -> None:
             death_fallback_line="Custom fallback line",
             parse_immunity=True,
             first_timestamp_mode="per_character",
+            combine_associates=True,
         )
 
         save_app_settings(expected, path)
@@ -173,5 +176,31 @@ def test_load_app_settings_invalid_first_timestamp_mode_returns_none() -> None:
         settings = load_app_settings(path)
 
         assert settings.first_timestamp_mode is None
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+def test_load_app_settings_missing_combine_associates_defaults_off() -> None:
+    tmp_path = _make_test_dir()
+    try:
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({"parse_immunity": True}), encoding="utf-8")
+
+        settings = load_app_settings(path)
+
+        assert settings.combine_associates is False
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+def test_load_app_settings_invalid_combine_associates_defaults_off() -> None:
+    tmp_path = _make_test_dir()
+    try:
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({"combine_associates": "yes"}), encoding="utf-8")
+
+        settings = load_app_settings(path)
+
+        assert settings.combine_associates is False
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)

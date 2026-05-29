@@ -20,6 +20,9 @@ def _mock_setup_ui(app: WoosNwnParserApp) -> None:
     app.dps_panel.time_tracking_var = Mock(set=Mock(), get=Mock(return_value="Per Character"))
     app.dps_panel.time_tracking_combo = Mock(bind=Mock())
     app.dps_panel.target_filter_combo = Mock(bind=Mock())
+    app.dps_panel.combine_associates_check = Mock(configure=Mock())
+    app.dps_panel.get_combine_associates = Mock(return_value=False)
+    app.dps_panel.set_combine_associates = Mock()
     app.stats_panel = Mock()
     app.immunity_panel = Mock()
     app.immunity_panel.target_combo = Mock(bind=Mock(), get=Mock(return_value=""))
@@ -51,6 +54,8 @@ def _make_app_shell() -> WoosNwnParserApp:
     app.dps_panel = Mock()
     app.dps_panel.update_target_filter_options = Mock()
     app.dps_panel.refresh = Mock()
+    app.dps_panel.get_combine_associates = Mock(return_value=False)
+    app.dps_panel.set_combine_associates = Mock()
     app.stats_panel = Mock(refresh=Mock())
     app.settings_controller = Mock()
     app.import_controller = Mock(shutdown=Mock())
@@ -135,12 +140,26 @@ def test_time_tracking_mode_change_refreshes_when_mode_changes(app_shell) -> Non
 
 
 def test_restore_persisted_dps_panel_state_sets_combobox_label(app_shell) -> None:
-    app_shell.dps_query_service = Mock(time_tracking_mode="global")
+    app_shell.dps_query_service = Mock(time_tracking_mode="global", combine_associates=True)
     app_shell.dps_panel.time_tracking_var = Mock()
 
     app_shell._restore_persisted_dps_panel_state()
 
     app_shell.dps_panel.time_tracking_var.set.assert_called_once_with("Global")
+    app_shell.dps_panel.set_combine_associates.assert_called_once_with(True)
+
+
+def test_combine_associates_toggle_updates_only_dps_and_schedules_save(app_shell) -> None:
+    app_shell.dps_panel.get_combine_associates.return_value = True
+    app_shell.dps_query_service = Mock(set_combine_associates=Mock())
+    app_shell._schedule_session_settings_save = Mock()
+
+    app_shell._on_combine_associates_changed()
+
+    app_shell.dps_query_service.set_combine_associates.assert_called_once_with(True)
+    app_shell._schedule_session_settings_save.assert_called_once_with()
+    app_shell.dps_panel.refresh.assert_called_once_with()
+    app_shell.stats_panel.refresh.assert_not_called()
 
 
 def test_init_uses_persisted_settings_over_defaults(monkeypatch) -> None:
@@ -157,6 +176,7 @@ def test_init_uses_persisted_settings_over_defaults(monkeypatch) -> None:
             death_fallback_line="Persisted fallback",
             parse_immunity=False,
             first_timestamp_mode="global",
+            combine_associates=True,
         ),
     )
     monkeypatch.setattr(main_window_module, "get_default_log_directory", lambda: r"C:\default_logs")
@@ -169,6 +189,7 @@ def test_init_uses_persisted_settings_over_defaults(monkeypatch) -> None:
             death_fallback_line="Persisted fallback",
             parse_immunity=False,
             first_timestamp_mode="global",
+            combine_associates=True,
         ),
     )
     _patch_init_dependencies(monkeypatch)
@@ -179,6 +200,7 @@ def test_init_uses_persisted_settings_over_defaults(monkeypatch) -> None:
     assert app._initial_death_fallback_line == "Persisted fallback"
     assert app.parser.parse_immunity is False
     assert app.dps_query_service.time_tracking_mode == "global"
+    assert app.dps_query_service.combine_associates is True
 
 
 def test_init_defaults_parse_immunity_on_when_setting_missing(monkeypatch) -> None:
