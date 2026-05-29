@@ -159,6 +159,7 @@ class DpsQueryService:
     def _build_combined_dps_rows(
         self,
         *,
+        target: Optional[str],
         time_tracking_mode: str,
         global_start_time: Optional[datetime],
         projection: DpsProjectionSnapshot,
@@ -171,6 +172,7 @@ class DpsQueryService:
         last_damage_timestamp = projection.last_damage_timestamp
         summary_by_character = {summary.character: summary for summary in projection.summaries}
         groups: dict[str, list] = {}
+        grouped_associates: dict[str, set[str]] = {}
         hidden_associates = set()
 
         for character, summary in summary_by_character.items():
@@ -179,6 +181,7 @@ class DpsQueryService:
                 groups.setdefault(character, []).append(summary)
             else:
                 hidden_associates.add(character)
+                grouped_associates.setdefault(lead, set()).add(character)
                 groups.setdefault(lead, []).append(summary)
 
         for lead, summaries in list(groups.items()):
@@ -212,13 +215,27 @@ class DpsQueryService:
                 total_damage = sum(int(summary.total_damage) for summary in summaries)
                 if total_damage == 0:
                     continue
-                first_timestamp = min(summary.first_timestamp for summary in summaries)
-                last_timestamps = [
-                    summary.last_timestamp or summary.first_timestamp
-                    for summary in summaries
-                ]
-                last_timestamp = max(last_timestamps)
-                time_delta = last_timestamp - first_timestamp
+                has_associates = bool(grouped_associates.get(lead))
+                if not has_associates:
+                    summary = summaries[0]
+                    if target is None:
+                        if last_damage_timestamp is None:
+                            continue
+                        time_delta = last_damage_timestamp - summary.first_timestamp
+                    elif summary.last_timestamp is None:
+                        if last_damage_timestamp is None:
+                            continue
+                        time_delta = last_damage_timestamp - summary.first_timestamp
+                    else:
+                        time_delta = summary.last_timestamp - summary.first_timestamp
+                else:
+                    first_timestamp = min(summary.first_timestamp for summary in summaries)
+                    last_timestamps = [
+                        summary.last_timestamp or summary.first_timestamp
+                        for summary in summaries
+                    ]
+                    last_timestamp = max(last_timestamps)
+                    time_delta = last_timestamp - first_timestamp
                 time_seconds = max(time_delta.total_seconds(), 1)
                 breakdown_token = self._merge_damage_by_type(summaries)
                 rows.append(
@@ -258,6 +275,7 @@ class DpsQueryService:
 
         if effective_combine:
             rows = self._build_combined_dps_rows(
+                target=target,
                 time_tracking_mode=effective_mode,
                 global_start_time=effective_start,
                 projection=projection,

@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** May 29, 2026 (Combine Associates DPS coverage refresh)
+**Last Updated:** May 29, 2026 (Combine Associates DPS timing coverage refresh)
 
 ## Overview
-This document reflects the current state of the `tests/` directory after the Combine Associates DPS coverage update and a fresh full-suite recollection.
+This document reflects the current state of the `tests/` directory after the Combine Associates DPS timing coverage update and a fresh full-suite recollection.
 
 Collection baseline used for this update:
 - Command: `python -m pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **705 tests collected**
+- Result: **708 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 43 modules, 654 tests
+- `tests/unit/`: 43 modules, 657 tests
 - `tests/integration/`: 7 modules, 44 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 51 test modules, 705 tests
+- Total: 51 test modules, 708 tests
 
 Notes:
 - All active `test_*.py` files are under `unit/`, `integration/`, or `e2e/`.
@@ -29,7 +29,7 @@ Notes:
 - `test_death_snippet_presenter.py` (13)
 - `test_debug_console_panel.py` (6)
 - `test_dps_panel_incremental.py` (16)
-- `test_dps_query_service.py` (25)
+- `test_dps_query_service.py` (28)
 - `test_formatters.py` (22)
 - `test_immunity_panel_additional.py` (11)
 - `test_immunity_panel_edge_cases.py` (9)
@@ -101,7 +101,7 @@ Notes:
   - Includes steady-state active-file cache coverage, idle fallback rescans when directory metadata does not surface rotation immediately, delayed discovery when monitoring starts before any NWN log file exists, and edge-case monitor tests that now use realistic `readline()`-driven file doubles instead of runtime test-only file-handle branches
 - DPS query service/pipeline:
   - `test_dps_query_service.py`, `test_dps_pipeline_integration.py`
-  - Includes direct coverage that DPS table rows and damage-type breakdowns consume one atomic store projection snapshot instead of stitching together timing and summary reads across multiple lock acquisitions, plus optional Combine Associates aggregation for damage totals, damage types, hit rate counts, target filters, discovery order, and timing modes
+  - Includes direct coverage that DPS table rows and damage-type breakdowns consume one atomic store projection snapshot instead of stitching together timing and summary reads across multiple lock acquisitions, plus optional Combine Associates aggregation for damage totals, damage types, hit rate counts, target filters, discovery order, unrelated-row timing preservation, and timing modes
   - Query-service, integration, queue-processor, and e2e tests now consume typed DTO attributes directly instead of legacy dict-like row access
 - Immunity query service/display preparation:
   - `test_immunity_query_service.py`

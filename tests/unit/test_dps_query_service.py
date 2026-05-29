@@ -338,6 +338,39 @@ class TestDpsQueryService(unittest.TestCase):
         self.assertEqual(result[0].time_seconds, timedelta(seconds=20))
         self.assertEqual(result[0].dps, 10.0)
 
+    def test_combine_associates_per_character_all_targets_uses_group_earliest_and_latest(self) -> None:
+        now = datetime.now()
+        apply(
+            self.data_store,
+            damage_dealt(attacker="Lead", target="Dragon", timestamp=now + timedelta(seconds=10), damage_types={"Physical": 100}),
+            damage_dealt(attacker="Lead | Summon", target="Dragon", timestamp=now, damage_types={"Fire": 50}),
+            damage_dealt(attacker="Lead | Summon", target="Orc", timestamp=now + timedelta(seconds=20), damage_types={"Fire": 50}),
+        )
+        self.service.set_combine_associates(True)
+
+        result = self.service.get_dps_display_data()
+        by_character = {row.character: row for row in result}
+
+        self.assertEqual(by_character["Lead"].time_seconds, timedelta(seconds=20))
+        self.assertEqual(by_character["Lead"].dps, 10.0)
+
+    def test_combine_associates_does_not_change_unrelated_per_character_time(self) -> None:
+        now = datetime.now()
+        apply(
+            self.data_store,
+            damage_dealt(attacker="Unrelated", target="Dragon", timestamp=now, damage_types={"Physical": 100}),
+            damage_dealt(attacker="Lead", target="Dragon", timestamp=now + timedelta(seconds=10), damage_types={"Physical": 100}),
+            damage_dealt(attacker="Lead | Summon", target="Dragon", timestamp=now + timedelta(seconds=20), damage_types={"Fire": 50}),
+        )
+
+        self.service.set_combine_associates(False)
+        off_rows = {row.character: row for row in self.service.get_dps_display_data()}
+        self.service.set_combine_associates(True)
+        on_rows = {row.character: row for row in self.service.get_dps_display_data()}
+
+        self.assertEqual(on_rows["Unrelated"].time_seconds, off_rows["Unrelated"].time_seconds)
+        self.assertEqual(on_rows["Unrelated"].dps, off_rows["Unrelated"].dps)
+
     def test_combine_associates_global_mode_uses_global_window(self) -> None:
         now = datetime.now()
         apply(
@@ -353,6 +386,27 @@ class TestDpsQueryService(unittest.TestCase):
 
         self.assertEqual(result[0].time_seconds, timedelta(seconds=20))
         self.assertEqual(result[0].dps, 7.5)
+
+    def test_combine_associates_global_mode_preserves_window_when_associate_is_earliest(self) -> None:
+        now = datetime.now()
+        apply(
+            self.data_store,
+            damage_dealt(attacker="Lead | Summon", target="Dragon", timestamp=now, damage_types={"Fire": 50}),
+            damage_dealt(attacker="Lead", target="Dragon", timestamp=now + timedelta(seconds=10), damage_types={"Physical": 100}),
+            damage_dealt(attacker="Unrelated", target="Dragon", timestamp=now + timedelta(seconds=30), damage_types={"Physical": 300}),
+        )
+        self.service.set_time_tracking_mode("global")
+
+        self.service.set_combine_associates(False)
+        off_window = {
+            row.character: row.time_seconds
+            for row in self.service.get_dps_display_data()
+        }["Lead | Summon"]
+        self.service.set_combine_associates(True)
+        on_rows = {row.character: row for row in self.service.get_dps_display_data()}
+
+        self.assertEqual(on_rows["Lead"].time_seconds, off_window)
+        self.assertEqual(on_rows["Lead"].time_seconds, timedelta(seconds=30))
 
 
 class TestDpsQueryServiceIntegration(unittest.TestCase):
