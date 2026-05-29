@@ -375,7 +375,7 @@ class TestStoreReadBoundary:
         assert summary.character == "Woo"
         assert summary.total_damage == 100
         assert summary.first_timestamp == ts
-        assert summary.last_timestamp is None
+        assert summary.last_timestamp == ts
         assert summary.damage_by_type == (("Fire", 60), ("Physical", 40))
         assert summary.breakdown_token == summary.damage_by_type
 
