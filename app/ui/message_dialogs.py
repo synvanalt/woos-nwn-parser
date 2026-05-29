@@ -2,11 +2,20 @@
 
 import tkinter as tk
 from tkinter import ttk
+import webbrowser
 
+from .tooltips import TooltipManager
 from .window_style import apply_dark_title_bar
 
 
 _DIALOG_BG = "#1c1c1c"
+ABOUT_VERSION_TEXT = "Version 1.7.0"
+ABOUT_DESCRIPTION_TEXT = (
+    "A real-time combat log parser and DPS analyzer for Neverwinter Nights. "
+    "Tracks DPS, target stats, immunities, and more from NWN game logs."
+)
+ADOH_URL = "https://www.adawnofheroes.org/"
+RELEASES_URL = "https://github.com/synvanalt/woos-nwn-parser/releases/"
 
 
 def _center_window_on_parent(
@@ -139,14 +148,14 @@ def show_error_dialog(
 
 
 def show_about_dialog(parent: tk.Misc, *, icon_path: str | None = None) -> None:
-    """Show the app About dialog shell."""
+    """Show the app About dialog."""
     dialog = tk.Toplevel(parent)
     dialog.withdraw()
     dialog.configure(bg=_DIALOG_BG)
     dialog.title("About")
     dialog.resizable(False, False)
     dialog.transient(parent)
-    _center_window_on_parent(parent, dialog, 480, 140)
+    _center_window_on_parent(parent, dialog, 520, 240)
     _apply_modal_icon(parent, dialog, icon_path)
     try:
         apply_dark_title_bar(dialog)
@@ -158,11 +167,73 @@ def show_about_dialog(parent: tk.Misc, *, icon_path: str | None = None) -> None:
 
     content = ttk.Frame(container)
     content.pack(fill="both", expand=True)
+    tooltip_manager = TooltipManager(dialog)
+
+    ttk.Label(
+        content,
+        text="Woo's NWN Parser",
+        font=("", 12, "bold"),
+    ).pack(anchor="w", fill="x")
+    ttk.Label(
+        content,
+        text=ABOUT_VERSION_TEXT,
+    ).pack(anchor="w", fill="x", pady=(6, 0))
+    ttk.Label(
+        content,
+        text=ABOUT_DESCRIPTION_TEXT,
+        justify="left",
+        wraplength=480,
+    ).pack(anchor="w", fill="x", pady=(12, 0))
+    community_line = ttk.Frame(content)
+    community_line.pack(anchor="w", fill="x", pady=(12, 0))
+    ttk.Label(
+        community_line,
+        text="Built with love for the ",
+    ).pack(side="left")
+    adoh_link = ttk.Label(
+        community_line,
+        text="ADOH",
+        foreground="#8ab4f8",
+        cursor="hand2",
+    )
+    adoh_link.pack(side="left")
+    adoh_link.bind(
+        "<Button-1>",
+        lambda _event: webbrowser.open_new_tab(ADOH_URL),
+    )
+    tooltip_manager.register(adoh_link, ADOH_URL)
+    ttk.Label(
+        community_line,
+        text=" community.",
+    ).pack(side="left")
+    releases_line = ttk.Frame(content)
+    releases_line.pack(anchor="w", fill="x", pady=(12, 0))
+    ttk.Label(
+        releases_line,
+        text="Visit the ",
+    ).pack(side="left")
+    releases_link = ttk.Label(
+        releases_line,
+        text="GitHub Releases",
+        foreground="#8ab4f8",
+        cursor="hand2",
+    )
+    releases_link.pack(side="left")
+    releases_link.bind(
+        "<Button-1>",
+        lambda _event: webbrowser.open_new_tab(RELEASES_URL),
+    )
+    tooltip_manager.register(releases_link, RELEASES_URL)
+    ttk.Label(
+        releases_line,
+        text=" page for app updates.",
+    ).pack(side="left")
 
     actions = ttk.Frame(container)
     actions.pack(side="bottom", fill="x")
 
     def _close(*_args: object) -> None:
+        tooltip_manager.destroy()
         try:
             dialog.grab_release()
         except tk.TclError:

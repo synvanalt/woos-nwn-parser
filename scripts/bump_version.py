@@ -119,6 +119,19 @@ def update_app_init_version(init_path: Path, new_version: str) -> None:
     init_path.write_text(updated, encoding="utf-8")
 
 
+def update_about_dialog_version(message_dialogs_path: Path, new_version: str) -> None:
+    """Update ABOUT_VERSION_TEXT in the About dialog module."""
+    text = message_dialogs_path.read_text(encoding="utf-8")
+    updated = replace_exactly_once(
+        text=text,
+        pattern=r'^(ABOUT_VERSION_TEXT\s*=\s*")Version \d+\.\d+\.\d+(")',
+        replacement=rf"\g<1>Version {new_version}\g<2>",
+        field_name="ABOUT_VERSION_TEXT",
+        file_path=message_dialogs_path,
+    )
+    message_dialogs_path.write_text(updated, encoding="utf-8")
+
+
 def update_spec_file(spec_path: Path, new_version: str) -> None:
     """Update all version fields in a PyInstaller spec file."""
     text = spec_path.read_text(encoding="utf-8")
@@ -303,10 +316,17 @@ def update_versions(
     parse_semver(current_version)
     pyproject_path = base_dir / "pyproject.toml"
     app_init_path = base_dir / "app" / "__init__.py"
+    message_dialogs_path = base_dir / "app" / "ui" / "message_dialogs.py"
     onefile_spec = base_dir / "WoosNwnParser-onefile.spec"
     onedir_spec = base_dir / "WoosNwnParser-onedir.spec"
 
-    version_paths = [pyproject_path, app_init_path, onefile_spec, onedir_spec]
+    version_paths = [
+        pyproject_path,
+        app_init_path,
+        message_dialogs_path,
+        onefile_spec,
+        onedir_spec,
+    ]
     missing = [path for path in version_paths if not path.exists()]
     if missing:
         missing_joined = ", ".join(str(path) for path in missing)
@@ -324,6 +344,7 @@ def update_versions(
 
     update_pyproject_version(pyproject_path, new_version)
     update_app_init_version(app_init_path, new_version)
+    update_about_dialog_version(message_dialogs_path, new_version)
     update_spec_file(onefile_spec, new_version)
     update_spec_file(onedir_spec, new_version)
     update_release_docs(
