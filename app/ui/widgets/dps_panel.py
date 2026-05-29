@@ -136,13 +136,13 @@ class DPSPanel(ttk.Frame):
 
         self.dps_options_frame = ttk.Frame(self)
         self.dps_options_frame.pack(fill="x", expand=False, padx=0, pady=(6, 0))
-        self.combine_associates_var = tk.BooleanVar(value=False)
-        self.combine_associates_check = ttk.Checkbutton(
+        self.include_summons_var = tk.BooleanVar(value=False)
+        self.include_summons_check = ttk.Checkbutton(
             self.dps_options_frame,
-            text="Combine Associates",
-            variable=self.combine_associates_var,
+            text="Include Summons in DPS",
+            variable=self.include_summons_var,
         )
-        self.combine_associates_check.pack(side="left", padx=(5, 0))
+        self.include_summons_check.pack(side="left", padx=(0, 0))
         self._register_tooltips()
 
     def _register_tooltips(self) -> None:
@@ -158,8 +158,8 @@ class DPSPanel(ttk.Frame):
             "Limit the DPS table to damage dealt to one target, or show all targets combined",
         )
         self.tooltip_manager.register(
-            self.combine_associates_check,
-            "When enabled, summons DPS will be included under the lead character (works only if summon's name includes the lead character name).",
+            self.include_summons_check,
+            "Adds summon damage to the owner's DPS row and hides the separate summon row (only works when the summon name starts with the owner name, such as 'Owner | Summon')",
         )
 
     def refresh(self) -> None:
@@ -172,7 +172,7 @@ class DPSPanel(ttk.Frame):
             selected_target,
             self.dps_query_service.time_tracking_mode,
             self.dps_query_service.global_start_time,
-            self.dps_query_service.combine_associates,
+            self.dps_query_service.include_summons_in_dps,
         )
         current_version = self.data_store.version
         uses_store_query = self.dps_query_service.supports_store_version_fast_path
@@ -509,13 +509,13 @@ class DPSPanel(ttk.Frame):
         """
         return self.target_filter_var.get()
 
-    def get_combine_associates(self) -> bool:
-        """Return whether associate DPS should be consolidated in the DPS panel."""
-        return bool(self.combine_associates_var.get())
+    def get_include_summons_in_dps(self) -> bool:
+        """Return whether summon DPS should be included under the owner row."""
+        return bool(self.include_summons_var.get())
 
-    def set_combine_associates(self, enabled: bool) -> None:
-        """Set the combine-associates checkbox state."""
-        self.combine_associates_var.set(bool(enabled))
+    def set_include_summons_in_dps(self, enabled: bool) -> None:
+        """Set the include-summons checkbox state."""
+        self.include_summons_var.set(bool(enabled))
 
     def update_target_filter_options(self, targets: list) -> None:
         """Update target filter combobox with available targets.

@@ -15,7 +15,7 @@ def test_build_settings_reads_current_callbacks() -> None:
         get_log_directory=lambda: r"C:\logs",
         get_death_fallback_line=lambda: "fallback line",
         get_first_timestamp_mode=lambda: "global",
-        get_combine_associates=lambda: True,
+        get_include_summons_in_dps=lambda: True,
     )
 
     settings = controller.build_settings()
@@ -25,7 +25,7 @@ def test_build_settings_reads_current_callbacks() -> None:
         death_fallback_line="fallback line",
         parse_immunity=False,
         first_timestamp_mode="global",
-        combine_associates=True,
+        include_summons_in_dps=True,
     )
 
 
@@ -40,7 +40,7 @@ def test_schedule_save_debounces_and_flushes() -> None:
         get_log_directory=lambda: "",
         get_death_fallback_line=lambda: "",
         get_first_timestamp_mode=lambda: "per_character",
-        get_combine_associates=lambda: False,
+        get_include_summons_in_dps=lambda: False,
         save_settings=save_settings,
     )
     controller._settings_save_job = "old-job"

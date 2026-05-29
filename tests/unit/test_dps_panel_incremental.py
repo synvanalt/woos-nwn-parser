@@ -396,9 +396,9 @@ class TestIncrementalRefresh:
         assert dps_panel._tree_refresh_state.view_key[0] == "Goblin"
         assert dps_panel._tree_refresh_state.item_ids['Woo'] != initial_item_id
 
-    def test_combine_associates_checkbox_defaults_off_and_changes_view_key(self, dps_panel) -> None:
-        assert dps_panel.combine_associates_check.cget("text") == "Combine Associates"
-        assert dps_panel.get_combine_associates() is False
+    def test_include_summons_in_dps_checkbox_defaults_off_and_changes_view_key(self, dps_panel) -> None:
+        assert dps_panel.include_summons_check.cget("text") == "Include Summons in DPS"
+        assert dps_panel.get_include_summons_in_dps() is False
         assert dps_panel.dps_options_frame.winfo_manager() == "pack"
 
         dps_panel.dps_query_service.supports_store_version_fast_path = False
@@ -410,13 +410,13 @@ class TestIncrementalRefresh:
         dps_panel.refresh()
         assert dps_panel._tree_refresh_state.view_key[-1] is False
 
-        dps_panel.dps_query_service.set_combine_associates(True)
-        dps_panel.set_combine_associates(True)
+        dps_panel.dps_query_service.set_include_summons_in_dps(True)
+        dps_panel.set_include_summons_in_dps(True)
         dps_panel.refresh()
 
         assert dps_panel._tree_refresh_state.view_key[-1] is True
 
-    def test_combine_associates_toggle_rebuilds_rows_without_stale_cache(self, dps_panel) -> None:
+    def test_include_summons_in_dps_toggle_rebuilds_rows_without_stale_cache(self, dps_panel) -> None:
         from datetime import datetime
 
         now = datetime.now()
@@ -433,8 +433,8 @@ class TestIncrementalRefresh:
         ]
         assert set(off_names) == {"Woo", "Woo | Summon"}
 
-        dps_panel.dps_query_service.set_combine_associates(True)
-        dps_panel.set_combine_associates(True)
+        dps_panel.dps_query_service.set_include_summons_in_dps(True)
+        dps_panel.set_include_summons_in_dps(True)
         dps_panel.refresh()
         on_names = [
             dps_panel.tree.item(item_id, "values")[0]
@@ -442,8 +442,8 @@ class TestIncrementalRefresh:
         ]
         assert on_names == ["Woo"]
 
-        dps_panel.dps_query_service.set_combine_associates(False)
-        dps_panel.set_combine_associates(False)
+        dps_panel.dps_query_service.set_include_summons_in_dps(False)
+        dps_panel.set_include_summons_in_dps(False)
         dps_panel.refresh()
         restored_names = [
             dps_panel.tree.item(item_id, "values")[0]

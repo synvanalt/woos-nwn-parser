@@ -29,7 +29,7 @@ class DpsQueryService:
             tuple[DpsBreakdownRow, ...],
         ] = {}
         self._hit_rate_cache: dict[Optional[str], dict[str, float]] = {}
-        self.combine_associates = False
+        self.include_summons_in_dps = False
 
     def _reset_caches_if_needed(self) -> None:
         version = self.data_store.version
@@ -50,9 +50,9 @@ class DpsQueryService:
     def set_global_start_time(self, timestamp: Optional[datetime]) -> None:
         self.global_start_time = timestamp
 
-    def set_combine_associates(self, enabled: bool) -> None:
-        """Set whether DPS reads consolidate associates under their lead row."""
-        self.combine_associates = bool(enabled)
+    def set_include_summons_in_dps(self, enabled: bool) -> None:
+        """Set whether DPS reads include summons under their lead row."""
+        self.include_summons_in_dps = bool(enabled)
 
     def _resolve_global_start_time(
         self,
@@ -156,7 +156,7 @@ class DpsQueryService:
                 totals[damage_type] += int(damage_amount)
         return tuple(sorted(totals.items()))
 
-    def _build_combined_dps_rows(
+    def _build_include_summons_dps_rows(
         self,
         *,
         target: Optional[str],
@@ -257,7 +257,7 @@ class DpsQueryService:
         target: Optional[str] = None,
         time_tracking_mode: Optional[str] = None,
         global_start_time: Optional[datetime] = None,
-        combine_associates: Optional[bool] = None,
+        include_summons_in_dps: Optional[bool] = None,
     ) -> list[DpsRow]:
         self._reset_caches_if_needed()
         effective_mode = time_tracking_mode or self.time_tracking_mode
@@ -267,14 +267,18 @@ class DpsQueryService:
             global_start_time=effective_start,
             projection=projection,
         )
-        effective_combine = self.combine_associates if combine_associates is None else combine_associates
-        cache_key = (target, effective_mode, resolved_global_start, bool(effective_combine))
+        effective_include_summons = (
+            self.include_summons_in_dps
+            if include_summons_in_dps is None
+            else include_summons_in_dps
+        )
+        cache_key = (target, effective_mode, resolved_global_start, bool(effective_include_summons))
         cached_rows = self._dps_data_cache.get(cache_key)
         if cached_rows is not None:
             return list(cached_rows)
 
-        if effective_combine:
-            rows = self._build_combined_dps_rows(
+        if effective_include_summons:
+            rows = self._build_include_summons_dps_rows(
                 target=target,
                 time_tracking_mode=effective_mode,
                 global_start_time=effective_start,
@@ -308,8 +312,8 @@ class DpsQueryService:
         else:
             rows = self.get_dps_data(target=target_filter)
 
-        if self.combine_associates:
-            hit_rates = self._get_combined_hit_rates(target=target)
+        if self.include_summons_in_dps:
+            hit_rates = self._get_include_summons_hit_rates(target=target)
         else:
             hit_rates = self.get_hit_rate_for_damage_dealers(target=target)
 
@@ -325,7 +329,7 @@ class DpsQueryService:
             for row in rows
         ]
 
-    def _get_combined_hit_rates(self, *, target: Optional[str]) -> dict[str, float]:
+    def _get_include_summons_hit_rates(self, *, target: Optional[str]) -> dict[str, float]:
         counts_by_character = self.data_store.get_attack_counts_for_damage_dealers(target=target)
         associate_to_lead = self.data_store.get_associate_mappings()
         grouped_counts: dict[str, dict[str, int]] = {}
@@ -363,7 +367,10 @@ class DpsQueryService:
         )
         rows_by_character = {
             row.character: row
-            for row in self.get_dps_data(target=target, combine_associates=self.combine_associates)
+            for row in self.get_dps_data(
+                target=target,
+                include_summons_in_dps=self.include_summons_in_dps,
+            )
         }
         summaries = {summary.character: summary for summary in projection.summaries}
         last_damage_timestamp = projection.last_damage_timestamp
@@ -374,11 +381,11 @@ class DpsQueryService:
                 character,
                 self.time_tracking_mode,
                 resolved_global_start,
-                self.combine_associates,
+                self.include_summons_in_dps,
             )
             cached_rows = self._dps_breakdowns_cache.get(cache_key)
             if cached_rows is None:
-                if self.combine_associates:
+                if self.include_summons_in_dps:
                     row = rows_by_character.get(character)
                     if row is None or int(row.total_damage) == 0:
                         rows = []

@@ -44,7 +44,7 @@ def test_dps_panel_registers_only_configured_widget_tooltips(notebook) -> None:
     assert len(recorder.calls) == 3
     assert all("DPS" in call[2] or "target" in call[2].lower() for call in recorder.calls)
     assert any(
-        call[2] == "When enabled, summons DPS will be included under the lead character (works only if summon's name includes the lead character name)."
+        call[2] == "Adds summon damage to the owner's DPS row and hides the separate summon row (only works when the summon name starts with the owner name, such as 'Owner | Summon')"
         for call in recorder.calls
     )
 

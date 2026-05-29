@@ -215,7 +215,7 @@ class TestDpsQueryService(unittest.TestCase):
 
         self.assertEqual(result["Woo"][0].damage_type, "Fire")
 
-    def test_combine_associates_off_keeps_separate_rows(self) -> None:
+    def test_include_summons_in_dps_off_keeps_separate_rows(self) -> None:
         now = datetime.now()
         apply(
             self.data_store,
@@ -227,7 +227,7 @@ class TestDpsQueryService(unittest.TestCase):
 
         self.assertEqual({row.character for row in result}, {"Lead", "Lead | Summon"})
 
-    def test_combine_associates_aggregates_damage_breakdowns_and_hit_rate(self) -> None:
+    def test_include_summons_in_dps_aggregates_damage_breakdowns_and_hit_rate(self) -> None:
         now = datetime.now()
         apply(
             self.data_store,
@@ -237,7 +237,7 @@ class TestDpsQueryService(unittest.TestCase):
             attack(attacker="Lead", target="Dragon", outcome="miss"),
             attack(attacker="Lead | Summon", target="Dragon", outcome="critical_hit"),
         )
-        self.service.set_combine_associates(True)
+        self.service.set_include_summons_in_dps(True)
 
         result = self.service.get_dps_display_data()
         breakdown = self.service.get_damage_type_breakdown("Lead")
@@ -247,7 +247,7 @@ class TestDpsQueryService(unittest.TestCase):
         self.assertEqual(result[0].hit_rate, pytest.approx(200 / 3))
         self.assertEqual({row.damage_type: row.total_damage for row in breakdown}, {"Physical": 100, "Fire": 50})
 
-    def test_combine_associates_multiple_associates(self) -> None:
+    def test_include_summons_in_dps_multiple_associates(self) -> None:
         now = datetime.now()
         apply(
             self.data_store,
@@ -255,7 +255,7 @@ class TestDpsQueryService(unittest.TestCase):
             damage_dealt(attacker="Lead | Wolf", target="Dragon", timestamp=now, damage_types={"Fire": 50}),
             damage_dealt(attacker="Lead | Bear", target="Dragon", timestamp=now, damage_types={"Cold": 25}),
         )
-        self.service.set_combine_associates(True)
+        self.service.set_include_summons_in_dps(True)
 
         result = self.service.get_dps_display_data()
 
@@ -269,7 +269,7 @@ class TestDpsQueryService(unittest.TestCase):
             self.data_store,
             damage_dealt(attacker="Lead | Summon", target="Dragon", timestamp=now, damage_types={"Fire": 50}),
         )
-        self.service.set_combine_associates(True)
+        self.service.set_include_summons_in_dps(True)
 
         result = self.service.get_dps_display_data()
 
@@ -282,14 +282,14 @@ class TestDpsQueryService(unittest.TestCase):
             damage_dealt(attacker="Lead | Summon", target="Dragon", timestamp=now, damage_types={"Fire": 50}),
             damage_dealt(attacker="Lead", target="Dragon", timestamp=now + timedelta(seconds=1), damage_types={"Physical": 100}),
         )
-        self.service.set_combine_associates(True)
+        self.service.set_include_summons_in_dps(True)
 
         result = self.service.get_dps_display_data()
 
         self.assertEqual([row.character for row in result], ["Lead"])
         self.assertEqual(result[0].total_damage, 150)
 
-    def test_combine_associates_target_filter_uses_selected_target_only(self) -> None:
+    def test_include_summons_in_dps_target_filter_uses_selected_target_only(self) -> None:
         now = datetime.now()
         apply(
             self.data_store,
@@ -300,7 +300,7 @@ class TestDpsQueryService(unittest.TestCase):
             attack(attacker="Lead | Summon", target="Dragon", outcome="miss"),
             attack(attacker="Lead | Summon", target="Goblin", outcome="critical_hit"),
         )
-        self.service.set_combine_associates(True)
+        self.service.set_include_summons_in_dps(True)
 
         result = self.service.get_dps_display_data(target_filter="Dragon")
 
@@ -309,21 +309,21 @@ class TestDpsQueryService(unittest.TestCase):
         self.assertEqual(result[0].total_damage, 150)
         self.assertEqual(result[0].hit_rate, 50.0)
 
-    def test_combine_associates_target_filter_shows_lead_when_only_associate_damaged_target(self) -> None:
+    def test_include_summons_in_dps_target_filter_shows_lead_when_only_associate_damaged_target(self) -> None:
         now = datetime.now()
         apply(
             self.data_store,
             damage_dealt(attacker="Lead", target="Goblin", timestamp=now, damage_types={"Physical": 100}),
             damage_dealt(attacker="Lead | Summon", target="Dragon", timestamp=now, damage_types={"Fire": 50}),
         )
-        self.service.set_combine_associates(True)
+        self.service.set_include_summons_in_dps(True)
 
         result = self.service.get_dps_display_data(target_filter="Dragon")
 
         self.assertEqual([row.character for row in result], ["Lead"])
         self.assertEqual(result[0].total_damage, 50)
 
-    def test_combine_associates_per_character_timing_uses_group_earliest_and_latest(self) -> None:
+    def test_include_summons_in_dps_per_character_timing_uses_group_earliest_and_latest(self) -> None:
         now = datetime.now()
         apply(
             self.data_store,
@@ -331,14 +331,14 @@ class TestDpsQueryService(unittest.TestCase):
             damage_dealt(attacker="Lead | Summon", target="Dragon", timestamp=now, damage_types={"Fire": 50}),
             damage_dealt(attacker="Lead | Summon", target="Dragon", timestamp=now + timedelta(seconds=20), damage_types={"Fire": 50}),
         )
-        self.service.set_combine_associates(True)
+        self.service.set_include_summons_in_dps(True)
 
         result = self.service.get_dps_display_data(target_filter="Dragon")
 
         self.assertEqual(result[0].time_seconds, timedelta(seconds=20))
         self.assertEqual(result[0].dps, 10.0)
 
-    def test_combine_associates_per_character_all_targets_uses_group_earliest_and_latest(self) -> None:
+    def test_include_summons_in_dps_per_character_all_targets_uses_group_earliest_and_latest(self) -> None:
         now = datetime.now()
         apply(
             self.data_store,
@@ -346,7 +346,7 @@ class TestDpsQueryService(unittest.TestCase):
             damage_dealt(attacker="Lead | Summon", target="Dragon", timestamp=now, damage_types={"Fire": 50}),
             damage_dealt(attacker="Lead | Summon", target="Orc", timestamp=now + timedelta(seconds=20), damage_types={"Fire": 50}),
         )
-        self.service.set_combine_associates(True)
+        self.service.set_include_summons_in_dps(True)
 
         result = self.service.get_dps_display_data()
         by_character = {row.character: row for row in result}
@@ -354,7 +354,7 @@ class TestDpsQueryService(unittest.TestCase):
         self.assertEqual(by_character["Lead"].time_seconds, timedelta(seconds=20))
         self.assertEqual(by_character["Lead"].dps, 10.0)
 
-    def test_combine_associates_does_not_change_unrelated_per_character_time(self) -> None:
+    def test_include_summons_in_dps_does_not_change_unrelated_per_character_time(self) -> None:
         now = datetime.now()
         apply(
             self.data_store,
@@ -363,15 +363,15 @@ class TestDpsQueryService(unittest.TestCase):
             damage_dealt(attacker="Lead | Summon", target="Dragon", timestamp=now + timedelta(seconds=20), damage_types={"Fire": 50}),
         )
 
-        self.service.set_combine_associates(False)
+        self.service.set_include_summons_in_dps(False)
         off_rows = {row.character: row for row in self.service.get_dps_display_data()}
-        self.service.set_combine_associates(True)
+        self.service.set_include_summons_in_dps(True)
         on_rows = {row.character: row for row in self.service.get_dps_display_data()}
 
         self.assertEqual(on_rows["Unrelated"].time_seconds, off_rows["Unrelated"].time_seconds)
         self.assertEqual(on_rows["Unrelated"].dps, off_rows["Unrelated"].dps)
 
-    def test_combine_associates_global_mode_uses_global_window(self) -> None:
+    def test_include_summons_in_dps_global_mode_uses_global_window(self) -> None:
         now = datetime.now()
         apply(
             self.data_store,
@@ -380,14 +380,14 @@ class TestDpsQueryService(unittest.TestCase):
         )
         self.service.set_time_tracking_mode("global")
         self.service.set_global_start_time(now - timedelta(seconds=10))
-        self.service.set_combine_associates(True)
+        self.service.set_include_summons_in_dps(True)
 
         result = self.service.get_dps_display_data()
 
         self.assertEqual(result[0].time_seconds, timedelta(seconds=20))
         self.assertEqual(result[0].dps, 7.5)
 
-    def test_combine_associates_global_mode_preserves_window_when_associate_is_earliest(self) -> None:
+    def test_include_summons_in_dps_global_mode_preserves_window_when_associate_is_earliest(self) -> None:
         now = datetime.now()
         apply(
             self.data_store,
@@ -397,12 +397,12 @@ class TestDpsQueryService(unittest.TestCase):
         )
         self.service.set_time_tracking_mode("global")
 
-        self.service.set_combine_associates(False)
+        self.service.set_include_summons_in_dps(False)
         off_window = {
             row.character: row.time_seconds
             for row in self.service.get_dps_display_data()
         }["Lead | Summon"]
-        self.service.set_combine_associates(True)
+        self.service.set_include_summons_in_dps(True)
         on_rows = {row.character: row for row in self.service.get_dps_display_data()}
 
         self.assertEqual(on_rows["Lead"].time_seconds, off_window)

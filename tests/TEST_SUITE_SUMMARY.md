@@ -1,9 +1,9 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** May 29, 2026 (Combine Associates DPS timing coverage refresh)
+**Last Updated:** May 29, 2026 (Include Summons in DPS timing coverage refresh)
 
 ## Overview
-This document reflects the current state of the `tests/` directory after the Combine Associates DPS timing coverage update and a fresh full-suite recollection.
+This document reflects the current state of the `tests/` directory after the Include Summons in DPS timing coverage update and a fresh full-suite recollection.
 
 Collection baseline used for this update:
 - Command: `python -m pytest --collect-only -qq tests -p no:cacheprovider`
@@ -101,14 +101,14 @@ Notes:
   - Includes steady-state active-file cache coverage, idle fallback rescans when directory metadata does not surface rotation immediately, delayed discovery when monitoring starts before any NWN log file exists, and edge-case monitor tests that now use realistic `readline()`-driven file doubles instead of runtime test-only file-handle branches
 - DPS query service/pipeline:
   - `test_dps_query_service.py`, `test_dps_pipeline_integration.py`
-  - Includes direct coverage that DPS table rows and damage-type breakdowns consume one atomic store projection snapshot instead of stitching together timing and summary reads across multiple lock acquisitions, plus optional Combine Associates aggregation for damage totals, damage types, hit rate counts, target filters, discovery order, unrelated-row timing preservation, and timing modes
+  - Includes direct coverage that DPS table rows and damage-type breakdowns consume one atomic store projection snapshot instead of stitching together timing and summary reads across multiple lock acquisitions, plus optional Include Summons in DPS aggregation for damage totals, damage types, hit rate counts, target filters, discovery order, unrelated-row timing preservation, and timing modes
   - Query-service, integration, queue-processor, and e2e tests now consume typed DTO attributes directly instead of legacy dict-like row access
 - Immunity query service/display preparation:
   - `test_immunity_query_service.py`
   - Includes direct coverage for prepared `Target Immunities` display rows, including zero-damage full absorbs, absorbed-value tie winners, temporary full-immunity suppression, best-effort reverse-immunity inference, parse-toggle remembered percentage display, same-version parse-off cache invalidation after a later parse-on read, and immutable cached row DTOs
 - UI widget/main-window behavior and refresh optimizations:
   - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_refresh_coordinator.py`, `test_runtime_config.py`, `test_session_settings_controller.py`, `test_message_dialogs.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
-  - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, tree-sort scan bypass when callers already control order, Target Stats staying empty after Clear Data-style store clears, Combine Associates checkbox/view-cache behavior, and a DPS full-refresh regression guard that catches per-row rescans of the ordered DPS row list
+  - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, tree-sort scan bypass when callers already control order, Target Stats staying empty after Clear Data-style store clears, Include Summons in DPS checkbox/view-cache behavior, and a DPS full-refresh regression guard that catches per-row rescans of the ordered DPS row list
   - Includes main-window orchestration coverage for target-list fanout, runtime-config-driven queue policy wiring, app-level delegation into controllers, and shutdown ordering across settings, import, monitor, storage, and tooltip teardown
   - Includes controller-first monitoring coverage for switch state, active-file label updates, deferred restart behavior, retained last-known filename when monitoring is paused, coalesced refresh scheduling, debounced session-settings persistence, and the hidden Debug Console unlock controller
   - Includes explicit coverage that heavy widgets use an explicit query-service fast-path capability flag instead of method-introspection compatibility shims
@@ -123,10 +123,10 @@ Notes:
   - Includes pure render-preparation coverage for chat-prefix sanitization, opponent extraction, wrap-mode line padding, damage/name span generation, per-render name-pattern cache reuse, and killed-name precedence over opponent highlighting
 - App settings persistence:
   - `test_settings.py`
-  - Includes persisted `Parse Immunities`, `First Timestamp`, and `Combine Associates` coverage, including missing-key and invalid-value fallback behavior for older settings files
+  - Includes persisted `Parse Immunities`, `First Timestamp`, and `Include Summons in DPS` coverage, including missing-key and invalid-value fallback behavior for older settings files
 - Main-window persistence orchestration:
   - `test_main_window_load_parse.py`, `test_main_window_orchestration.py`, `test_session_settings_controller.py`
-  - Includes startup restoration of persisted `First Timestamp` mode and `Combine Associates` state into the DPS query service/UI, app-to-settings-controller delegation, save scheduling on DPS setting changes, and session-settings serialization of active DPS settings without app-shell cache mirroring
+  - Includes startup restoration of persisted `First Timestamp` mode and `Include Summons in DPS` state into the DPS query service/UI, app-to-settings-controller delegation, save scheduling on DPS setting changes, and session-settings serialization of active DPS settings without app-shell cache mirroring
 - Import/worker pipeline behavior:
   - `test_utils.py`, `test_utils_worker_pipeline.py`
   - Includes streaming chunk payload integrity, direct parse-to-chunk worker coverage, queue-full abort responsiveness coverage, import payload coverage after removing legacy parser-state snapshots, preserved `wooparseme` identity events during manual import, shared immunity-matcher parity for both damage-before-immunity and immunity-before-damage logs, explicit disabled-mode coverage that import parsing does not construct the matcher when `Parse Immunities` is off, and direct parity coverage that shared event ingestion stays aligned across the pure engine, live queue draining, and import payload generation
