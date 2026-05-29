@@ -1,4 +1,4 @@
-"""Unit tests for dark modal message dialogs."""
+"""Unit tests for dark message dialogs."""
 
 from unittest.mock import Mock
 
@@ -250,7 +250,7 @@ def test_show_warning_dialog_uses_parent_icon_when_custom_icon_missing(monkeypat
     assert dialog_instances[0].iconbitmap_calls == ["root.ico"]
 
 
-def test_show_about_dialog_builds_populated_dark_modal(monkeypatch) -> None:
+def test_show_about_dialog_builds_populated_dark_non_modal(monkeypatch) -> None:
     dialog_instances = []
     frame_instances = []
     label_instances = []
@@ -317,7 +317,7 @@ def test_show_about_dialog_builds_populated_dark_modal(monkeypatch) -> None:
     assert dialog.iconbitmap_calls == ["app.ico"]
     assert dialog.deiconified is True
     assert dialog.lifted is True
-    assert dialog.grabbed is True
+    assert dialog.grabbed is False
     assert "Woo's NWN Parser" in label_texts
     assert message_dialogs_module.ABOUT_VERSION_TEXT in label_texts
     assert message_dialogs_module.ABOUT_DESCRIPTION_TEXT in label_texts
@@ -348,7 +348,7 @@ def test_show_about_dialog_builds_populated_dark_modal(monkeypatch) -> None:
     assert "<Return>" in dialog.bindings
     assert "<Escape>" in dialog.bindings
     assert dialog.protocol_calls["WM_DELETE_WINDOW"] is not None
-    assert parent.wait_window.call_args.args == (dialog,)
+    parent.wait_window.assert_not_called()
     apply_dark_title_bar.assert_called_once_with(dialog)
     assert frame_instances[0].pack_calls == [((), {"fill": "both", "expand": True})]
     assert frame_instances[1].pack_calls == [((), {"fill": "both", "expand": True})]
@@ -357,4 +357,6 @@ def test_show_about_dialog_builds_populated_dark_modal(monkeypatch) -> None:
     assert frame_instances[4].pack_calls == [((), {"side": "bottom", "fill": "x"})]
     assert close_button.pack_calls == [((), {"anchor": "e"})]
     dialog.bindings["<Escape>"]()
+    assert dialog.released is False
+    assert dialog.destroyed is True
     assert tooltip_instances[0].destroyed is True

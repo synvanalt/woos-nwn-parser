@@ -234,10 +234,6 @@ def show_about_dialog(parent: tk.Misc, *, icon_path: str | None = None) -> None:
 
     def _close(*_args: object) -> None:
         tooltip_manager.destroy()
-        try:
-            dialog.grab_release()
-        except tk.TclError:
-            pass
         dialog.destroy()
 
     close_button = ttk.Button(actions, text="Close", command=_close)
@@ -260,8 +256,6 @@ def show_about_dialog(parent: tk.Misc, *, icon_path: str | None = None) -> None:
             dialog.attributes("-alpha", 1.0)
         except tk.TclError:
             pass
-        dialog.grab_set()
         close_button.focus_set()
 
     dialog.after_idle(_show_when_ready)
-    parent.wait_window(dialog)
