@@ -380,8 +380,14 @@ def test_setup_ui_wires_about_button_after_browse_with_tooltip_and_busy_state(mo
     assert app.browse_button.kwargs["text"] == "Browse"
     assert app.about_button.kwargs["text"] == "?"
     assert app.about_button.kwargs["command"] is app.show_about_modal
-    assert file_frame.columnconfigure_calls == [(1, {"weight": 1, "minsize": 40})]
+    assert file_frame.columnconfigure_calls == [
+        (1, {"weight": 3, "minsize": 40}),
+        (3, {"weight": 1, "minsize": 20}),
+    ]
     assert app.dir_label.grid_calls == [((), {"row": 0, "column": 1, "sticky": "ew", "padx": (2, 2)})]
+    assert app.active_file_label.grid_calls == [
+        ((), {"row": 0, "column": 3, "sticky": "ew", "padx": 5})
+    ]
     assert app.browse_button.grid_calls == [((), {"row": 0, "column": 4, "sticky": "w", "padx": 5})]
     assert app.about_button.grid_calls == [((), {"row": 0, "column": 5, "sticky": "w", "padx": 5})]
     assert file_frame.gridded_children.index(app.about_button) == (

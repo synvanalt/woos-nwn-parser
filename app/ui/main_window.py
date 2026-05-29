@@ -178,7 +178,8 @@ class WoosNwnParserApp:
 
         file_frame = ttk.Frame(control_frame)
         file_frame.pack(fill="x", pady=(0, 10))
-        file_frame.columnconfigure(1, weight=1, minsize=40)
+        file_frame.columnconfigure(1, weight=3, minsize=40)
+        file_frame.columnconfigure(3, weight=1, minsize=20)
 
         self.log_directory_label = ttk.Label(file_frame, text="Log Directory:")
         self.log_directory_label.grid(row=0, column=0, sticky="w", padx=5)
@@ -202,7 +203,7 @@ class WoosNwnParserApp:
             foreground="gray",
             width=13,
         )
-        self.active_file_label.grid(row=0, column=3, sticky="w", padx=5)
+        self.active_file_label.grid(row=0, column=3, sticky="ew", padx=5)
 
         self.browse_button = ttk.Button(file_frame, text="Browse", command=self.browse_directory)
         self.browse_button.grid(row=0, column=4, sticky="w", padx=5)
