@@ -159,7 +159,7 @@ class DPSPanel(ttk.Frame):
         )
         self.tooltip_manager.register(
             self.include_summons_check,
-            "Adds summon damage to the owner's DPS row and hides the separate summon row (only works when the summon name starts with the owner name, such as 'Owner | Summon')",
+            'Adds summon damage to owner\'s DPS row and hides the separate summon row (only works when summon name includes the owner name, such as "Owner | Summon")',
         )
 
     def refresh(self) -> None:
