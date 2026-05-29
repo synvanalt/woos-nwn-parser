@@ -13,7 +13,7 @@ from app.services.queries import DpsBreakdownRow, DpsRow
 from app.ui.widgets.dps_panel import DPSPanel
 from app.storage import DataStore
 from app.services.queries import DpsQueryService
-from tests.helpers.store_mutations import apply, attack
+from tests.helpers.store_mutations import apply, attack, damage_dealt
 
 
 @pytest.fixture
@@ -395,6 +395,61 @@ class TestIncrementalRefresh:
 
         assert dps_panel._tree_refresh_state.view_key[0] == "Goblin"
         assert dps_panel._tree_refresh_state.item_ids['Woo'] != initial_item_id
+
+    def test_include_summons_in_dps_checkbox_defaults_off_and_changes_view_key(self, dps_panel) -> None:
+        assert dps_panel.include_summons_check.cget("text") == "Include Summons in Owner DPS"
+        assert dps_panel.get_include_summons_in_dps() is False
+        assert dps_panel.dps_options_frame.winfo_manager() == "pack"
+
+        dps_panel.dps_query_service.supports_store_version_fast_path = False
+        dps_panel.dps_query_service.get_dps_display_data = Mock(return_value=[
+            DpsRow(character='Woo', total_damage=500, time_seconds=10, dps=50.0, hit_rate=75.0, breakdown_token=())
+        ])
+        dps_panel.dps_query_service.get_damage_type_breakdowns = Mock(return_value={})
+
+        dps_panel.refresh()
+        assert dps_panel._tree_refresh_state.view_key[-1] is False
+
+        dps_panel.dps_query_service.set_include_summons_in_dps(True)
+        dps_panel.set_include_summons_in_dps(True)
+        dps_panel.refresh()
+
+        assert dps_panel._tree_refresh_state.view_key[-1] is True
+
+    def test_include_summons_in_dps_toggle_rebuilds_rows_without_stale_cache(self, dps_panel) -> None:
+        from datetime import datetime
+
+        now = datetime.now()
+        apply(
+            dps_panel.data_store,
+            damage_dealt(attacker="Woo", target="Dragon", timestamp=now, damage_types={"Physical": 100}),
+            damage_dealt(attacker="Woo | Summon", target="Dragon", timestamp=now, damage_types={"Fire": 50}),
+        )
+
+        dps_panel.refresh()
+        off_names = [
+            dps_panel.tree.item(item_id, "values")[0]
+            for item_id in dps_panel.tree.get_children()
+        ]
+        assert set(off_names) == {"Woo", "Woo | Summon"}
+
+        dps_panel.dps_query_service.set_include_summons_in_dps(True)
+        dps_panel.set_include_summons_in_dps(True)
+        dps_panel.refresh()
+        on_names = [
+            dps_panel.tree.item(item_id, "values")[0]
+            for item_id in dps_panel.tree.get_children()
+        ]
+        assert on_names == ["Woo"]
+
+        dps_panel.dps_query_service.set_include_summons_in_dps(False)
+        dps_panel.set_include_summons_in_dps(False)
+        dps_panel.refresh()
+        restored_names = [
+            dps_panel.tree.item(item_id, "values")[0]
+            for item_id in dps_panel.tree.get_children()
+        ]
+        assert set(restored_names) == {"Woo", "Woo | Summon"}
 
     def test_full_refresh_does_not_rescan_dps_rows_per_character(self, dps_panel) -> None:
         """Full refresh should iterate DPS rows linearly, not rescan them per insert."""

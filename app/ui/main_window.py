@@ -59,6 +59,7 @@ class WoosNwnParserApp:
             get_log_directory=lambda: self.log_directory,
             get_death_fallback_line=self._get_death_fallback_line_for_settings,
             get_first_timestamp_mode=self._get_current_first_timestamp_mode,
+            get_include_summons_in_dps=lambda: self.dps_panel.get_include_summons_in_dps(),
             load_settings=load_app_settings,
             save_settings=save_app_settings,
         )
@@ -70,6 +71,7 @@ class WoosNwnParserApp:
         persisted_mode = initial_settings.first_timestamp_mode
         if persisted_mode is not None:
             self.dps_query_service.set_time_tracking_mode(persisted_mode)
+        self.dps_query_service.set_include_summons_in_dps(initial_settings.include_summons_in_dps)
 
         configured_log_directory = (initial_settings.log_directory or "").strip()
         self.log_directory = configured_log_directory or get_default_log_directory()
@@ -244,6 +246,7 @@ class WoosNwnParserApp:
         self.notebook.add(self.dps_panel, text=self.runtime_config.debug_unlock.dps_tab_text)
         self.dps_panel.time_tracking_combo.bind("<<ComboboxSelected>>", self._on_time_tracking_mode_changed)
         self.dps_panel.target_filter_combo.bind("<<ComboboxSelected>>", self._on_target_filter_changed)
+        self.dps_panel.include_summons_check.configure(command=self._on_include_summons_changed)
 
         self.stats_panel = TargetStatsPanel(
             self.notebook,
@@ -424,6 +427,12 @@ class WoosNwnParserApp:
         self.log_debug(f"Target filter changed to: {self.dps_panel.target_filter_var.get()}")
         self.dps_panel.refresh()
 
+    def _on_include_summons_changed(self) -> None:
+        enabled = self.dps_panel.get_include_summons_in_dps()
+        self.dps_query_service.set_include_summons_in_dps(enabled)
+        self._schedule_session_settings_save()
+        self.dps_panel.refresh()
+
     def _on_death_snippet(self, event: DeathSnippetEvent) -> None:
         self.death_snippet_panel.add_death_event(event)
 
@@ -456,6 +465,9 @@ class WoosNwnParserApp:
         }
         current_mode = self.dps_query_service.time_tracking_mode
         self.dps_panel.time_tracking_var.set(mode_display_by_value.get(current_mode, "Per Character"))
+        self.dps_panel.set_include_summons_in_dps(
+            self.dps_query_service.include_summons_in_dps
+        )
 
     def _get_current_first_timestamp_mode(self) -> str | None:
         mode = self.dps_panel.get_time_tracking_mode()

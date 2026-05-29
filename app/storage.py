@@ -132,6 +132,9 @@ class DataStore:
         self._target_ac_by_name: Dict[str, EnemyAC] = {}
         self._target_saves_by_name: Dict[str, EnemySaves] = {}
         self._target_attack_bonus_by_name: Dict[str, TargetAttackBonus] = {}
+        self._known_entity_names: set[str] = set()
+        self._associate_to_lead: Dict[str, str] = {}
+        self._pending_associates_by_lead: Dict[str, set[str]] = {}
 
     @staticmethod
     def _normalize_history_limit(value: int | None, default: int) -> int:
@@ -177,6 +180,32 @@ class DataStore:
             self._targets_cache.add(target)
             self._sorted_targets_dirty = True
 
+    def _record_entity_name_locked(self, name: str) -> None:
+        """Track known names and resolve lead/associate relationships."""
+        entity_name = str(name or "").strip()
+        if not entity_name:
+            return
+        if entity_name in self._known_entity_names:
+            if "|" not in entity_name or entity_name in self._associate_to_lead:
+                return
+
+        self._known_entity_names.add(entity_name)
+
+        pending = self._pending_associates_by_lead.pop(entity_name, set())
+        for associate in pending:
+            self._associate_to_lead[associate] = entity_name
+
+        if "|" not in entity_name:
+            return
+
+        lead, suffix = (part.strip() for part in entity_name.split("|", 1))
+        if not lead or not suffix:
+            return
+        if lead in self._known_entity_names:
+            self._associate_to_lead[entity_name] = lead
+        else:
+            self._pending_associates_by_lead.setdefault(lead, set()).add(entity_name)
+
     def _get_sorted_targets_locked(self) -> tuple[str, ...]:
         """Return cached sorted targets while lock is held."""
         if self._sorted_targets_dirty:
@@ -204,14 +233,18 @@ class DataStore:
             self.dps_data[character] = {
                 'total_damage': damage_amount,
                 'first_timestamp': timestamp,
+                'last_timestamp': timestamp,
                 'damage_by_type': damage_types.copy() if damage_types else {}
             }
+            self._record_entity_name_locked(character)
             self._dps_breakdown_dirty_characters.add(character)
             return
 
         char_data['total_damage'] += damage_amount
         if timestamp < char_data['first_timestamp']:
             char_data['first_timestamp'] = timestamp
+        if timestamp > char_data.get('last_timestamp', char_data['first_timestamp']):
+            char_data['last_timestamp'] = timestamp
 
         if not damage_types:
             return
@@ -247,6 +280,8 @@ class DataStore:
             timestamp=timestamp,
         )
         self.events.append(event)
+        if mutation.attacker:
+            self._record_entity_name_locked(mutation.attacker)
         self._all_damage_types_cache.add(mutation.damage_type)
         self._add_target_locked(mutation.target)
         if (
@@ -310,6 +345,7 @@ class DataStore:
             total=mutation.total,
         )
         self.attacks.append(event)
+        self._record_entity_name_locked(mutation.attacker)
         key = (mutation.attacker, mutation.target)
         attacker_stats = self._attack_stats_by_attacker.setdefault(
             mutation.attacker, {'hits': 0, 'crits': 0, 'misses': 0}
@@ -463,7 +499,7 @@ class DataStore:
                         character=str(character),
                         total_damage=int(summary["total_damage"]),
                         first_timestamp=summary["first_timestamp"],
-                        last_timestamp=None,
+                        last_timestamp=summary.get("last_timestamp"),
                         damage_by_type=breakdown_token,
                         breakdown_token=breakdown_token,
                     )
@@ -517,6 +553,42 @@ class DataStore:
                 earliest_timestamp=earliest_timestamp,
                 summaries=self._build_dps_summaries_locked(target=target),
             )
+
+    def get_associate_mappings(self) -> Dict[str, str]:
+        """Return associate name -> lead name mappings resolved from known entities."""
+        with self.lock:
+            return dict(self._associate_to_lead)
+
+    def get_attack_counts_for_damage_dealers(
+        self,
+        target: Optional[str] = None,
+    ) -> Dict[str, Dict[str, int]]:
+        """Return hit/crit/miss counts for current DPS damage dealers."""
+        with self.lock:
+            damage_dealers = (
+                self._damage_dealers_by_target.get(target, set())
+                if target
+                else self._damage_dealers_cache
+            )
+            if not damage_dealers:
+                return {}
+            if target:
+                return {
+                    attacker: dict(
+                        self._attack_stats_by_attacker_target.get(
+                            (attacker, target), {'hits': 0, 'crits': 0, 'misses': 0}
+                        )
+                    )
+                    for attacker in damage_dealers
+                }
+            return {
+                attacker: dict(
+                    self._attack_stats_by_attacker.get(
+                        attacker, {'hits': 0, 'crits': 0, 'misses': 0}
+                    )
+                )
+                for attacker in damage_dealers
+            }
 
     def get_target_damage_type_snapshots(
         self,
@@ -861,6 +933,9 @@ class DataStore:
             self._target_ac_by_name.clear()
             self._target_saves_by_name.clear()
             self._target_attack_bonus_by_name.clear()
+            self._known_entity_names.clear()
+            self._associate_to_lead.clear()
+            self._pending_associates_by_lead.clear()
 
     def close(self) -> None:
         """Close the data store (no-op for in-memory store)."""

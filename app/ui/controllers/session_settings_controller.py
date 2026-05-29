@@ -19,6 +19,7 @@ class SessionSettingsController:
         get_log_directory: Callable[[], str],
         get_death_fallback_line: Callable[[], str],
         get_first_timestamp_mode: Callable[[], str | None],
+        get_include_summons_in_dps: Callable[[], bool],
         save_delay_ms: int = 400,
         load_settings: Callable[[], AppSettings] = load_app_settings,
         save_settings: Callable[[AppSettings], None] = save_app_settings,
@@ -28,6 +29,7 @@ class SessionSettingsController:
         self.get_log_directory = get_log_directory
         self.get_death_fallback_line = get_death_fallback_line
         self.get_first_timestamp_mode = get_first_timestamp_mode
+        self.get_include_summons_in_dps = get_include_summons_in_dps
         self.save_delay_ms = int(save_delay_ms)
         self._load_settings = load_settings
         self._save_settings = save_settings
@@ -47,6 +49,7 @@ class SessionSettingsController:
             death_fallback_line=(self.get_death_fallback_line() or "").strip() or None,
             parse_immunity=bool(self.parser.parse_immunity),
             first_timestamp_mode=self.get_first_timestamp_mode(),
+            include_summons_in_dps=bool(self.get_include_summons_in_dps()),
         )
 
     def persist_now(self) -> None:
