@@ -228,3 +228,53 @@ def test_show_warning_dialog_uses_parent_icon_when_custom_icon_missing(monkeypat
     message_dialogs_module.show_warning_dialog(parent, "Title", "Body", icon_path=None)
 
     assert dialog_instances[0].iconbitmap_calls == ["root.ico"]
+
+
+def test_show_about_dialog_builds_empty_dark_modal_shell(monkeypatch) -> None:
+    dialog_instances = []
+    frame_instances = []
+    button_instances = []
+
+    def make_dialog(parent):
+        dialog = FakeToplevel(parent)
+        dialog_instances.append(dialog)
+        return dialog
+
+    class FakeFrame(FakeWidget):
+        instances = frame_instances
+
+    class FakeButton(FakeWidget):
+        instances = button_instances
+
+    apply_dark_title_bar = Mock()
+    monkeypatch.setattr(message_dialogs_module.tk, "Toplevel", make_dialog)
+    monkeypatch.setattr(message_dialogs_module.ttk, "Frame", FakeFrame)
+    monkeypatch.setattr(message_dialogs_module.ttk, "Button", FakeButton)
+    monkeypatch.setattr(message_dialogs_module, "apply_dark_title_bar", apply_dark_title_bar)
+
+    parent = FakeParent()
+    message_dialogs_module.show_about_dialog(parent, icon_path="app.ico")
+
+    dialog = dialog_instances[0]
+    close_button = button_instances[0]
+
+    assert dialog.configure_calls == [{"bg": "#1c1c1c"}]
+    assert dialog.title_value == "About"
+    assert dialog.resizable_args == (False, False)
+    assert dialog.transient_parent is parent
+    assert dialog.geometry_value == "480x140+260+280"
+    assert dialog.iconbitmap_calls == ["app.ico"]
+    assert dialog.deiconified is True
+    assert dialog.lifted is True
+    assert dialog.grabbed is True
+    assert close_button.kwargs["text"] == "Close"
+    assert close_button.focused is True
+    assert "<Return>" in dialog.bindings
+    assert "<Escape>" in dialog.bindings
+    assert dialog.protocol_calls["WM_DELETE_WINDOW"] is not None
+    assert parent.wait_window.call_args.args == (dialog,)
+    apply_dark_title_bar.assert_called_once_with(dialog)
+    assert frame_instances[0].pack_calls == [((), {"fill": "both", "expand": True})]
+    assert frame_instances[1].pack_calls == [((), {"fill": "both", "expand": True})]
+    assert frame_instances[2].pack_calls == [((), {"side": "bottom", "fill": "x"})]
+    assert close_button.pack_calls == [((), {"anchor": "e"})]

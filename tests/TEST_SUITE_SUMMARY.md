@@ -1,20 +1,20 @@
 # Test Suite Summary - Woo's NWN Parser
 
-**Last Updated:** May 29, 2026 (Include Summons in Owner DPS timing coverage refresh)
+**Last Updated:** May 29, 2026 (About button and modal shell coverage refresh)
 
 ## Overview
-This document reflects the current state of the `tests/` directory after the Include Summons in Owner DPS timing coverage update and a fresh full-suite recollection.
+This document reflects the current state of the `tests/` directory after the About button/modal shell coverage update and a fresh full-suite recollection.
 
 Collection baseline used for this update:
 - Command: `python -m pytest --collect-only -qq tests -p no:cacheprovider`
-- Result: **708 tests collected**
+- Result: **711 tests collected**
 
 ## Current Test Layout
 
-- `tests/unit/`: 43 modules, 657 tests
+- `tests/unit/`: 43 modules, 660 tests
 - `tests/integration/`: 7 modules, 44 tests
 - `tests/e2e/`: 1 module, 7 tests
-- Total: 51 test modules, 708 tests
+- Total: 51 test modules, 711 tests
 
 Notes:
 - All active `test_*.py` files are under `unit/`, `integration/`, or `e2e/`.
@@ -38,8 +38,8 @@ Notes:
 - `test_main_window_debug_tab_unlock.py` (5)
 - `test_main_window_load_parse.py` (23)
 - `test_main_window_monitoring_switch.py` (8)
-- `test_main_window_orchestration.py` (12)
-- `test_message_dialogs.py` (3)
+- `test_main_window_orchestration.py` (14)
+- `test_message_dialogs.py` (4)
 - `test_models.py` (56)
 - `test_monitor.py` (23)
 - `test_monitor_debug_mode.py` (9)
@@ -109,10 +109,10 @@ Notes:
 - UI widget/main-window behavior and refresh optimizations:
   - `test_dps_panel_incremental.py`, `test_immunity_panel_incremental.py`, `test_target_stats_panel_incremental.py`, `test_ui_optimizations.py`, `test_main_window_load_parse.py`, `test_main_window_monitoring_switch.py`, `test_main_window_debug_tab_unlock.py`, `test_main_window_orchestration.py`, `test_refresh_coordinator.py`, `test_runtime_config.py`, `test_session_settings_controller.py`, `test_message_dialogs.py`, `test_realtime_backpressure.py`, `test_selection_preservation.py`, `test_death_snippet_panel.py`, `test_formatters.py`
   - Includes explicit coverage for DPS, Target Stats, and Target Immunities no-op refresh short-circuiting, authoritative natural-order row moves, tree-sort scan bypass when callers already control order, Target Stats staying empty after Clear Data-style store clears, Include Summons in Owner DPS checkbox/view-cache behavior, and a DPS full-refresh regression guard that catches per-row rescans of the ordered DPS row list
-  - Includes main-window orchestration coverage for target-list fanout, runtime-config-driven queue policy wiring, app-level delegation into controllers, and shutdown ordering across settings, import, monitor, storage, and tooltip teardown
+  - Includes main-window orchestration coverage for target-list fanout, runtime-config-driven queue policy wiring, app-level delegation into controllers and app-owned dialogs, About button setup/tooltip/busy-state wiring, and shutdown ordering across settings, import, monitor, storage, and tooltip teardown
   - Includes controller-first monitoring coverage for switch state, active-file label updates, deferred restart behavior, retained last-known filename when monitoring is paused, coalesced refresh scheduling, debounced session-settings persistence, and the hidden Debug Console unlock controller
   - Includes explicit coverage that heavy widgets use an explicit query-service fast-path capability flag instead of method-introspection compatibility shims
-  - Includes dark modal dialog coverage for app-owned warning popups and bottom-right action-row alignment shared by warning and import-progress modals
+  - Includes dark modal dialog coverage for app-owned warning popups, the empty About dialog shell, and bottom-right action-row alignment shared by warning and import-progress modals
   - Includes shared tooltip-manager coverage for delayed show/hide behavior, popup reuse, overwrite-safe registration, and first-pass tooltip wiring on the main window plus DPS, Target Immunities, Death Snippets, and Debug controls
   - Includes controller-first import coverage for modal layout, worker startup, strict `ops_chunk` payload requirements, incremental payload application, preserved death-snippet / death-character side-event delivery, and debug-toggle delegation through `MonitorController.set_debug_enabled(...)`
   - Includes Death Snippets widget coverage for selection state, placeholder behavior, Tk tag application, guarded `wooparseme` auto-identification, one-click character-name clearing back to the hint state, and wrap-toggle scroll preservation

@@ -24,6 +24,7 @@ from .controllers import (
     SessionSettingsController,
 )
 from .formatters import get_default_log_directory
+from .message_dialogs import show_about_dialog
 from .runtime_config import DEFAULT_APP_RUNTIME_CONFIG
 from .tooltips import TooltipManager
 from .widgets import DebugConsolePanel, DPSPanel, DeathSnippetPanel, ImmunityPanel, TargetStatsPanel
@@ -204,6 +205,8 @@ class WoosNwnParserApp:
 
         self.browse_button = ttk.Button(file_frame, text="Browse...", command=self.browse_directory)
         self.browse_button.pack(side="left", padx=5)
+        self.about_button = ttk.Button(file_frame, text="About", command=self.show_about_modal)
+        self.about_button.pack(side="left", padx=5)
 
         buttons_frame = ttk.Frame(control_frame)
         buttons_frame.pack(fill="x", pady=(5, 0))
@@ -295,6 +298,7 @@ class WoosNwnParserApp:
             self.browse_button,
             "Choose the folder that contains your Neverwinter Nights client logs",
         )
+        self.tooltip_manager.register(self.about_button, "About this app")
         self.tooltip_manager.register(self.monitoring_switch, "Turn live log monitoring on or off")
         self.tooltip_manager.register(self.clear_button, "Clear all parsed data from this session")
         self.tooltip_manager.register(
@@ -317,6 +321,7 @@ class WoosNwnParserApp:
         state = tk.DISABLED if is_busy else tk.NORMAL
         self.monitoring_switch.config(state=state)
         self.browse_button.config(state=state)
+        self.about_button.config(state=state)
         self.load_parse_button.config(state=state)
         self.clear_button.config(state=state)
 
@@ -349,6 +354,9 @@ class WoosNwnParserApp:
 
     def browse_directory(self) -> None:
         self.monitor_controller.browse_for_directory()
+
+    def show_about_modal(self) -> None:
+        show_about_dialog(self.root, icon_path=self.window_icon_path)
 
     def process_queue(self) -> None:
         self.queue_drain_controller.start()

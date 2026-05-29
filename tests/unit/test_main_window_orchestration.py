@@ -77,6 +77,16 @@ def test_browse_directory_delegates_to_monitor_controller(app_shell) -> None:
     app_shell.monitor_controller.browse_for_directory.assert_called_once_with()
 
 
+def test_show_about_modal_delegates_to_about_dialog(monkeypatch, app_shell) -> None:
+    show_about_dialog = Mock()
+    monkeypatch.setattr(main_window_module, "show_about_dialog", show_about_dialog)
+    app_shell.window_icon_path = "app.ico"
+
+    app_shell.show_about_modal()
+
+    show_about_dialog.assert_called_once_with(app_shell.root, icon_path="app.ico")
+
+
 def test_load_and_parse_delegates_to_import_controller_with_monitor_state(app_shell) -> None:
     app_shell.monitor_controller.is_monitoring = True
 
@@ -233,3 +243,142 @@ def test_init_uses_runtime_config_for_queue_maxsize(monkeypatch) -> None:
     app = WoosNwnParserApp(root)
 
     assert app.data_queue.maxsize == DEFAULT_APP_RUNTIME_CONFIG.queue.data_queue_maxsize
+
+
+def test_setup_ui_wires_about_button_after_browse_with_tooltip_and_busy_state(monkeypatch) -> None:
+    class FakeVar:
+        def __init__(self, value=None, **_kwargs) -> None:
+            self.value = value
+
+        def set(self, value) -> None:
+            self.value = value
+
+        def get(self):
+            return self.value
+
+        def trace(self, *_args, **_kwargs) -> None:
+            return None
+
+    class FakeWidget:
+        def __init__(self, parent=None, **kwargs) -> None:
+            self.parent = parent
+            self.kwargs = kwargs
+            self.pack_calls = []
+            self.config_calls = []
+            self.bind_calls = []
+            self.packed_children = []
+
+        def pack(self, *args, **kwargs) -> None:
+            self.pack_calls.append((args, kwargs))
+            if self.parent is not None and hasattr(self.parent, "packed_children"):
+                self.parent.packed_children.append(self)
+
+        def config(self, **kwargs) -> None:
+            self.config_calls.append(kwargs)
+
+        def configure(self, **kwargs) -> None:
+            self.config(**kwargs)
+
+        def bind(self, *args, **kwargs) -> None:
+            self.bind_calls.append((args, kwargs))
+
+    class FakeNotebook(FakeWidget):
+        def __init__(self, parent=None, **kwargs) -> None:
+            super().__init__(parent, **kwargs)
+            self.add_calls = []
+
+        def add(self, *args, **kwargs) -> None:
+            self.add_calls.append((args, kwargs))
+
+    class FakeDpsPanel(FakeWidget):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(args[0] if args else None, **kwargs)
+            self.time_tracking_combo = FakeWidget(self)
+            self.target_filter_combo = FakeWidget(self)
+            self.include_summons_check = FakeWidget(self)
+
+    class FakeStatsPanel(FakeWidget):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(args[0] if args else None, **kwargs)
+
+    class FakeImmunityPanel(FakeWidget):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(args[0] if args else None, **kwargs)
+            self.target_combo = FakeWidget(self)
+
+    class FakeDeathSnippetPanel(FakeWidget):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(args[0] if args else None, **kwargs)
+            self.set_fallback_death_line = Mock()
+            self.configure_identity_callbacks = Mock()
+            self.get_character_name = Mock(return_value="")
+            self.get_fallback_death_line = Mock(
+                return_value=ParserSession.DEFAULT_DEATH_FALLBACK_LINE
+            )
+
+    class FakeDebugPanel(FakeWidget):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(args[0] if args else None, **kwargs)
+            self.debug_mode_var = FakeVar()
+
+    tooltip_manager = Mock()
+    app = WoosNwnParserApp.__new__(WoosNwnParserApp)
+    app.root = FakeWidget()
+    app.log_directory = ""
+    app.runtime_config = DEFAULT_APP_RUNTIME_CONFIG
+    app.tooltip_manager = tooltip_manager
+    app.data_store = Mock()
+    app.dps_query_service = Mock()
+    app.target_summary_query_service = Mock()
+    app.immunity_query_service = Mock()
+    app.parser = Mock()
+    app._initial_death_fallback_line = ParserSession.DEFAULT_DEATH_FALLBACK_LINE
+    app.show_about_modal = Mock()
+    app.browse_directory = Mock()
+    app.clear_data = Mock()
+    app.load_and_parse_selected_files = Mock()
+    app._on_monitoring_switch_toggle = Mock()
+    app._restore_persisted_dps_panel_state = Mock()
+    app._on_time_tracking_mode_changed = Mock()
+    app._on_target_filter_changed = Mock()
+    app._on_include_summons_changed = Mock()
+    app._on_parse_immunity_changed = Mock()
+    app._on_death_character_name_changed = Mock()
+    app._on_death_fallback_line_changed = Mock()
+    app.on_target_selected = Mock()
+    app._on_debug_toggle = Mock()
+    app._on_notebook_click = Mock()
+
+    monkeypatch.setattr(main_window_module.tk, "StringVar", FakeVar)
+    monkeypatch.setattr(main_window_module.tk, "BooleanVar", FakeVar)
+    monkeypatch.setattr(main_window_module.ttk, "Frame", FakeWidget)
+    monkeypatch.setattr(main_window_module.ttk, "Label", FakeWidget)
+    monkeypatch.setattr(main_window_module.ttk, "Entry", FakeWidget)
+    monkeypatch.setattr(main_window_module.ttk, "Button", FakeWidget)
+    monkeypatch.setattr(main_window_module.ttk, "Checkbutton", FakeWidget)
+    monkeypatch.setattr(main_window_module.ttk, "Notebook", FakeNotebook)
+    monkeypatch.setattr(main_window_module, "DPSPanel", FakeDpsPanel)
+    monkeypatch.setattr(main_window_module, "TargetStatsPanel", FakeStatsPanel)
+    monkeypatch.setattr(main_window_module, "ImmunityPanel", FakeImmunityPanel)
+    monkeypatch.setattr(main_window_module, "DeathSnippetPanel", FakeDeathSnippetPanel)
+    monkeypatch.setattr(main_window_module, "DebugConsolePanel", FakeDebugPanel)
+
+    app.setup_ui()
+
+    file_frame = app.browse_button.parent
+    assert app.about_button.kwargs["text"] == "About"
+    assert app.about_button.kwargs["command"] is app.show_about_modal
+    assert file_frame.packed_children.index(app.about_button) == (
+        file_frame.packed_children.index(app.browse_button) + 1
+    )
+    assert app.browse_button.pack_calls == [((), {"side": "left", "padx": 5})]
+    assert app.about_button.pack_calls == [((), {"side": "left", "padx": 5})]
+    tooltip_manager.register.assert_any_call(app.about_button, "About this app")
+
+    app._set_import_ui_busy(True)
+    app._set_import_ui_busy(False)
+
+    assert app.about_button.config_calls[-2:] == [
+        {"state": tk.DISABLED},
+        {"state": tk.NORMAL},
+    ]
