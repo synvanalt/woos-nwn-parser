@@ -15,8 +15,6 @@ from PyInstaller.utils.win32.versioninfo import (
     StringStruct, VarFileInfo, VarStruct
 )
 
-block_cipher = None
-
 # Define the root directory
 root_dir = Path(SPECPATH)
 
@@ -88,7 +86,7 @@ a = Analysis(
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
-    block_cipher = None,
+    # block_cipher = None, # not compatible with pyinstaller < 6.0
     cipher = None,  # No encryption
     noarchive=False,
 )
