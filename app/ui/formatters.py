@@ -77,8 +77,11 @@ def get_default_log_directory() -> str:
     Returns:
         Default log directory path or empty string if not found
     """
-    default_path = Path.home() / "Documents" / "Neverwinter Nights" / "logs"
-    if default_path.exists():
-        return str(default_path)
+    try:
+        default_path = Path.home() / "Documents" / "Neverwinter Nights" / "logs"
+        if default_path.exists():
+            return str(default_path)
+    except (AttributeError, OSError, RuntimeError):
+        return ""
     return ""
 
