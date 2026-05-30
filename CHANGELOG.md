@@ -1,14 +1,16 @@
 # Changelog
 
 ## [Unreleased]
+
+## [1.8.0] - 2026-05-29
+
 ### Added
 - DPS can now optionally add summon damage to the owner's DPS row with the new `Include Summons in Owner DPS` checkbox.
-- Added an `About` button with a dark modal shell for future app details.
+- Added an `About` button for in-app details.
 
-### Changed
-- The top log-directory row now keeps the `Browse` and `About` buttons visible longer when the window is narrowed.
 
 ## [1.7.0] - 2026-04-12
+
 ### Added
 - Widgets across the app now show tooltips for quicker in-app guidance
 

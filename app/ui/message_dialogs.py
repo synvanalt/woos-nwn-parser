@@ -9,7 +9,7 @@ from .window_style import apply_dark_title_bar
 
 
 _DIALOG_BG = "#1c1c1c"
-ABOUT_VERSION_TEXT = "Version 1.7.0"
+ABOUT_VERSION_TEXT = "Version 1.8.0"
 ABOUT_DESCRIPTION_TEXT = (
     "A real-time combat log parser and DPS analyzer for Neverwinter Nights. "
     "Tracks DPS, target stats, immunities, and more from NWN game logs."
