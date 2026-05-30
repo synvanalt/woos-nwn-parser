@@ -1,4 +1,4 @@
-"""Unit tests for dark modal message dialogs."""
+"""Unit tests for dark message dialogs."""
 
 from unittest.mock import Mock
 
@@ -20,6 +20,8 @@ class FakeToplevel:
         self.iconbitmap_calls = []
         self.attributes_calls = []
         self.after_idle_callbacks = []
+        self.bind_class_calls = []
+        self.after_cancel_calls = []
         self.deiconified = False
         self.lifted = False
         self.grabbed = False
@@ -57,6 +59,10 @@ class FakeToplevel:
     def bind(self, sequence: str, callback) -> None:
         self.bindings[sequence] = callback
 
+    def bind_class(self, tag: str, sequence: str, callback) -> str:
+        self.bind_class_calls.append((tag, sequence, callback))
+        return f"{tag}-{sequence}"
+
     def attributes(self, *args) -> None:
         self.attributes_calls.append(args)
 
@@ -82,6 +88,9 @@ class FakeToplevel:
         self.after_idle_callbacks.append(callback)
         callback()
 
+    def after_cancel(self, callback) -> None:
+        self.after_cancel_calls.append(callback)
+
 
 class FakeWidget:
     """Minimal widget shim that records pack/focus behavior."""
@@ -94,10 +103,21 @@ class FakeWidget:
         self.pack_calls = []
         self.focused = False
         self.command = kwargs.get("command")
+        self.bindings = {}
+        self._bindtags = ("FakeWidget",)
         self.__class__.instances.append(self)
 
     def pack(self, *args, **kwargs) -> None:
         self.pack_calls.append((args, kwargs))
+
+    def bind(self, sequence: str, callback) -> None:
+        self.bindings[sequence] = callback
+
+    def bindtags(self, value=None):
+        if value is None:
+            return self._bindtags
+        self._bindtags = tuple(value)
+        return None
 
     def focus_set(self) -> None:
         self.focused = True
@@ -228,3 +248,115 @@ def test_show_warning_dialog_uses_parent_icon_when_custom_icon_missing(monkeypat
     message_dialogs_module.show_warning_dialog(parent, "Title", "Body", icon_path=None)
 
     assert dialog_instances[0].iconbitmap_calls == ["root.ico"]
+
+
+def test_show_about_dialog_builds_populated_dark_non_modal(monkeypatch) -> None:
+    dialog_instances = []
+    frame_instances = []
+    label_instances = []
+    button_instances = []
+
+    def make_dialog(parent):
+        dialog = FakeToplevel(parent)
+        dialog_instances.append(dialog)
+        return dialog
+
+    class FakeFrame(FakeWidget):
+        instances = frame_instances
+
+    class FakeLabel(FakeWidget):
+        instances = label_instances
+
+    class FakeButton(FakeWidget):
+        instances = button_instances
+
+    tooltip_instances = []
+    real_tooltip_manager = message_dialogs_module.TooltipManager
+
+    class SpyTooltipManager(real_tooltip_manager):
+        def __init__(self, host) -> None:
+            super().__init__(host)
+            self.register_calls = []
+            self.destroyed = False
+            tooltip_instances.append(self)
+
+        def register(self, widget, text: str, **kwargs) -> None:
+            self.register_calls.append((widget, text, kwargs))
+            super().register(widget, text, **kwargs)
+
+        def destroy(self) -> None:
+            self.destroyed = True
+            super().destroy()
+
+    apply_dark_title_bar = Mock()
+    open_new_tab = Mock()
+    monkeypatch.setattr(message_dialogs_module.tk, "Toplevel", make_dialog)
+    monkeypatch.setattr(message_dialogs_module.ttk, "Frame", FakeFrame)
+    monkeypatch.setattr(message_dialogs_module.ttk, "Label", FakeLabel)
+    monkeypatch.setattr(message_dialogs_module.ttk, "Button", FakeButton)
+    monkeypatch.setattr(message_dialogs_module, "TooltipManager", SpyTooltipManager)
+    monkeypatch.setattr(message_dialogs_module, "apply_dark_title_bar", apply_dark_title_bar)
+    monkeypatch.setattr(message_dialogs_module.webbrowser, "open_new_tab", open_new_tab)
+
+    parent = FakeParent()
+    message_dialogs_module.show_about_dialog(parent, icon_path="app.ico")
+
+    dialog = dialog_instances[0]
+    close_button = button_instances[0]
+    label_texts = [label.kwargs["text"] for label in label_instances]
+    adoh_label = next(label for label in label_instances if label.kwargs["text"] == "ADOH")
+    releases_label = next(
+        label for label in label_instances if label.kwargs["text"] == "GitHub Releases"
+    )
+
+    assert dialog.configure_calls == [{"bg": "#1c1c1c"}]
+    assert dialog.title_value == "About"
+    assert dialog.resizable_args == (False, False)
+    assert dialog.transient_parent is parent
+    assert dialog.geometry_value == "520x240+240+230"
+    assert dialog.iconbitmap_calls == ["app.ico"]
+    assert dialog.deiconified is True
+    assert dialog.lifted is True
+    assert dialog.grabbed is False
+    assert "Woo's NWN Parser" in label_texts
+    assert message_dialogs_module.ABOUT_VERSION_TEXT in label_texts
+    assert message_dialogs_module.ABOUT_DESCRIPTION_TEXT in label_texts
+    assert label_texts.index("Built with love for the ") < label_texts.index("Visit the ")
+    assert "Built with love for the " in label_texts
+    assert "ADOH" in label_texts
+    assert " community." in label_texts
+    assert "Visit the " in label_texts
+    assert "GitHub Releases" in label_texts
+    assert " page for app updates." in label_texts
+    assert message_dialogs_module.RELEASES_URL.endswith("/")
+    assert "<Button-1>" in adoh_label.bindings
+    assert "<Button-1>" in releases_label.bindings
+    assert tooltip_instances[0].register_calls == [
+        (adoh_label, message_dialogs_module.ADOH_URL, {}),
+        (releases_label, message_dialogs_module.RELEASES_URL, {}),
+    ]
+    assert adoh_label._bindtags[0].startswith("TooltipTarget_")
+    assert releases_label._bindtags[0].startswith("TooltipTarget_")
+    adoh_label.bindings["<Button-1>"](None)
+    releases_label.bindings["<Button-1>"](None)
+    assert open_new_tab.call_args_list == [
+        ((message_dialogs_module.ADOH_URL,), {}),
+        ((message_dialogs_module.RELEASES_URL,), {}),
+    ]
+    assert close_button.kwargs["text"] == "Close"
+    assert close_button.focused is True
+    assert "<Return>" in dialog.bindings
+    assert "<Escape>" in dialog.bindings
+    assert dialog.protocol_calls["WM_DELETE_WINDOW"] is not None
+    parent.wait_window.assert_not_called()
+    apply_dark_title_bar.assert_called_once_with(dialog)
+    assert frame_instances[0].pack_calls == [((), {"fill": "both", "expand": True})]
+    assert frame_instances[1].pack_calls == [((), {"fill": "both", "expand": True})]
+    assert frame_instances[2].pack_calls == [((), {"anchor": "w", "fill": "x", "pady": (12, 0)})]
+    assert frame_instances[3].pack_calls == [((), {"anchor": "w", "fill": "x", "pady": (12, 0)})]
+    assert frame_instances[4].pack_calls == [((), {"side": "bottom", "fill": "x"})]
+    assert close_button.pack_calls == [((), {"anchor": "e"})]
+    dialog.bindings["<Escape>"]()
+    assert dialog.released is False
+    assert dialog.destroyed is True
+    assert tooltip_instances[0].destroyed is True

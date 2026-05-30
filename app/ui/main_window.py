@@ -24,6 +24,7 @@ from .controllers import (
     SessionSettingsController,
 )
 from .formatters import get_default_log_directory
+from .message_dialogs import show_about_dialog
 from .runtime_config import DEFAULT_APP_RUNTIME_CONFIG
 from .tooltips import TooltipManager
 from .widgets import DebugConsolePanel, DPSPanel, DeathSnippetPanel, ImmunityPanel, TargetStatsPanel
@@ -177,9 +178,11 @@ class WoosNwnParserApp:
 
         file_frame = ttk.Frame(control_frame)
         file_frame.pack(fill="x", pady=(0, 10))
+        file_frame.columnconfigure(1, weight=3, minsize=40)
+        file_frame.columnconfigure(3, weight=1, minsize=20)
 
         self.log_directory_label = ttk.Label(file_frame, text="Log Directory:")
-        self.log_directory_label.pack(side="left", padx=5)
+        self.log_directory_label.grid(row=0, column=0, sticky="w", padx=5)
         self.dir_text = tk.StringVar(value="No directory selected")
         self.dir_label = ttk.Entry(
             file_frame,
@@ -188,10 +191,10 @@ class WoosNwnParserApp:
             foreground="gray",
             width=40,
         )
-        self.dir_label.pack(side="left", fill="x", expand=True, padx=(2, 2))
+        self.dir_label.grid(row=0, column=1, sticky="ew", padx=(2, 2))
 
         self.active_file_name_label = ttk.Label(file_frame, text="File:")
-        self.active_file_name_label.pack(side="left", padx=(10, 0))
+        self.active_file_name_label.grid(row=0, column=2, sticky="w", padx=(10, 0))
         self.active_file_text = tk.StringVar(value="N/A")
         self.active_file_label = ttk.Entry(
             file_frame,
@@ -200,10 +203,12 @@ class WoosNwnParserApp:
             foreground="gray",
             width=13,
         )
-        self.active_file_label.pack(side="left", padx=5)
+        self.active_file_label.grid(row=0, column=3, sticky="ew", padx=5)
 
-        self.browse_button = ttk.Button(file_frame, text="Browse...", command=self.browse_directory)
-        self.browse_button.pack(side="left", padx=5)
+        self.browse_button = ttk.Button(file_frame, text="Browse", command=self.browse_directory)
+        self.browse_button.grid(row=0, column=4, sticky="w", padx=5)
+        self.about_button = ttk.Button(file_frame, text="?", command=self.show_about_modal)
+        self.about_button.grid(row=0, column=5, sticky="w", padx=5)
 
         buttons_frame = ttk.Frame(control_frame)
         buttons_frame.pack(fill="x", pady=(5, 0))
@@ -278,7 +283,7 @@ class WoosNwnParserApp:
         self.parser.set_death_fallback_line(self.death_snippet_panel.get_fallback_death_line())
 
         self.debug_panel = DebugConsolePanel(self.notebook, tooltip_manager=self.tooltip_manager)
-        self.debug_panel.debug_mode_var.trace("w", self._on_debug_toggle)
+        self.debug_panel.debug_mode_var.trace_add("write", self._on_debug_toggle)
         self.notebook.bind("<Button-1>", self._on_notebook_click, add=True)
         self._register_tooltips()
 
@@ -295,6 +300,7 @@ class WoosNwnParserApp:
             self.browse_button,
             "Choose the folder that contains your Neverwinter Nights client logs",
         )
+        self.tooltip_manager.register(self.about_button, "About this app")
         self.tooltip_manager.register(self.monitoring_switch, "Turn live log monitoring on or off")
         self.tooltip_manager.register(self.clear_button, "Clear all parsed data from this session")
         self.tooltip_manager.register(
@@ -317,6 +323,7 @@ class WoosNwnParserApp:
         state = tk.DISABLED if is_busy else tk.NORMAL
         self.monitoring_switch.config(state=state)
         self.browse_button.config(state=state)
+        self.about_button.config(state=state)
         self.load_parse_button.config(state=state)
         self.clear_button.config(state=state)
 
@@ -349,6 +356,9 @@ class WoosNwnParserApp:
 
     def browse_directory(self) -> None:
         self.monitor_controller.browse_for_directory()
+
+    def show_about_modal(self) -> None:
+        show_about_dialog(self.root, icon_path=self.window_icon_path)
 
     def process_queue(self) -> None:
         self.queue_drain_controller.start()

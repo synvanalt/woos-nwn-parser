@@ -11,6 +11,11 @@ from ...constants import DAMAGE_TYPE_PALETTE
 from ...parsed_events import DeathSnippetEvent
 
 
+def _damage_type_regex_fragment(key: str) -> str:
+    """Return an escaped regex fragment that tolerates whitespace between words."""
+    return re.escape(key).replace(r"\ ", r"\s+")
+
+
 def _compile_damage_patterns() -> tuple[tuple[str, ...], tuple[tuple[str, re.Pattern[str]], ...], tuple[tuple[str, re.Pattern[str]], ...]]:
     """Compile keyword, pair, and standalone regex patterns from palette keys."""
     keys = tuple(DAMAGE_TYPE_PALETTE.keys())
@@ -18,7 +23,7 @@ def _compile_damage_patterns() -> tuple[tuple[str, ...], tuple[tuple[str, re.Pat
         (
             key,
             re.compile(
-                rf"(?P<num>\d+)\s+(?P<dtype>{re.escape(key).replace(r'\\ ', r'\\s+')})\b",
+                rf"(?P<num>\d+)\s+(?P<dtype>{_damage_type_regex_fragment(key)})\b",
                 re.IGNORECASE,
             ),
         )
@@ -27,7 +32,7 @@ def _compile_damage_patterns() -> tuple[tuple[str, ...], tuple[tuple[str, re.Pat
     type_patterns = tuple(
         (
             key,
-            re.compile(rf"\b{re.escape(key).replace(r'\\ ', r'\\s+')}\b", re.IGNORECASE),
+            re.compile(rf"\b{_damage_type_regex_fragment(key)}\b", re.IGNORECASE),
         )
         for key in keys
     )

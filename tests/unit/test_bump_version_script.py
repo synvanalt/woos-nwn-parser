@@ -36,7 +36,7 @@ def make_workspace_tmp_dir() -> Path:
 
 def create_release_workspace(tmp_path: Path) -> None:
     """Create the minimal release-file layout needed by bump_version.py."""
-    (tmp_path / "app").mkdir(parents=True)
+    (tmp_path / "app" / "ui").mkdir(parents=True)
     (tmp_path / "docs" / "releases").mkdir(parents=True)
     (tmp_path / "pyproject.toml").write_text(
         """
@@ -49,6 +49,10 @@ version = "1.3.1"
     )
     (tmp_path / "app" / "__init__.py").write_text(
         '__version__ = "1.3.1"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "app" / "ui" / "message_dialogs.py").write_text(
+        'ABOUT_VERSION_TEXT = "Version 1.3.1"\n',
         encoding="utf-8",
     )
 
@@ -132,13 +136,18 @@ def test_update_versions_updates_all_targets() -> None:
         create_release_workspace(tmp_path)
 
         changed_paths = module.update_versions(tmp_path, "1.3.2", dry_run=False)
-        assert len(changed_paths) == 6
+        assert len(changed_paths) == 7
 
         pyproject = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
         assert 'version = "1.3.2"' in pyproject
 
         init_text = (tmp_path / "app" / "__init__.py").read_text(encoding="utf-8")
         assert '__version__ = "1.3.2"' in init_text
+
+        message_dialogs = (tmp_path / "app" / "ui" / "message_dialogs.py").read_text(
+            encoding="utf-8"
+        )
+        assert 'ABOUT_VERSION_TEXT = "Version 1.3.2"' in message_dialogs
 
         onefile = (tmp_path / "WoosNwnParser-onefile.spec").read_text(encoding="utf-8")
         onedir = (tmp_path / "WoosNwnParser-onedir.spec").read_text(encoding="utf-8")
@@ -174,6 +183,9 @@ def test_update_versions_dry_run_does_not_modify_files() -> None:
 
         before_pyproject = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
         before_init = (tmp_path / "app" / "__init__.py").read_text(encoding="utf-8")
+        before_message_dialogs = (tmp_path / "app" / "ui" / "message_dialogs.py").read_text(
+            encoding="utf-8"
+        )
         before_changelog = (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
         before_release = (tmp_path / "docs" / "releases" / "v1.3.1.md").read_text(encoding="utf-8")
 
@@ -181,14 +193,18 @@ def test_update_versions_dry_run_does_not_modify_files() -> None:
 
         after_pyproject = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
         after_init = (tmp_path / "app" / "__init__.py").read_text(encoding="utf-8")
+        after_message_dialogs = (tmp_path / "app" / "ui" / "message_dialogs.py").read_text(
+            encoding="utf-8"
+        )
         after_changelog = (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
         after_release = (tmp_path / "docs" / "releases" / "v1.3.1.md").read_text(encoding="utf-8")
         assert before_pyproject == after_pyproject
         assert before_init == after_init
+        assert before_message_dialogs == after_message_dialogs
         assert before_changelog == after_changelog
         assert before_release == after_release
         assert not (tmp_path / "docs" / "releases" / "v1.3.2.md").exists()
-        assert len(changed_paths) == 6
+        assert len(changed_paths) == 7
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)
 

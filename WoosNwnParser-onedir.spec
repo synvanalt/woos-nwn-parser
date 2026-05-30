@@ -15,16 +15,14 @@ from PyInstaller.utils.win32.versioninfo import (
     StringStruct, VarFileInfo, VarStruct
 )
 
-block_cipher = None
-
 # Define the root directory
 root_dir = Path(SPECPATH)
 
 # Create version info
 version_info = VSVersionInfo(
     ffi=FixedFileInfo(
-        filevers=(1, 7, 0, 0),
-        prodvers=(1, 7, 0, 0),
+        filevers=(1, 8, 0, 0),
+        prodvers=(1, 8, 0, 0),
         mask=0x3f,
         flags=0x0,
         OS=0x40004,
@@ -40,12 +38,12 @@ version_info = VSVersionInfo(
                     [
                         StringStruct('CompanyName', 'Woo\'s NWN Tools'),
                         StringStruct('FileDescription', 'Woo\'s NWN Parser'),
-                        StringStruct('FileVersion', '1.7.0.0'),
+                        StringStruct('FileVersion', '1.8.0.0'),
                         StringStruct('InternalName', 'WoosNwnParser'),
                         StringStruct('LegalCopyright', 'Copyright © 2026 Woo\'s NWN Tools'),
                         StringStruct('OriginalFilename', 'WoosNwnParser.exe'),
                         StringStruct('ProductName', 'Woo\'s NWN Parser'),
-                        StringStruct('ProductVersion', '1.7.0.0')
+                        StringStruct('ProductVersion', '1.8.0.0')
                     ]
                 )
             ]
@@ -88,7 +86,7 @@ a = Analysis(
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
-    block_cipher = None,
+    # block_cipher = None, # not compatible with pyinstaller < 6.0
     cipher = None,  # No encryption
     noarchive=False,
 )
