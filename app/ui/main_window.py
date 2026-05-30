@@ -283,7 +283,7 @@ class WoosNwnParserApp:
         self.parser.set_death_fallback_line(self.death_snippet_panel.get_fallback_death_line())
 
         self.debug_panel = DebugConsolePanel(self.notebook, tooltip_manager=self.tooltip_manager)
-        self.debug_panel.debug_mode_var.trace("w", self._on_debug_toggle)
+        self.debug_panel.debug_mode_var.trace_add("write", self._on_debug_toggle)
         self.notebook.bind("<Button-1>", self._on_notebook_click, add=True)
         self._register_tooltips()
 

@@ -30,7 +30,7 @@ def _mock_setup_ui(app: WoosNwnParserApp) -> None:
     app.death_snippet_panel.get_character_name.return_value = ""
     app.death_snippet_panel.get_fallback_death_line.return_value = ParserSession.DEFAULT_DEATH_FALLBACK_LINE
     app.debug_panel = Mock()
-    app.debug_panel.debug_mode_var = Mock(trace=Mock())
+    app.debug_panel.debug_mode_var = Mock(trace_add=Mock())
 
 
 def _patch_init_dependencies(monkeypatch) -> None:
@@ -256,7 +256,7 @@ def test_setup_ui_wires_about_button_after_browse_with_tooltip_and_busy_state(mo
         def get(self):
             return self.value
 
-        def trace(self, *_args, **_kwargs) -> None:
+        def trace_add(self, *_args, **_kwargs) -> None:
             return None
 
     class FakeWidget:
